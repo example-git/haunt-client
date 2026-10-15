@@ -1,0 +1,13 @@
+{
+  "name": "haunt",
+  "productName": "Haunt",
+  "version": "0.6.2",
+  "private": true,
+  "license": "BSD-3-Clause",
+  "description": "Haunt — self-hosted community messaging and calls",
+  "author": "Haunt",
+  "main": "main.cjs",
+  "type": "commonjs",
+  "dependencies": {},
+  "desktopAppId": "com.exampleuser.haunt"
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@haunt/api-generator",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "json-schema-to-typescript": "16.0.0"
+  }
+}
