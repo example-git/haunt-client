@@ -1,0 +1,16 @@
+{
+  "minor": { "lines": 250, "files": 8 },
+  "major": { "lines": 2000, "files": 40 },
+  "exclude": [
+    "package-lock.json",
+    "tests/",
+    "scripts/tests/",
+    "vendor/",
+    "static/",
+    "branding/",
+    "docs/",
+    "packages/core/src/generated/",
+    "apps/web/src/emoji-data.json",
+    "apps/web/src/emoji-sprites/"
+  ]
+}

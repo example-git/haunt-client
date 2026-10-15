@@ -1,0 +1,101 @@
+{
+  "appId": "com.exampleuser.haunt",
+  "productName": "Haunt",
+  "asar": {
+    "smartUnpack": true
+  },
+  "npmRebuild": false,
+  "publish": null,
+  "directories": {
+    "app": "electron-app",
+    "buildResources": "static",
+    "output": "release/builder"
+  },
+  "files": [
+    "package.json",
+    "update-runtime.json",
+    "main.cjs",
+    "apps/desktop/*.cjs",
+    "apps/desktop/capture-picker.html",
+    "apps/desktop/capture-picker.js",
+    "apps/desktop/capture-picker.css",
+    "dist/**/*",
+    "resources/icon.png",
+    "!node_modules/**/*"
+  ],
+  "mac": {
+    "extraResources": [
+      {
+        "from": "static/native/mac",
+        "to": "native/mac",
+        "filter": [
+          "SwiftCaptureWorker",
+          "HauntMediaWorker",
+          "manifest.json",
+          "NOTICE.txt"
+        ]
+      }
+    ],
+    "binaries": [
+      "Contents/Resources/native/mac/SwiftCaptureWorker",
+      "Contents/Resources/native/mac/HauntMediaWorker"
+    ],
+    "category": "public.app-category.social-networking",
+    "icon": "static/icon.icns",
+    "hardenedRuntime": true,
+    "identity": null,
+    "notarize": false,
+    "entitlements": "electron-app/entitlements.mac.plist",
+    "entitlementsInherit": "electron-app/entitlements.mac.inherit.plist",
+    "artifactName": "Haunt-${version}-mac-${arch}.${ext}",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "arm64"
+        ]
+      }
+    ],
+    "extendInfo": {
+      "NSMicrophoneUsageDescription": "Haunt uses your microphone for voice calls.",
+      "NSCameraUsageDescription": "Haunt uses your camera when you enable video in a call.",
+      "NSScreenCaptureUsageDescription": "Haunt uses screen recording access to share the screen you select.",
+      "NSAudioCaptureUsageDescription": "Haunt uses audio capture access when you share system audio.",
+      "com.apple.security.device.audio-input": true,
+      "com.apple.security.device.camera": true
+    }
+  },
+  "dmg": {
+    "sign": false
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "asar": true,
+    "executableName": "haunt",
+    "icon": "static/icon.ico"
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage"
+      }
+    ],
+    "category": "Network",
+    "executableName": "haunt",
+    "icon": "static/icons",
+    "artifactName": "Haunt-${version}-linux-${arch}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "artifactName": "Haunt-Setup-${version}-${arch}.${ext}"
+  }
+}

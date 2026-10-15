@@ -1,0 +1,91 @@
+name: Desktop releases
+on:
+  push:
+    tags: ['client-v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-2022, platform: win, arch: x64, target: win32-x64 }
+          - { os: ubuntu-24.04, platform: linux, arch: x64, target: linux-x64 }
+          - { os: ubuntu-24.04-arm, platform: linux, arch: arm64, target: linux-arm64 }
+          - { os: macos-14, platform: mac, arch: arm64, target: darwin-arm64 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      HAUNT_UPDATE_PUBLIC_KEY: ${{ vars.HAUNT_UPDATE_PUBLIC_KEY }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test -- --run tests/desktop-updates.test.ts tests/desktop-installer.test.ts tests/desktop-appearance.test.ts
+      - run: npm run build
+      - run: npm run electron:stage
+      - run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never
+      - run: npm run electron:check
+      - name: Start packaged Windows client
+        if: matrix.platform == 'win'
+        run: node scripts/check-packaged-startup.mjs
+      - run: npm run updates:pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: release/updates/*
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release/updates
+      - name: Authenticate release artifacts
+        run: node scripts/release-client.mjs manifest
+        env:
+          HAUNT_UPDATE_PUBLIC_KEY: ${{ vars.HAUNT_UPDATE_PUBLIC_KEY }}
+          HAUNT_UPDATE_PRIVATE_KEY: ${{ secrets.HAUNT_UPDATE_PRIVATE_KEY }}
+      - name: Publish complete release
+        shell: bash
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          tag="client-v$version"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
+            echo 'Tag and package version differ' >&2
+            exit 1
+          fi
+          gh release create "$tag" release/updates/*.asar release/updates/*.exe release/updates/*.dmg release/updates/*.AppImage release/updates/haunt-updates.json --target "$GITHUB_SHA" --title "Haunt $version" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Mirror verified downloads
+        if: vars.HAUNT_UPDATE_HOST != ''
+        shell: bash
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$UPDATE_SSH_KEY" > ~/.ssh/haunt-updates
+          chmod 600 ~/.ssh/haunt-updates
+          printf '%s\n' "$UPDATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          tar -C release/updates -czf release/client-updates.tar.gz .
+          ssh -i ~/.ssh/haunt-updates "$UPDATE_HOST" < release/client-updates.tar.gz
+        env:
+          UPDATE_SSH_KEY: ${{ secrets.HAUNT_UPDATE_SSH_KEY }}
+          UPDATE_KNOWN_HOSTS: ${{ vars.HAUNT_UPDATE_KNOWN_HOSTS }}
+          UPDATE_HOST: ${{ vars.HAUNT_UPDATE_HOST }}
