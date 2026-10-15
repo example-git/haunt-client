@@ -1,0 +1,19 @@
+// Explicit runtime allowlist shared by staging and package verification.
+export const desktopFiles = [
+  "main.cjs",
+  "appearance.cjs",
+  "bootstrap.cjs",
+  "updates.cjs",
+  "preload.cjs",
+  "network.cjs",
+  "media-cache.cjs",
+  "notifications.cjs",
+  "capture-picker.cjs",
+  "capture-preload.cjs",
+  "capture-picker.html",
+  "capture-picker.js",
+  "capture-picker.css",
+  "native-media.cjs",
+  "native-publisher.cjs",
+  "swiftcapture.cjs",
+];
