@@ -1,0 +1,14 @@
+{
+  "platform": "darwin",
+  "arch": "arm64",
+  "swiftCaptureSource": "Owner-supplied watch-client/resources/swiftcapture/mac/SwiftCaptureWorker",
+  "binaries": {
+    "SwiftCaptureWorker": "42d09709d46fc3e2b23477b10eab2cc1741cb11631def819ec94c38b313ca1c7",
+    "HauntMediaWorker": "21c47a9c3710db0af20fb0618ab29e1cd0f840da95fea06faa8c99f5b5a65fcd"
+  },
+  "sources": {
+    "native/media-worker/main.go": "48b96d1c0c7d5fb4d2a142c15db977ec1e83c0bf12f55cc13468c2febd106710",
+    "native/media-worker/go.mod": "c82fa959bc5e666af9e6b2ec0eeb3ee252a02dd906673954cf3a3990bc02f065",
+    "native/media-worker/go.sum": "e2376d68b68c4f3efe2173aab0759511b2eeba7e93f6e56d787e91b25bd4781e"
+  }
+}

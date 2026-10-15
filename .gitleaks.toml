@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+# Two adjacent Rust dependency names are mistaken for a secret assignment.
+# Match only this exact pair in this lockfile; all other rules/content stay active.
+[[allowlists]]
+description = "Rust dependency names, not a credential"
+condition = "AND"
+paths = ['''^native/dm-crypto/Cargo\.lock$''']
+regexTarget = "match"
+regexes = ['''libcrux-secrets",\s*"libcrux-sha3"''']
