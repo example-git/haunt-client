@@ -1,0 +1,93 @@
+:root {
+  color-scheme: dark;
+  font:
+    14px system-ui,
+    sans-serif;
+  color: #ededee;
+  background: #202124;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+header,
+footer {
+  padding: 16px 20px;
+  flex-shrink: 0;
+}
+h1 {
+  font-size: 20px;
+  margin: 0 0 6px;
+}
+p {
+  color: #b7b8bc;
+  margin: 0;
+}
+main {
+  overflow: auto;
+  padding: 0 20px 20px;
+  flex: 1;
+}
+h2 {
+  font-size: 14px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: #2d2e32;
+  border: 1px solid #52535a;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 10px 16px;
+}
+button:focus-visible,
+button:hover {
+  outline: 2px solid #eac3ab;
+}
+.source {
+  padding: 8px;
+  min-width: 0;
+  text-align: left;
+}
+.source img {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: contain;
+  background: #151517;
+}
+.source span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 8px;
+}
+.native-source {
+  min-height: 70px;
+  padding: 12px;
+}
+.native-source span {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 16px;
+  border-top: 1px solid #44454b;
+}
+[hidden] {
+  display: none !important;
+}

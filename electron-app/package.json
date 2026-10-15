@@ -1,0 +1,12 @@
+{
+  "name": "haunt",
+  "productName": "Haunt",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Haunt — self-hosted community messaging and calls",
+  "author": "Haunt",
+  "main": "main.cjs",
+  "type": "commonjs",
+  "dependencies": {},
+  "desktopAppId": "com.exampleuser.haunt"
+}
