@@ -1,0 +1,32 @@
+{
+  "name": "Haunt",
+  "display_name": "Haunt",
+  "slogans": false,
+  "source_logo": "source/logo-original.png",
+  "artwork_edits_allowed": false,
+  "appearance": "Black surfaces with localized faint cool illumination; orange eye accents. Not navy-filled surfaces.",
+  "scope": "Standalone specification and image exports. Not applied to the app.",
+  "tokens": {
+    "black": "#060609",
+    "surface": "#0c0c11",
+    "raised": "#121219",
+    "hover": "#1a1a24",
+    "border": "#353543",
+    "control-border": "#646479",
+    "text": "#f1f4ff",
+    "muted": "#a4a5b6",
+    "ember": "#ff9a3d",
+    "ember-hover": "#ffb16a",
+    "halo": "#8996ff",
+    "focus": "#b8c6ff",
+    "success": "#83d6b1",
+    "danger": "#f28ca6",
+    "warning": "#e6c778",
+    "font": "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "radius-control": "8px",
+    "radius-panel": "12px",
+    "glow-cool": "0 0 18px rgb(137 150 255 / 8%)",
+    "glow-warm": "0 0 14px rgb(255 154 61 / 10%)",
+    "focus-ring": "0 0 0 2px var(--haunt-black), 0 0 0 4px var(--haunt-focus)"
+  }
+}

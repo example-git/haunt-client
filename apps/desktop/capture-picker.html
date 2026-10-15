@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:;"
+    />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Share a screen or window</title>
+    <link rel="stylesheet" href="capture-picker.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Share a screen or window</h1>
+      <p>Choose what others in the call can see.</p>
+    </header>
+    <main id="sources" aria-label="Capture sources"></main>
+    <footer>
+      <label id="audio-option" hidden
+        ><input type="checkbox" id="audio" /><span id="audio-label"
+          >Share system audio (all apps)</span
+        ></label
+      ><button id="cancel">Cancel</button>
+    </footer>
+    <script src="capture-picker.js"></script>
+  </body>
+</html>
