@@ -1,0 +1,35 @@
+name: Client version
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      before:
+        description: Original push before SHA (for recovery)
+        required: true
+      after:
+        description: Original push after SHA (for recovery)
+        required: true
+permissions:
+  contents: write
+# No default concurrency group: its single pending slot replaces queued runs.
+# The publisher retries fast-forward conflicts so each push keeps its own bump.
+jobs:
+  version:
+    if: github.ref == 'refs/heads/main' && !github.event.deleted
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test version policy and concurrent pushes
+        run: node --test scripts/tests/version-main.test.mjs
+      - name: Bump and synchronize client versions
+        run: node scripts/version-main.mjs
+        env:
+          VERSION_BEFORE: ${{ inputs.before || github.event.before }}
+          VERSION_AFTER: ${{ inputs.after || github.event.after }}
