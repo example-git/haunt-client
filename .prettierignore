@@ -1,0 +1,13 @@
+node_modules
+dist
+release
+test-results
+packages/core/src/generated
+packages/core/dist
+package-lock.json
+apps/web/src/emoji-data.json
+apps/web/src/emoji-sprites
+
+electron-app/apps
+electron-app/dist
+electron-app/resources

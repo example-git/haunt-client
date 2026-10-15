@@ -1,0 +1,12 @@
+* text=auto eol=lf
+*.png binary
+*.webp binary
+*.wasm binary
+*.icns binary
+*.ico binary
+*.zip binary
+static/native/mac/* -text
+*.pdf binary
+native/dm-crypto/THIRD-PARTY-NOTICES.txt -text -diff
+static/native/mac/NOTICE.txt -diff
+vendor/twemoji/LICENSE-GRAPHICS -whitespace
