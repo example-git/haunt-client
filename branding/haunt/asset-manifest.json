@@ -1,0 +1,498 @@
+{
+  "source_sha256": "eed936725e9bedb682359d1533459b2d209f316035e9e05ea0d49f673ac94793",
+  "method": "Original canvas, Lanczos downsampling, format conversion; black backing/padding only for platform tiles. No artwork edits.",
+  "assets": [
+    {
+      "path": "android/play-store-512.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGB",
+      "sha256": "7bc947a4d2d75dcc3529fc6acc1337c70573cb2276964703f50d2b2f2cccd643"
+    },
+    {
+      "path": "android/res/drawable-hdpi/ic_launcher_foreground.png",
+      "width": 162,
+      "height": 162,
+      "mode": "RGBA",
+      "sha256": "d43c494744d2c85191e53887f8c45ef0d022245b351681cdcac2640572245baf"
+    },
+    {
+      "path": "android/res/drawable-mdpi/ic_launcher_foreground.png",
+      "width": 108,
+      "height": 108,
+      "mode": "RGBA",
+      "sha256": "dc1fd5f5fe70a9ccbc0cdd60e4fbb54deab7fe2647f26449ef829e779ff06ab6"
+    },
+    {
+      "path": "android/res/drawable-xhdpi/ic_launcher_foreground.png",
+      "width": 216,
+      "height": 216,
+      "mode": "RGBA",
+      "sha256": "77c5bb95eafeac21029f3ee97c5f6c7db21557d64caba97ca7149fd688124b3b"
+    },
+    {
+      "path": "android/res/drawable-xxhdpi/ic_launcher_foreground.png",
+      "width": 324,
+      "height": 324,
+      "mode": "RGBA",
+      "sha256": "83d64cad02cf7ea9b6c77054c734d3c8aefc39f6b776661b39f6a82cb4ff0421"
+    },
+    {
+      "path": "android/res/drawable-xxxhdpi/ic_launcher_foreground.png",
+      "width": 432,
+      "height": 432,
+      "mode": "RGBA",
+      "sha256": "a7cd2ba47180379893078b0bb011e9fd3297c9bbd577710d739b126bed896bed"
+    },
+    {
+      "path": "android/res/mipmap-hdpi/ic_launcher.png",
+      "width": 72,
+      "height": 72,
+      "mode": "RGB",
+      "sha256": "1ca88b2d7ce9c790ce4cbb8908af97ee7d8c31fa5c0b7dfa2181443f59b5fc01"
+    },
+    {
+      "path": "android/res/mipmap-mdpi/ic_launcher.png",
+      "width": 48,
+      "height": 48,
+      "mode": "RGB",
+      "sha256": "e6c3cb1f86e284744c673d6e0f6c7c9cf04964e593afb3b72753ae0a91d80517"
+    },
+    {
+      "path": "android/res/mipmap-xhdpi/ic_launcher.png",
+      "width": 96,
+      "height": 96,
+      "mode": "RGB",
+      "sha256": "04ac3df8cd2efd39cff3c738f461c9451d320670089eaecf7d0df43d30401ed0"
+    },
+    {
+      "path": "android/res/mipmap-xxhdpi/ic_launcher.png",
+      "width": 144,
+      "height": 144,
+      "mode": "RGB",
+      "sha256": "c59779ca604d6541fff3204cc90bb37182127bbda941f1514c5e57af1902e779"
+    },
+    {
+      "path": "android/res/mipmap-xxxhdpi/ic_launcher.png",
+      "width": 192,
+      "height": 192,
+      "mode": "RGB",
+      "sha256": "588e1ffd03ebcb5225328a9bfd14a61b47c5262e1dae4823d9f01d25e0a67a89"
+    },
+    {
+      "path": "desktop/icon.icns",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGBA",
+      "sha256": "5a31e540b1d6a00ab56ad9d04dc46ebdd3bc086d93ed68448d3121fcd372f546",
+      "embedded_sizes": [
+        [
+          512,
+          512,
+          2
+        ],
+        [
+          512,
+          512,
+          1
+        ],
+        [
+          256,
+          256,
+          2
+        ],
+        [
+          256,
+          256,
+          1
+        ],
+        [
+          128,
+          128,
+          2
+        ],
+        [
+          128,
+          128,
+          1
+        ],
+        [
+          32,
+          32,
+          2
+        ],
+        [
+          16,
+          16,
+          2
+        ]
+      ]
+    },
+    {
+      "path": "desktop/icon.ico",
+      "width": 256,
+      "height": 256,
+      "mode": "RGBA",
+      "sha256": "b6fd711114ae6cf761d818e5a13262ceb97d87880582f103edefd58409d9bcd6",
+      "embedded_sizes": [
+        [
+          16,
+          16
+        ],
+        [
+          24,
+          24
+        ],
+        [
+          32,
+          32
+        ],
+        [
+          48,
+          48
+        ],
+        [
+          64,
+          64
+        ],
+        [
+          128,
+          128
+        ],
+        [
+          256,
+          256
+        ]
+      ]
+    },
+    {
+      "path": "desktop/icon.iconset/icon_128x128.png",
+      "width": 128,
+      "height": 128,
+      "mode": "RGBA",
+      "sha256": "fc6f7bec7f7ae456b541406bb570107757037cf28deea051d393651e260b3528"
+    },
+    {
+      "path": "desktop/icon.iconset/icon_128x128@2x.png",
+      "width": 256,
+      "height": 256,
+      "mode": "RGBA",
+      "sha256": "9e3cc619bb9f2fb38c8d1363f5d6fc7b01e71e66f9dae858f6947f82958c657a"
+    },
+    {
+      "path": "desktop/icon.iconset/icon_16x16.png",
+      "width": 16,
+      "height": 16,
+      "mode": "RGBA",
+      "sha256": "b81ea47abc8857fcd0d7896d106c5cfb24c602fc6e68365f7d3fbf4c96fb189b"
+    },
+    {
+      "path": "desktop/icon.iconset/icon_16x16@2x.png",
+      "width": 32,
+      "height": 32,
+      "mode": "RGBA",
+      "sha256": "55f08eae28a29610e25e6fcafa17733b15027b939d7c92740a0dda3620300a3a"
+    },
+    {
+      "path": "desktop/icon.iconset/icon_256x256.png",
+      "width": 256,
+      "height": 256,
+      "mode": "RGBA",
+      "sha256": "9e3cc619bb9f2fb38c8d1363f5d6fc7b01e71e66f9dae858f6947f82958c657a"
+    },
+    {
+      "path": "desktop/icon.iconset/icon_256x256@2x.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "sha256": "647dec0eff275fa9a71e5df26e39b304474a01e0b32fd27f30df4237d78a4a6c"
+    },
+    {
+      "path": "desktop/icon.iconset/icon_32x32.png",
+      "width": 32,
+      "height": 32,
+      "mode": "RGBA",
+      "sha256": "55f08eae28a29610e25e6fcafa17733b15027b939d7c92740a0dda3620300a3a"
+    },
+    {
+      "path": "desktop/icon.iconset/icon_32x32@2x.png",
+      "width": 64,
+      "height": 64,
+      "mode": "RGBA",
+      "sha256": "2935156e735acf6d0f45335aad25ebb25103801e6c737368adc76e5a214f991f"
+    },
+    {
+      "path": "desktop/icon.iconset/icon_512x512.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "sha256": "647dec0eff275fa9a71e5df26e39b304474a01e0b32fd27f30df4237d78a4a6c"
+    },
+    {
+      "path": "desktop/icon.iconset/icon_512x512@2x.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGBA",
+      "sha256": "c9fc23b24b46ae8ecfde35a33467048f31c77d383988450e2cd4ab9d61a42494"
+    },
+    {
+      "path": "desktop/icon.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGBA",
+      "sha256": "c9fc23b24b46ae8ecfde35a33467048f31c77d383988450e2cd4ab9d61a42494"
+    },
+    {
+      "path": "desktop/linux/1024x1024.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGBA",
+      "sha256": "c9fc23b24b46ae8ecfde35a33467048f31c77d383988450e2cd4ab9d61a42494"
+    },
+    {
+      "path": "desktop/linux/128x128.png",
+      "width": 128,
+      "height": 128,
+      "mode": "RGBA",
+      "sha256": "fc6f7bec7f7ae456b541406bb570107757037cf28deea051d393651e260b3528"
+    },
+    {
+      "path": "desktop/linux/16x16.png",
+      "width": 16,
+      "height": 16,
+      "mode": "RGBA",
+      "sha256": "b81ea47abc8857fcd0d7896d106c5cfb24c602fc6e68365f7d3fbf4c96fb189b"
+    },
+    {
+      "path": "desktop/linux/24x24.png",
+      "width": 24,
+      "height": 24,
+      "mode": "RGBA",
+      "sha256": "44fcb75d083ab708c4b416e1e0fbf732ce5d1cc41e1600019469dc525887ac35"
+    },
+    {
+      "path": "desktop/linux/256x256.png",
+      "width": 256,
+      "height": 256,
+      "mode": "RGBA",
+      "sha256": "9e3cc619bb9f2fb38c8d1363f5d6fc7b01e71e66f9dae858f6947f82958c657a"
+    },
+    {
+      "path": "desktop/linux/32x32.png",
+      "width": 32,
+      "height": 32,
+      "mode": "RGBA",
+      "sha256": "55f08eae28a29610e25e6fcafa17733b15027b939d7c92740a0dda3620300a3a"
+    },
+    {
+      "path": "desktop/linux/48x48.png",
+      "width": 48,
+      "height": 48,
+      "mode": "RGBA",
+      "sha256": "c34e05a70a8025d87f7983c985e331729e9865580f6eae9769cf06faf07699f7"
+    },
+    {
+      "path": "desktop/linux/512x512.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "sha256": "647dec0eff275fa9a71e5df26e39b304474a01e0b32fd27f30df4237d78a4a6c"
+    },
+    {
+      "path": "desktop/linux/64x64.png",
+      "width": 64,
+      "height": 64,
+      "mode": "RGBA",
+      "sha256": "2935156e735acf6d0f45335aad25ebb25103801e6c737368adc76e5a214f991f"
+    },
+    {
+      "path": "png/logo-1024.png",
+      "width": 1024,
+      "height": 1024,
+      "mode": "RGBA",
+      "sha256": "c9fc23b24b46ae8ecfde35a33467048f31c77d383988450e2cd4ab9d61a42494"
+    },
+    {
+      "path": "png/logo-128.png",
+      "width": 128,
+      "height": 128,
+      "mode": "RGBA",
+      "sha256": "fc6f7bec7f7ae456b541406bb570107757037cf28deea051d393651e260b3528"
+    },
+    {
+      "path": "png/logo-16.png",
+      "width": 16,
+      "height": 16,
+      "mode": "RGBA",
+      "sha256": "b81ea47abc8857fcd0d7896d106c5cfb24c602fc6e68365f7d3fbf4c96fb189b"
+    },
+    {
+      "path": "png/logo-192.png",
+      "width": 192,
+      "height": 192,
+      "mode": "RGBA",
+      "sha256": "a0136622c2e0b4f8cb4d1ffe955aa8bb0514898ee1a27e21c85251f38810a998"
+    },
+    {
+      "path": "png/logo-20.png",
+      "width": 20,
+      "height": 20,
+      "mode": "RGBA",
+      "sha256": "6924a26633d07d314eb15cb97318e7161ffdd6f9231e495554db896bad9be3a1"
+    },
+    {
+      "path": "png/logo-2048.png",
+      "width": 2048,
+      "height": 2048,
+      "mode": "RGBA",
+      "sha256": "7b3665d8bc9a4bc9ec56d4a969b9f4d8dc268b6b897cc563b83fd821cae8def3"
+    },
+    {
+      "path": "png/logo-24.png",
+      "width": 24,
+      "height": 24,
+      "mode": "RGBA",
+      "sha256": "44fcb75d083ab708c4b416e1e0fbf732ce5d1cc41e1600019469dc525887ac35"
+    },
+    {
+      "path": "png/logo-256.png",
+      "width": 256,
+      "height": 256,
+      "mode": "RGBA",
+      "sha256": "9e3cc619bb9f2fb38c8d1363f5d6fc7b01e71e66f9dae858f6947f82958c657a"
+    },
+    {
+      "path": "png/logo-32.png",
+      "width": 32,
+      "height": 32,
+      "mode": "RGBA",
+      "sha256": "55f08eae28a29610e25e6fcafa17733b15027b939d7c92740a0dda3620300a3a"
+    },
+    {
+      "path": "png/logo-384.png",
+      "width": 384,
+      "height": 384,
+      "mode": "RGBA",
+      "sha256": "a128cf80b1b9819538afdb8a4b7f86274d60e61699b8a2f59c13fb2fc653ae1f"
+    },
+    {
+      "path": "png/logo-40.png",
+      "width": 40,
+      "height": 40,
+      "mode": "RGBA",
+      "sha256": "28da48b0c920f7e265f7055208af2ee7ae8cc2f3572a6ca52678288c1ca20575"
+    },
+    {
+      "path": "png/logo-48.png",
+      "width": 48,
+      "height": 48,
+      "mode": "RGBA",
+      "sha256": "c34e05a70a8025d87f7983c985e331729e9865580f6eae9769cf06faf07699f7"
+    },
+    {
+      "path": "png/logo-512.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "sha256": "647dec0eff275fa9a71e5df26e39b304474a01e0b32fd27f30df4237d78a4a6c"
+    },
+    {
+      "path": "png/logo-64.png",
+      "width": 64,
+      "height": 64,
+      "mode": "RGBA",
+      "sha256": "2935156e735acf6d0f45335aad25ebb25103801e6c737368adc76e5a214f991f"
+    },
+    {
+      "path": "png/logo-96.png",
+      "width": 96,
+      "height": 96,
+      "mode": "RGBA",
+      "sha256": "94eb7ffd5d8417fccf471e43e026ae027a4092a3faac3993e77dc157543c9df3"
+    },
+    {
+      "path": "source/logo-original.png",
+      "width": 3762,
+      "height": 3762,
+      "mode": "RGBA",
+      "sha256": "eed936725e9bedb682359d1533459b2d209f316035e9e05ea0d49f673ac94793"
+    },
+    {
+      "path": "web/apple-touch-icon.png",
+      "width": 180,
+      "height": 180,
+      "mode": "RGB",
+      "sha256": "5985dde8c9fdbcbc48f82ee1569ad9e898d527028edf066914a1cb440d0f4f95"
+    },
+    {
+      "path": "web/favicon-16.png",
+      "width": 16,
+      "height": 16,
+      "mode": "RGBA",
+      "sha256": "b81ea47abc8857fcd0d7896d106c5cfb24c602fc6e68365f7d3fbf4c96fb189b"
+    },
+    {
+      "path": "web/favicon-32.png",
+      "width": 32,
+      "height": 32,
+      "mode": "RGBA",
+      "sha256": "55f08eae28a29610e25e6fcafa17733b15027b939d7c92740a0dda3620300a3a"
+    },
+    {
+      "path": "web/favicon-48.png",
+      "width": 48,
+      "height": 48,
+      "mode": "RGBA",
+      "sha256": "c34e05a70a8025d87f7983c985e331729e9865580f6eae9769cf06faf07699f7"
+    },
+    {
+      "path": "web/favicon.ico",
+      "width": 48,
+      "height": 48,
+      "mode": "RGBA",
+      "sha256": "7465d595651f2481dd7b60b1a5c6d334254a520e717298a626c3613176d0bdab",
+      "embedded_sizes": [
+        [
+          16,
+          16
+        ],
+        [
+          32,
+          32
+        ],
+        [
+          48,
+          48
+        ]
+      ]
+    },
+    {
+      "path": "web/icon-192.png",
+      "width": 192,
+      "height": 192,
+      "mode": "RGBA",
+      "sha256": "a0136622c2e0b4f8cb4d1ffe955aa8bb0514898ee1a27e21c85251f38810a998"
+    },
+    {
+      "path": "web/icon-512.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGBA",
+      "sha256": "647dec0eff275fa9a71e5df26e39b304474a01e0b32fd27f30df4237d78a4a6c"
+    },
+    {
+      "path": "web/icon-maskable-192.png",
+      "width": 192,
+      "height": 192,
+      "mode": "RGB",
+      "sha256": "e755fbde16215e86ce8ec4c5f68212cb573231f5aa63f90bdced9e6386377d67"
+    },
+    {
+      "path": "web/icon-maskable-512.png",
+      "width": 512,
+      "height": 512,
+      "mode": "RGB",
+      "sha256": "839714d75202480cc50cef471f739a23dd1a548dd38937da97c0dcde6b676e66"
+    }
+  ]
+}
