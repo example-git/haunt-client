@@ -1,0 +1,32 @@
+/* Haunt brand tokens. Standalone handoff; not installed in the app. */
+:root {
+  --haunt-black: #060609;
+  --haunt-surface: #0c0c11;
+  --haunt-raised: #121219;
+  --haunt-hover: #1a1a24;
+  --haunt-border: #353543;
+  --haunt-control-border: #646479;
+  --haunt-text: #f1f4ff;
+  --haunt-muted: #a4a5b6;
+  --haunt-ember: #ff9a3d;
+  --haunt-ember-hover: #ffb16a;
+  --haunt-halo: #8996ff;
+  --haunt-focus: #b8c6ff;
+  --haunt-success: #83d6b1;
+  --haunt-danger: #f28ca6;
+  --haunt-warning: #e6c778;
+  --haunt-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --haunt-radius-control: 8px;
+  --haunt-radius-panel: 12px;
+  --haunt-glow-cool: 0 0 18px rgb(137 150 255 / 8%);
+  --haunt-glow-warm: 0 0 14px rgb(255 154 61 / 10%);
+  --haunt-focus-ring: 0 0 0 2px var(--haunt-black), 0 0 0 4px var(--haunt-focus);
+}
+/* Optional background LIGHT, not a blue surface fill. Maximum stop is 4%. */
+.haunt-atmosphere {
+  background: radial-gradient(ellipse at 15% 0%, rgb(137 150 255 / 4%), transparent 40%), var(--haunt-black);
+}
+/* Static glow by default. No logo filters, tinting, animation or blending. */
+@media (prefers-reduced-motion: reduce) {
+  .haunt-brand-motion { animation: none; transition: none; }
+}

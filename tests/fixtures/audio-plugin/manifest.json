@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "id": "test-audio",
+  "name": "Test audio",
+  "description": "Deterministic local gain fixture.",
+  "default_variant": "default",
+  "abi": {
+    "initialize": "_initialize",
+    "create": "audio_init",
+    "input": "audio_input",
+    "output": "audio_output",
+    "process": "audio_process",
+    "reset": "audio_reset",
+    "frame_samples": 720,
+    "process_controls": [
+      "level"
+    ]
+  },
+  "variants": [
+    {
+      "id": "default",
+      "label": "Pass-through gain",
+      "file": "default.wasm"
+    }
+  ],
+  "fields": [
+    {
+      "key": "level",
+      "label": "Plugin output level",
+      "type": "range",
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "scale": 0.01,
+      "default": 100
+    }
+  ]
+}

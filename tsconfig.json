@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "types": [
+      "node",
+      "vite/client",
+      "@types/dom-webcodecs"
+    ],
+    "paths": {
+      "@haunt/core": [
+        "./packages/core/src/index.ts"
+      ],
+      "@haunt/browser/*": [
+        "./packages/browser/src/*"
+      ]
+    }
+  },
+  "include": [
+    "apps/web/src",
+    "packages",
+    "tests/*.ts",
+    "vite.config.ts"
+  ]
+}
