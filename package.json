@@ -1,0 +1,78 @@
+{
+  "name": "haunt-client",
+  "version": "0.4.3",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/core"
+  ],
+  "scripts": {
+    "generate": "node scripts/generate-api.mjs",
+    "generate:check": "node scripts/generate-api.mjs --check",
+    "dev": "vite --host 127.0.0.1",
+    "build:native-media": "node scripts/build-native-media.mjs",
+    "build": "node scripts/check-dm-crypto.mjs && node scripts/check-brand-assets.mjs && node scripts/check-emoji-sprites.mjs && node scripts/generate-emojis.mjs --check && npm run generate && npm run typecheck && npm run build -w @haunt/core && vite build && node scripts/licenses.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:version": "node --test scripts/tests/version-main.test.mjs",
+    "version:preview": "node scripts/version-main.mjs --preview",
+    "test:integration": "node scripts/test-integration.mjs",
+    "desktop": "electron apps/desktop/main.cjs",
+    "package:desktop": "npm run build && node scripts/package-desktop.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "package:desktop:arm64": "npm run build && node scripts/package-desktop.mjs arm64",
+    "package:sdk": "npm run generate && npm run build -w @haunt/core && mkdir -p release && npm pack -w @haunt/core --pack-destination release",
+    "format:check": "prettier --check apps packages scripts electron-app/*.cjs electron-app/*.json electron-builder.config.json tests/*.ts vite.config.ts",
+    "generate:emojis": "node scripts/generate-emojis.mjs",
+    "electron:stage": "node scripts/stage-electron.mjs",
+    "electron:pack": "npm run build && npm run electron:stage && electron-builder --dir --publish never",
+    "electron:dist": "npm run build && npm run electron:stage && electron-builder --publish never",
+    "electron:mac": "npm run build && npm run electron:stage && electron-builder --mac --publish never",
+    "electron:win": "npm run build && npm run electron:stage && electron-builder --win --publish never",
+    "electron:linux": "npm run build && npm run electron:stage && electron-builder --linux --publish never",
+    "electron:check": "node scripts/check-electron-package.mjs",
+    "buildreplace:electron": "npm run electron:mac; pkill -f Haunt; cp -rf release/builder/mac-arm64/Haunt.app /Applications/; sign.sh /Applications/Haunt.app; open /Applications/Haunt.app",
+    "replace:electron": "pkill -f Haunt; cp -rf release/builder/mac-arm64/Haunt.app /Applications/; sign.sh /Applications/Haunt.app; open /Applications/Haunt.app",
+    "predev": "npm run generate",
+    "build:dm-crypto": "node scripts/build-dm-crypto.mjs",
+    "updates:pack": "node scripts/release-client.mjs pack",
+    "updates:manifest": "node scripts/release-client.mjs manifest",
+    "postinstall": "npm ci --prefix scripts/api-generator --ignore-scripts"
+  },
+  "dependencies": {
+    "emoji-regex": "11.0.0",
+    "fflate": "0.8.3",
+    "idb": "8.0.4",
+    "lucide-react": "1.56.0",
+    "markdown-it": "15.0.2",
+    "openapi-fetch": "0.17.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/dom-webcodecs": "^0.1.19",
+    "@types/node": "22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
+    "emojilib": "4.0.3",
+    "fake-indexeddb": "^6.2.5",
+    "prettier": "^3.9.10",
+    "typescript": "7.0.2",
+    "unicode-emoji-json": "0.9.0",
+    "vite": "^8.3.4",
+    "vitest": "5.0.4"
+  },
+  "main": "apps/desktop/main.cjs",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "description": "Haunt — self-hosted community messaging and calls",
+  "author": "Haunt",
+  "build": {
+    "extends": "./electron-builder.config.json"
+  },
+  "productName": "Haunt"
+}
