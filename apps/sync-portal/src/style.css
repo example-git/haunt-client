@@ -1,0 +1,85 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #eee;
+  background: #141922;
+  color-scheme: dark;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 600px;
+  margin: 36px auto;
+  padding: 28px;
+  border: 1px solid #384354;
+  border-radius: 18px;
+  background: #202735;
+}
+h1 {
+  margin-top: 0;
+}
+p {
+  line-height: 1.5;
+}
+.muted {
+  color: #b5becb;
+}
+.form,
+label {
+  display: grid;
+  gap: 12px;
+}
+label {
+  gap: 6px;
+}
+input,
+button {
+  font: inherit;
+  border: 1px solid #53627a;
+  border-radius: 9px;
+  padding: 12px;
+  background: #141922;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 20px 0;
+}
+.tabs button {
+  flex: 1;
+  padding: 9px;
+}
+.active {
+  border-color: #a6c9ff;
+}
+.error {
+  color: #ffb4af;
+}
+.request,
+.sync-recovery {
+  border: 1px solid #576986;
+  padding: 16px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+}
+code {
+  display: block;
+  overflow-wrap: anywhere;
+  user-select: all;
+  margin: 12px 0;
+}
+@media (max-width: 650px) {
+  main {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+}

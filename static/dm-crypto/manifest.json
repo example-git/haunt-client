@@ -1,0 +1,14 @@
+{
+  "openmls": "0.9.1",
+  "wasmBindgen": "0.2.129",
+  "hashes": {
+    "native/dm-crypto/Cargo.toml": "092c66bbf78ca0eeb500a25e9f669eeae7c7662a6594e1487eb8caf4fa49ff6e",
+    "native/dm-crypto/Cargo.lock": "be2c8fb574684dae040d15e873bcecd6cdf2b521ba36a2c5c76c77251d4baa9c",
+    "native/dm-crypto/src/lib.rs": "95d33d4e51b3f32ed1e3ae8a3b6c5e9810076ee405c4d35cdb109cc273acc760",
+    "native/dm-crypto/THIRD-PARTY-NOTICES.txt": "f6e5b92535a84daaa599eb4177aa37570ad496c2d0592adf2322e49cec8fecaf",
+    "static/dm-crypto/haunt_dm_crypto.js": "24f37ca0be68713e6865bf77ac162a7d92a2ded0f9ada86866b7d532640c5fdf",
+    "static/dm-crypto/haunt_dm_crypto_bg.wasm": "1874a15ec2d393ec8239a85b11785eb7d9e8482c71965d19c5202a74a8ae7427",
+    "static/dm-crypto/haunt_dm_crypto.d.ts": "8f7cf8a6e1cad746cbf768c8740d5e5af329f116d945c65cdc58b6a5aa900d02",
+    "static/dm-crypto/haunt_dm_crypto_bg.wasm.d.ts": "2f1d41d466c27db66484095598219bcb8791fb2685577503c1557c348311ae52"
+  }
+}
