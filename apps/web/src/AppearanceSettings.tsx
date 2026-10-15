@@ -1,0 +1,373 @@
+import { SavedThemes } from "./SavedThemes";
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from "react";
+import {
+  getPreferences,
+  setPreferences,
+  subscribePreferences,
+} from "@haunt/browser/preferences";
+import { defaultAccent, pastelPalette } from "@haunt/browser/palette";
+import {
+  colorKeys,
+  contrast,
+  defaultTheme,
+  hexColor,
+  minimumSidebarOpacity,
+  themePresets,
+  themeBackground,
+  type WindowEffect,
+} from "@haunt/browser/themes";
+const labels = {
+  background: "Background and server rail",
+  sidebar: "Channel sidebar",
+  surface: "Chat and panels",
+  raised: "Cards and controls",
+  text: "Main text",
+  muted: "Secondary text",
+  border: "Borders",
+  selection: "Text selection background",
+  selectionText: "Selected text",
+};
+function ColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <label className="theme-color-field">
+      <span>{label}</span>
+      <div>
+        <input
+          type="color"
+          aria-label={label}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <input
+          aria-label={`${label} hex`}
+          value={draft}
+          maxLength={7}
+          spellCheck={false}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (hexColor(e.target.value))
+              onChange(e.target.value.toLowerCase());
+          }}
+          onBlur={() => setDraft(value)}
+        />
+      </div>
+    </label>
+  );
+}
+export function AppearanceSettings() {
+  const prefs = useSyncExternalStore(subscribePreferences, getPreferences),
+    theme = prefs.theme;
+  const [native, setNative] = useState({ restart: false, supported: true });
+  useEffect(() => {
+    const update = () =>
+      setNative({
+        restart: document.documentElement.dataset.appearanceRestart === "true",
+        supported:
+          document.documentElement.dataset.appearanceSupported !== "false",
+      });
+    update();
+    window.addEventListener("haunt:appearance", update);
+    return () => window.removeEventListener("haunt:appearance", update);
+  }, []);
+  const desktop = window.hauntDesktop;
+  const material = desktop?.platform === "darwin" ? "Frosted glass" : "Mica";
+  const lowContrast =
+    contrast(theme.colors.selectionText, theme.colors.selection) < 4.5 ||
+    (theme.gradient?.colors.some(
+      (c) =>
+        contrast(theme.colors.text, c) < 4.5 ||
+        contrast(theme.colors.muted, c) < 4.5,
+    ) ??
+      false) ||
+    colorKeys
+      .filter((k) => ["background", "surface", "raised"].includes(k))
+      .some(
+        (k) =>
+          contrast(theme.colors.text, theme.colors[k]) < 4.5 ||
+          contrast(theme.colors.muted, theme.colors[k]) < 4.5,
+      );
+  return (
+    <section className="appearance-settings form">
+      <fieldset className="theme-picker">
+        <legend>Theme</legend>
+        <div className="theme-presets">
+          {themePresets.map((preset) => (
+            <button
+              type="button"
+              key={preset.id}
+              className="theme-preset"
+              aria-pressed={
+                theme.preset === preset.id &&
+                prefs.accentColor === preset.accent
+              }
+              onClick={() =>
+                setPreferences({
+                  theme: {
+                    ...theme,
+                    preset: preset.id,
+                    colors: { ...preset.colors },
+                    gradient: preset.gradient ?? null,
+                  },
+                  accentColor: preset.accent,
+                })
+              }
+            >
+              <span
+                className="theme-preview"
+                style={{
+                  background: themeBackground(preset),
+                  borderColor: preset.colors.border,
+                }}
+                aria-hidden="true"
+              >
+                <i style={{ background: preset.colors.background }} />
+                <span>
+                  <b style={{ background: preset.accent }} />
+                  <b style={{ background: preset.colors.raised }} />
+                  <b style={{ background: preset.colors.muted }} />
+                </span>
+              </span>
+              {preset.name}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <SavedThemes />
+      <fieldset>
+        <legend>Custom colors</legend>
+        <div className="theme-colors">
+          {colorKeys.map((key) => (
+            <ColorField
+              key={key}
+              label={labels[key]}
+              value={theme.colors[key]}
+              onChange={(value) =>
+                setPreferences({
+                  theme: {
+                    ...theme,
+                    preset: "custom",
+                    colors: { ...theme.colors, [key]: value },
+                  },
+                })
+              }
+            />
+          ))}
+          <ColorField
+            label="Accent"
+            value={prefs.accentColor}
+            onChange={(accentColor) => setPreferences({ accentColor })}
+          />
+        </div>
+        {lowContrast && (
+          <p className="theme-contrast-note" role="status">
+            Some text has low contrast against your chosen backgrounds. Adjust
+            the text colors or choose a preset.
+          </p>
+        )}
+      </fieldset>
+      <fieldset className="form">
+        <legend>Background blend</legend>
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={!!theme.gradient}
+            onChange={(e) =>
+              setPreferences({
+                theme: {
+                  ...theme,
+                  preset: "custom",
+                  gradient: e.target.checked
+                    ? {
+                        angle: 145,
+                        colors: [
+                          theme.colors.background,
+                          theme.colors.surface,
+                          theme.colors.raised,
+                        ],
+                      }
+                    : null,
+                },
+              })
+            }
+          />
+          Blend background colors
+        </label>
+        {theme.gradient && (
+          <>
+            <div className="theme-colors">
+              {theme.gradient.colors.map((color, index) => (
+                <ColorField
+                  key={index}
+                  label={`Blend color ${index + 1}`}
+                  value={color}
+                  onChange={(value) =>
+                    setPreferences({
+                      theme: {
+                        ...theme,
+                        preset: "custom",
+                        gradient: {
+                          ...theme.gradient!,
+                          colors: theme.gradient!.colors.map((c, i) =>
+                            i === index ? value : c,
+                          ),
+                        },
+                      },
+                    })
+                  }
+                />
+              ))}
+            </div>
+            <label>
+              Blend angle <output>{theme.gradient.angle}°</output>
+              <input
+                aria-label="Blend angle"
+                type="range"
+                min="0"
+                max="360"
+                value={theme.gradient.angle}
+                onChange={(e) =>
+                  setPreferences({
+                    theme: {
+                      ...theme,
+                      preset: "custom",
+                      gradient: {
+                        ...theme.gradient!,
+                        angle: e.target.valueAsNumber,
+                      },
+                    },
+                  })
+                }
+              />
+            </label>
+          </>
+        )}
+      </fieldset>
+      <details className="accent-picker">
+        <summary>Pastel accent palette</summary>
+        {[
+          {
+            name: "Original",
+            colors: [{ name: "Ember (default)", value: defaultAccent }],
+          },
+          ...pastelPalette,
+        ].map((group) => (
+          <div className="accent-family" key={group.name}>
+            <span>{group.name}</span>
+            <div className="accent-swatches">
+              {group.colors.map((color) => (
+                <label
+                  key={color.value}
+                  className="accent-swatch"
+                  title={`${color.name} · ${color.value}`}
+                  style={{ "--swatch": color.value } as CSSProperties}
+                >
+                  <input
+                    type="radio"
+                    name="client-accent"
+                    aria-label={color.name}
+                    value={color.value}
+                    checked={prefs.accentColor === color.value}
+                    onChange={() =>
+                      setPreferences({ accentColor: color.value })
+                    }
+                  />
+                  <span aria-hidden="true">
+                    {prefs.accentColor === color.value ? "✓" : ""}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </details>
+      {desktop && (
+        <fieldset className="form">
+          <legend>Desktop window</legend>
+          <label>
+            Sidebar effect
+            <select
+              aria-label="Sidebar effect"
+              value={theme.windowEffect}
+              onChange={(e) =>
+                setPreferences({
+                  theme: {
+                    ...theme,
+                    windowEffect: e.target.value as WindowEffect,
+                  },
+                })
+              }
+            >
+              <option value="solid">Solid</option>
+              <option value="material" disabled={desktop.platform === "linux"}>
+                {material}
+              </option>
+              <option value="transparent">Transparent</option>
+            </select>
+          </label>
+          {theme.windowEffect !== "solid" && (
+            <label>
+              Sidebar opacity <output>{theme.sidebarOpacity}%</output>
+              <input
+                aria-label="Sidebar opacity"
+                type="range"
+                min={minimumSidebarOpacity(theme.windowEffect)}
+                max="100"
+                value={theme.sidebarOpacity}
+                onChange={(e) =>
+                  setPreferences({
+                    theme: { ...theme, sidebarOpacity: e.target.valueAsNumber },
+                  })
+                }
+              />
+            </label>
+          )}
+          <p className="muted small">
+            The channel sidebar uses this opacity; the server icon rail is 15
+            points more opaque, up to 100%. Chat stays fully opaque. Frosted
+            glass starts at 30%; transparent mode starts at 50%. Desktop effects
+            depend on your operating system and compositor.
+          </p>
+          {!desktop.appearance && (
+            <p role="status">
+              Rebuild or update the desktop app to enable window effects.
+            </p>
+          )}
+          {native.restart && (
+            <p role="status">
+              Restart the app to apply this window effect. Your choice is saved.
+            </p>
+          )}
+          {!native.supported && (
+            <p role="status">
+              This system cannot apply the chosen effect. Using a solid
+              background.
+            </p>
+          )}
+        </fieldset>
+      )}
+      <button
+        className="theme-reset"
+        onClick={() =>
+          setPreferences({ theme: defaultTheme, accentColor: defaultAccent })
+        }
+      >
+        Reset appearance
+      </button>
+    </section>
+  );
+}

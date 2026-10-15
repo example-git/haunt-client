@@ -1,0 +1,101 @@
+{
+  "scope": "Computed sRGB contrast for proposed opaque color pairs, not a rendered app accessibility certification.",
+  "pairs": [
+    {
+      "role": "primary text",
+      "foreground": "#F1F4FF",
+      "background": "#060609",
+      "ratio": 18.43
+    },
+    {
+      "role": "primary text",
+      "foreground": "#F1F4FF",
+      "background": "#0C0C11",
+      "ratio": 17.77
+    },
+    {
+      "role": "primary text",
+      "foreground": "#F1F4FF",
+      "background": "#121219",
+      "ratio": 16.98
+    },
+    {
+      "role": "secondary text",
+      "foreground": "#A4A5B6",
+      "background": "#060609",
+      "ratio": 8.32
+    },
+    {
+      "role": "secondary text",
+      "foreground": "#A4A5B6",
+      "background": "#0C0C11",
+      "ratio": 8.02
+    },
+    {
+      "role": "secondary text",
+      "foreground": "#A4A5B6",
+      "background": "#121219",
+      "ratio": 7.67
+    },
+    {
+      "role": "focus",
+      "foreground": "#B8C6FF",
+      "background": "#060609",
+      "ratio": 12.1
+    },
+    {
+      "role": "focus",
+      "foreground": "#B8C6FF",
+      "background": "#0C0C11",
+      "ratio": 11.67
+    },
+    {
+      "role": "focus",
+      "foreground": "#B8C6FF",
+      "background": "#121219",
+      "ratio": 11.15
+    },
+    {
+      "role": "control outline",
+      "foreground": "#646479",
+      "background": "#060609",
+      "ratio": 3.51
+    },
+    {
+      "role": "control outline",
+      "foreground": "#646479",
+      "background": "#0C0C11",
+      "ratio": 3.38
+    },
+    {
+      "role": "control outline",
+      "foreground": "#646479",
+      "background": "#121219",
+      "ratio": 3.23
+    },
+    {
+      "role": "ember",
+      "foreground": "#FF9A3D",
+      "background": "#060609",
+      "ratio": 9.58
+    },
+    {
+      "role": "ember",
+      "foreground": "#FF9A3D",
+      "background": "#0C0C11",
+      "ratio": 9.24
+    },
+    {
+      "role": "ember",
+      "foreground": "#FF9A3D",
+      "background": "#121219",
+      "ratio": 8.83
+    },
+    {
+      "role": "primary button label",
+      "foreground": "#060609",
+      "background": "#FF9A3D",
+      "ratio": 9.58
+    }
+  ]
+}
