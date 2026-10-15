@@ -1,0 +1,21 @@
+{
+  "name": "@haunt/core",
+  "version": "0.4.2",
+  "type": "module",
+  "description": "Platform-neutral, multi-instance Haunt messaging SDK",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  }
+}
