@@ -1,6 +1,7 @@
 import { expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import { fillSignin } from "./signin-fields.mjs";
+import fs from "node:fs/promises";
 
 // Small deterministic sources keep this playback check cheap on shared hosts.
 // Capture the playing element and check its playback/mute/volume state too.
@@ -51,6 +52,16 @@ async function measurePlayback(page) {
 }
 
 export async function checkSourceAudio(browser, fixtures) {
+  const rawSoak = process.env.HAUNT_CALL_SOAK_SECONDS;
+  const soakSeconds = rawSoak === undefined ? 0 : Number(rawSoak);
+  if (
+    rawSoak !== undefined &&
+    (!/^\d+$/.test(rawSoak) ||
+      !Number.isInteger(soakSeconds) ||
+      soakSeconds < 30 ||
+      soakSeconds > 1800)
+  )
+    throw Error("HAUNT_CALL_SOAK_SECONDS must be an integer from 30 to 1800");
   for (const [mode, server] of [
     ["rtc", fixtures.rtc],
     ["ws", fixtures.ws],
@@ -71,7 +82,7 @@ export async function checkSourceAudio(browser, fixtures) {
       ]) {
         page.setDefaultTimeout(20000);
         page.on("pageerror", (e) => errors.push(e.message));
-        await page.goto("http://127.0.0.1:5173");
+        await page.goto(server.url);
         await page
           .getByRole("button", { name: "Add server", exact: true })
           .click();
@@ -293,6 +304,78 @@ export async function checkSourceAudio(browser, fixtures) {
           `${item.label} must have audible element output`,
         );
       }
+      if (soakSeconds) {
+        const started = Date.now();
+        const report = {
+          transport: mode,
+          requestedSeconds: soakSeconds,
+          passed: false,
+          samples: [],
+        };
+        let previousFrames;
+        try {
+          do {
+            const playback = await measurePlayback(receiver);
+            assert.equal(
+              playback.length,
+              3,
+              "All source audio tracks remain attached",
+            );
+            for (const item of playback)
+              assert(
+                !item.paused && !item.muted && item.peak > 0.01,
+                `${mode}: ${item.label} stopped producing audible playback`,
+              );
+            const video = await receiver
+              .locator(".call-panel video")
+              .evaluateAll((elements) =>
+                elements.map((element) => ({
+                  playing: !element.paused && element.readyState >= 2,
+                  frames: element.getVideoPlaybackQuality().totalVideoFrames,
+                  dropped: element.getVideoPlaybackQuality().droppedVideoFrames,
+                })),
+              );
+            assert.equal(video.length, 2, "Camera and screen remain attached");
+            video.forEach((item, index) => {
+              assert(item.playing, `${mode}: video ${index} stopped playing`);
+              if (previousFrames)
+                assert(
+                  item.frames > previousFrames[index],
+                  `${mode}: video ${index} stopped decoding`,
+                );
+            });
+            previousFrames = video.map((item) => item.frames);
+            assert.deepEqual(
+              errors,
+              [],
+              "No browser runtime errors during the call",
+            );
+            const elapsedSeconds = (Date.now() - started) / 1000;
+            report.samples.push({ elapsedSeconds, playback, video });
+            await fs.writeFile(
+              `test-results/call-soak-${mode}.json`,
+              JSON.stringify(report, null, 2),
+            );
+            console.log(
+              `Call endurance ${mode}: ${Math.round(elapsedSeconds)}/${soakSeconds}s; 3 audio sources and 2 advancing video feeds`,
+            );
+            if (elapsedSeconds >= soakSeconds) break;
+            await receiver.waitForTimeout(
+              Math.min(10000, soakSeconds * 1000 - (Date.now() - started)),
+            );
+          } while (true);
+          report.passed = true;
+        } catch (error) {
+          report.error = error.message;
+          throw error;
+        } finally {
+          report.elapsedSeconds = (Date.now() - started) / 1000;
+          await fs.writeFile(
+            `test-results/call-soak-${mode}.json`,
+            JSON.stringify(report, null, 2),
+          );
+        }
+      }
       for (const [purpose, frequency] of [
         ["camera_audio", 660],
         ["screen_audio", 1320],
@@ -510,24 +593,20 @@ export async function checkSourceAudio(browser, fixtures) {
         .catch(async (error) => {
           console.error(
             "Blocked playback diagnostics",
-            await receiver
-              .locator(".call-panel audio")
-              .evaluateAll((els) =>
-                els.map((el) => ({
-                  label: el.getAttribute("aria-label"),
-                  paused: el.paused,
-                  muted: el.muted,
-                  autoplay: el.autoplay,
-                })),
-              ),
-            await popup
-              .locator('[role="meter"]')
-              .evaluateAll((els) =>
-                els.map((el) => ({
-                  label: el.getAttribute("aria-label"),
-                  level: el.getAttribute("aria-valuenow"),
-                })),
-              ),
+            await receiver.locator(".call-panel audio").evaluateAll((els) =>
+              els.map((el) => ({
+                label: el.getAttribute("aria-label"),
+                paused: el.paused,
+                muted: el.muted,
+                autoplay: el.autoplay,
+              })),
+            ),
+            await popup.locator('[role="meter"]').evaluateAll((els) =>
+              els.map((el) => ({
+                label: el.getAttribute("aria-label"),
+                level: el.getAttribute("aria-valuenow"),
+              })),
+            ),
           );
           throw error;
         });

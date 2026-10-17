@@ -1,19 +1,27 @@
 name: Desktop releases
 on:
   push:
-    tags: ['client-v*']
+    tags: ["client-v*"]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
+  regression:
+    uses: ./.github/workflows/regression.yml
   build:
+    needs: regression
     strategy:
       fail-fast: false
       matrix:
         include:
           - { os: windows-2022, platform: win, arch: x64, target: win32-x64 }
           - { os: ubuntu-24.04, platform: linux, arch: x64, target: linux-x64 }
-          - { os: ubuntu-24.04-arm, platform: linux, arch: arm64, target: linux-arm64 }
+          - {
+              os: ubuntu-24.04-arm,
+              platform: linux,
+              arch: arm64,
+              target: linux-arm64,
+            }
           - { os: macos-14, platform: mac, arch: arm64, target: darwin-arm64 }
     runs-on: ${{ matrix.os }}
     defaults:
@@ -21,12 +29,12 @@ jobs:
         shell: bash
     env:
       HAUNT_UPDATE_PUBLIC_KEY: ${{ vars.HAUNT_UPDATE_PUBLIC_KEY }}
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
       - run: npm ci
       - run: npm test -- --run tests/desktop-updates.test.ts tests/desktop-installer.test.ts tests/desktop-appearance.test.ts tests/desktop-tray.test.ts
@@ -38,6 +46,23 @@ jobs:
         if: matrix.platform == 'win'
         run: node scripts/check-packaged-startup.mjs
       - run: npm run updates:pack
+      - name: Install native Linux test dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64
+      - name: Rehearse a full installer upgrade on the native runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ matrix.platform }}" = linux ]; then
+            xvfb-run -a node scripts/check-installed-upgrade.mjs
+          else
+            node scripts/check-installed-upgrade.mjs
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installed-upgrade-${{ matrix.target }}
+          path: test-results/installed-upgrade-*.json
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}
@@ -52,7 +77,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: "22"
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*

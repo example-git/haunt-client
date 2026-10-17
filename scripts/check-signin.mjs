@@ -25,7 +25,20 @@ export async function checkSignin(browser, fixtures, desktopPage) {
     await fillSignin(page, server.url, user);
     await page.getByLabel("Password", { exact: true }).fill(fixtures.password);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByRole("dialog"))
+      .toHaveCount(0)
+      .catch(async (error) => {
+        console.error(
+          "Sign-in dialog diagnostics:",
+          await page.getByRole("dialog").allTextContents(),
+        );
+        console.error(
+          "Sign-in errors:",
+          await page.locator(".error, [role=alert]").allTextContents(),
+        );
+        await page.screenshot({ path: "test-results/signin-failure.png" });
+        throw error;
+      });
     await expect(page.locator(".connection")).toHaveText("Connected");
   };
   try {

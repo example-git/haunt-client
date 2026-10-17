@@ -1,5 +1,11 @@
 # Verification guide
 
+Client regressions run on main pushes and pull requests and are required by
+desktop releases. Native release runners also rehearse a full-installer upgrade
+from the previous signed release, preserving a private test profile. See
+[release qualification](docs/release-qualification.md) for the evidence artifacts,
+browser endurance checks and the remaining device/automatic-update cases.
+
 Run `npm test` for the client unit tests and `npm run build` for the generated API,
 type checking, artifact integrity checks and production web build.
 

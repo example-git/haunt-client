@@ -1,0 +1,59 @@
+# Release qualification
+
+Keep one evidence record per release and platform, using `passed`, `failed`, or
+`not run`. Record revisions, artifact hashes, OS/architecture, device models,
+network, steps, observations and artifact paths. Missing evidence is not a pass.
+
+## Automated checks
+
+Client regressions run on main pushes and pull requests. Desktop releases require
+that job and build on Windows x64, Linux x64/arm64 and macOS arm64. Each native
+runner executes `scripts/check-installed-upgrade.mjs`: verify the previous signed
+installer, install into a temporary directory, launch with a private profile,
+install the candidate, then observe its version and preserved profile marker.
+Linux uses AppImage extraction; macOS copies the DMG application; Windows executes
+NSIS. The `installed-upgrade-*` artifacts record the result. No user profile is used.
+
+This checks full-installer replacement. Automatic ASAR restarts, OS prompts,
+physical capture, account recovery and perceived media quality need the checks
+below. A missing previous installer or failed rehearsal fails the release job.
+
+The server browser regression job exercises sign-in, encrypted DMs, source audio
+and web updates using disposable databases and private Chrome profiles. Its manual
+**Call endurance** workflow observes two peers with microphone, camera audio,
+screen audio and two video feeds on each transport sequentially. It requires
+audible playback and advancing decoded video frames, and retains all samples.
+
+After verifying the isolated database and building the web client, run locally:
+
+```sh
+HAUNT_CLIENT_CHECK=source-audio HAUNT_CALL_SOAK_SECONDS=900 npm run test:integration
+```
+
+The duration is per transport and must be 30–1800 seconds. Harness timeouts include
+the duration. Results are `test-results/call-soak-*.json`. This is a two-peer
+regression using deterministic media fixtures; it does not establish maximum room
+capacity, physical capture quality, congested-network behavior or day-long stability.
+
+## Native device and automatic-update qualification
+
+Use dedicated accounts and a disposable profile on each intended OS. Retain
+original/filtered clips for audio comparisons and process any corpus serially at
+low priority. Keep echo cancellation disabled and microphone monitoring explicit.
+
+| Case | Required observation |
+| --- | --- |
+| Initial install | Installer, signature/security prompts, first launch and expected version |
+| Compatible automatic update | Signed ASAR download, confirmation with work active, automatic restart, new version and retained sessions/preferences |
+| Runtime-changing update | Full installer selected, errors visible, replacement launches with existing profile |
+| Cancel/rollback | Cancel preserves ongoing work; failed candidate startup returns to prior working version |
+| Physical audio | Device selection, permission denial/retry, explicit monitoring, mute/unmute and device reconnect |
+| Camera/screen | Physical camera, screen permission, source switching, independent audio and remote decoded playback |
+| Mac capture | Native Apple Silicon capture, first-use permissions, signing and window/screen capture |
+| Network recovery | Real interruption and reconnect; verify messages, call state and no accumulating duplicate streams |
+| Sustained call | At least 30 minutes on intended network; retain playback and resource observations |
+| Recovery | Synthetic-account backup/import, readable history and fresh sending identity without overwriting another profile |
+
+Attach screenshots and original/received clips where useful. Mark unavailable
+devices and unperformed cases `not run`, and identify who must complete them.
+Linux browser tests and native CI startup do not establish these results.

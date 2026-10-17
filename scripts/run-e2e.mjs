@@ -15,6 +15,7 @@ import { checkPluginRepository } from "./check-plugin-repository.mjs";
 import { checkConfiguration } from "./check-configuration.mjs";
 import { checkAttachmentInput } from "./check-attachment-input.mjs";
 import { checkSignin } from "./check-signin.mjs";
+import { checkWebSignin } from "./check-web-signin.mjs";
 import { checkImageCache } from "./check-image-cache.mjs";
 import { checkMediaStatus } from "./check-media-status.mjs";
 import { checkNativeMedia } from "./check-native-media-runtime.mjs";
@@ -167,7 +168,12 @@ async function audioPeak(page) {
 }
 
 try {
-  vite = await serveBuild();
+  if (
+    !["signin-browser", "secure-dm", "source-audio"].includes(
+      process.env.HAUNT_CLIENT_CHECK,
+    )
+  )
+    vite = await serveBuild();
   const chrome = launch("/usr/bin/google-chrome", [
     "--headless=new",
     "--no-sandbox",
@@ -265,7 +271,7 @@ try {
     });
     try {
       const page = await context.newPage();
-      await page.goto("http://127.0.0.1:5173");
+      await page.goto(fixtures.rtc.url);
       await checkSecureDM(page, fixtures, browser);
     } finally {
       await context.close();
@@ -404,9 +410,9 @@ try {
     await checkScreen(process.env.HAUNT_PACKAGED_EXECUTABLE, (page) =>
       checkImageCache(page, fixtures, "bob"),
     );
-  } else if (
-    ["signin", "signin-browser"].includes(process.env.HAUNT_CLIENT_CHECK)
-  ) {
+  } else if (process.env.HAUNT_CLIENT_CHECK === "signin-browser") {
+    await checkWebSignin(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "signin") {
     await checkSignin(browser, fixtures);
     if (process.env.HAUNT_CLIENT_CHECK === "signin")
       await checkScreen(process.env.HAUNT_PACKAGED_EXECUTABLE, (page) =>

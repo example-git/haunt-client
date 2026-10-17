@@ -90,7 +90,7 @@ export async function checkSecureDM(
       },
       owner.token,
     );
-    await peer.goto("http://127.0.0.1:5173");
+    await peer.goto(fixtures.rtc.url);
     await login(peer, peerUser);
     await login(page, "owner");
     await expect(
@@ -441,7 +441,7 @@ export async function checkSecureDM(
       extras.push(restoredContext);
       const restored = await restoredContext.newPage();
       restored.on("pageerror", (e) => errors.push(e.message));
-      await restored.goto("http://127.0.0.1:5173");
+      await restored.goto(fixtures.rtc.url);
       await restored
         .getByRole("button", { name: "Client settings", exact: true })
         .click();
@@ -507,7 +507,7 @@ export async function checkSecureDM(
       const bobContext = await browser.newContext();
       extras.push(bobContext);
       const bob = await bobContext.newPage();
-      await bob.goto("http://127.0.0.1:5173");
+      await bob.goto(fixtures.rtc.url);
       await login(bob, "bob");
       const group = async (p, users) => {
         await home(p);

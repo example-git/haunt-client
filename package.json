@@ -18,6 +18,7 @@
     "test:version": "node --test scripts/tests/version-main.test.mjs",
     "version:preview": "node scripts/version-main.mjs --preview",
     "test:integration": "node scripts/test-integration.mjs",
+    "test:browser": "node scripts/check-browser-regressions.mjs",
     "desktop": "electron apps/desktop/main.cjs",
     "package:desktop": "npm run build && node scripts/package-desktop.mjs",
     "preview": "vite preview --host 127.0.0.1",

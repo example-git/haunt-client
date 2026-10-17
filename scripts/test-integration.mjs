@@ -1,14 +1,27 @@
 import { spawn } from "node:child_process";
+const rawSoak = process.env.HAUNT_CALL_SOAK_SECONDS;
+const soak = rawSoak === undefined ? 0 : Number(rawSoak);
+if (
+  rawSoak !== undefined &&
+  (!/^\d+$/.test(rawSoak) ||
+    !Number.isInteger(soak) ||
+    soak < 30 ||
+    soak > 1800)
+)
+  throw Error("HAUNT_CALL_SOAK_SECONDS must be an integer from 30 to 1800");
+if (soak && process.env.HAUNT_CLIENT_CHECK !== "source-audio")
+  throw Error("Call endurance requires HAUNT_CLIENT_CHECK=source-audio");
 const child = spawn(
   "go",
   [
     "test",
+    "-tags=webclient",
     "./internal/clienttest",
     "-run",
     "TestClients",
     "-count=1",
     "-v",
-    "-timeout=10m",
+    `-timeout=${600 + 2 * soak}s`,
   ],
   {
     cwd: new URL("../..", import.meta.url),
