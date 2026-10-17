@@ -529,6 +529,9 @@ export async function checkSourceAudio(browser, fixtures) {
       await expect(
         receiver.locator('.call-panel audio[aria-label$=" · camera_audio"]'),
       ).toHaveCount(0);
+      await expect(meter(popup, "camera audio")).toHaveCount(0, {
+        timeout: 20000,
+      });
       await expect
         .poll(
           async () =>
@@ -581,6 +584,12 @@ export async function checkSourceAudio(browser, fixtures) {
       await expect(
         popup.getByRole("button", { name: "Enable call audio", exact: true }),
       ).toBeVisible();
+      // Audio and video tracks arrive independently after renegotiation. The
+      // camera meter belongs to its video tile, so wait for that tile before
+      // checking the blocked audio level. A missing tile must still fail.
+      await expect(meter(popup, "camera audio")).toHaveCount(1, {
+        timeout: 20000,
+      });
       await resume.click(); // A second policy refusal must stay recoverable.
       await expect(resume).toBeVisible();
       await expect
@@ -636,6 +645,20 @@ export async function checkSourceAudio(browser, fixtures) {
       console.log(
         `PASS ${mode}: simultaneous microphone, camera audio and screen audio with both video feeds`,
       );
+    } catch (error) {
+      for (const [contextIndex, context] of contexts.entries()) {
+        for (const [pageIndex, page] of context.pages().entries()) {
+          await page
+            .screenshot({
+              path: `test-results/source-audio-failure-${mode}-${contextIndex}-${pageIndex}.png`,
+              fullPage: true,
+            })
+            .catch((captureError) =>
+              console.error("Failure screenshot:", captureError),
+            );
+        }
+      }
+      throw error;
     } finally {
       await Promise.all(contexts.map((context) => context.close()));
     }
