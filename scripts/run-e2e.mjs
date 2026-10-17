@@ -38,6 +38,7 @@ import {
 import { checkCustomization } from "./check-customization.mjs";
 import { chromium, _electron as electron, expect } from "@playwright/test";
 import { serveBuild } from "./serve-build.mjs";
+import { waitForChromePort } from "./wait-chrome-port.mjs";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs/promises";
@@ -199,21 +200,7 @@ try {
     `--user-data-dir=${scratch}/chrome`,
     "about:blank",
   ]);
-  let port;
-  for (let i = 0; i < 200; i++) {
-    try {
-      port = (
-        await fs.readFile(
-          path.join(scratch, "chrome", "DevToolsActivePort"),
-          "utf8",
-        )
-      ).split("\n")[0];
-      break;
-    } catch {
-      await new Promise((r) => setTimeout(r, 50));
-    }
-  }
-  assert(port, "Owned Chrome did not start");
+  const port = await waitForChromePort(path.join(scratch, "chrome"), chrome);
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   if (process.env.HAUNT_CLIENT_CHECK === "demo") {
     await captureDemo(browser, fixtures);

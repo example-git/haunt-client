@@ -12,6 +12,7 @@ const { createUpdateInstaller, updateActivityScript } = createRequire(
 import { generateKeyPairSync, sign, createHash } from "node:crypto";
 import { build } from "vite";
 import { chromium, expect } from "@playwright/test";
+import { waitForChromePort } from "./wait-chrome-port.mjs";
 const scratch = await fs.mkdtemp(path.resolve("test-results/update-ui-"));
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), "haunt-update-ui-"));
 const keys = generateKeyPairSync("ed25519");
@@ -113,19 +114,9 @@ try {
   let browserErrors = "";
   processHandle.stderr.on("data", (chunk) => {
     browserErrors = (browserErrors + chunk.toString()).slice(-6000);
+    processHandle.diagnostics = browserErrors;
   });
-  let port;
-  for (let attempt = 0; attempt < 150; attempt++) {
-    try {
-      port = (
-        await fs.readFile(path.join(profile, "DevToolsActivePort"), "utf8")
-      ).split("\n")[0];
-      break;
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-  if (!port) throw Error("Private browser did not start");
+  const port = await waitForChromePort(profile, processHandle, 15000);
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   const context = await browser.newContext({ serviceWorkers: "block" }),
     page = await context.newPage();
