@@ -33,6 +33,7 @@ export async function runtimeConfig(
   );
   const names = [
     "apps/desktop/bootstrap.cjs",
+    "apps/desktop/profile.cjs",
     "apps/desktop/updates.cjs",
     "electron-app/main.cjs",
     "electron-builder.config.json",

@@ -6,7 +6,7 @@ import {
 // This tests full-installer replacement; the automatic ASAR restart is a separate
 // qualification case and is never inferred from this result.
 import { _electron as electron, expect } from "@playwright/test";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { createRequire } from "node:module";
 import { createHash, randomUUID } from "node:crypto";
@@ -19,6 +19,7 @@ if (process.env.CI !== "true")
   throw Error("Run this installer rehearsal on a disposable native CI runner");
 const run = promisify(execFile);
 const require = createRequire(import.meta.url);
+const { LEGACY_PROFILE_NAME } = require("../apps/desktop/profile.cjs");
 const { verifyManifest } = require("../apps/desktop/updates.cjs");
 const target = `${process.platform}-${process.arch}`;
 assert(
@@ -64,11 +65,32 @@ const scratch = await fs.mkdtemp(
 );
 const downloads = path.join(scratch, "downloads");
 const installed = path.join(scratch, "installed");
-const profile = path.join(scratch, "profile");
+const legacyProfile = path.join(scratch, LEGACY_PROFILE_NAME);
+const profile = path.join(scratch, "haunt");
 await fs.mkdir(downloads);
 await fs.mkdir(installed);
 const marker = randomUUID();
-let app, notificationFixture;
+let app, notificationFixture, keyring, restoreKeychain;
+const account = {
+  origin: "http://127.0.0.1:9",
+  instance: {
+    instance_id: marker,
+    name: "Migration fixture",
+    public_url: "http://127.0.0.1:9",
+    capabilities: [],
+    limits: {},
+  },
+  login: {
+    instance_id: marker,
+    token: marker,
+    user: {
+      id: marker,
+      username: "migration-fixture",
+      display_name: "Migration fixture",
+    },
+  },
+  remember: true,
+};
 const report = {
   target,
   from: previousTag.slice(8),
@@ -132,21 +154,23 @@ async function install(filename) {
   });
   return path.join(installed, "squashfs-root/haunt");
 }
-async function launch(executablePath, version, restore) {
-  if (restore)
-    notificationFixture = await prepareNativeNotifications(
-      scratch,
-      executablePath,
-    );
+async function launch(
+  executablePath,
+  version,
+  restore,
+  checkNotifications = false,
+) {
   app = await electron.launch({
     executablePath,
     args: [
-      `--user-data-dir=${profile}`,
-      ...(process.platform === "linux" ? ["--no-sandbox"] : []),
+      `--user-data-dir=${restore ? profile : legacyProfile}`,
+      ...(process.platform === "linux"
+        ? ["--no-sandbox", "--password-store=gnome-libsecret"]
+        : []),
     ],
     timeout: 60000,
   });
-  const page = await app.firstWindow();
+  const page = await app.firstWindow({ timeout: 60000 });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await expect(page.locator(".app-titlebar")).toBeVisible({ timeout: 60000 });
@@ -166,6 +190,90 @@ async function launch(executablePath, version, restore) {
       marker,
     );
   if (restore) {
+    const identity = await app.evaluate(({ app }) => ({
+      name: app.getName(),
+      profile: app.getPath("userData"),
+      session: app.getPath("sessionData"),
+    }));
+    assert.equal(identity.name, "Haunt");
+    assert.equal(identity.profile, profile);
+    assert.equal(identity.session, profile);
+    assert.equal(
+      await fs.stat(legacyProfile).then(
+        () => true,
+        () => false,
+      ),
+      false,
+    );
+    const accounts = await page.evaluate(() => window.hauntDesktop.vaultRead());
+    assert.deepEqual(accounts, [account]);
+    assert.equal(
+      await page.evaluate(
+        () =>
+          new Promise((resolve, reject) => {
+            const request = indexedDB.open("haunt-migration-rehearsal", 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const db = request.result;
+              const read = db
+                .transaction("proof")
+                .objectStore("proof")
+                .get("marker");
+              read.onsuccess = () => {
+                resolve(read.result);
+                db.close();
+              };
+              read.onerror = () => reject(read.error);
+            };
+          }),
+      ),
+      marker,
+    );
+    report.identity = identity;
+    report.encryptedSessionsPreserved = true;
+    report.indexedDBPreserved = true;
+    report.legacyDirectoryMigrated = true;
+  } else {
+    const encryption = await app.evaluate(({ safeStorage }) => ({
+      available: safeStorage.isEncryptionAvailable(),
+      backend:
+        process.platform === "linux"
+          ? safeStorage.getSelectedStorageBackend()
+          : process.platform,
+    }));
+    assert.equal(encryption.available, true);
+    assert(!["basic_text", "unknown"].includes(encryption.backend));
+    report.encryptionBackend = encryption.backend;
+    await page.evaluate(
+      (value) => window.hauntDesktop.vaultWrite([value]),
+      account,
+    );
+    assert.deepEqual(
+      await page.evaluate(() => window.hauntDesktop.vaultRead()),
+      [account],
+    );
+    await page.evaluate(
+      (value) =>
+        new Promise((resolve, reject) => {
+          const request = indexedDB.open("haunt-migration-rehearsal", 1);
+          request.onupgradeneeded = () =>
+            request.result.createObjectStore("proof");
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => {
+            const db = request.result;
+            const tx = db.transaction("proof", "readwrite");
+            tx.objectStore("proof").put(value, "marker");
+            tx.oncomplete = () => {
+              db.close();
+              resolve();
+            };
+            tx.onerror = () => reject(tx.error);
+          };
+        }),
+      marker,
+    );
+  }
+  if (checkNotifications) {
     report.notifications = {};
     await checkNativeNotifications(
       app,
@@ -210,18 +318,83 @@ try {
     "--dir",
     downloads,
   ]);
-  await launch(
-    await install(await verifiedFile(downloads, prior.installer)),
-    prior.version,
-    false,
+  const previousExecutable = await install(
+    await verifiedFile(downloads, prior.installer),
   );
-  await launch(
-    await install(
-      await verifiedFile(path.resolve("release/updates"), current.installer),
-    ),
-    current.version,
-    true,
+  notificationFixture = await prepareNativeNotifications(
+    scratch,
+    previousExecutable,
   );
+  if (process.platform === "linux") {
+    keyring = spawn(
+      "gnome-keyring-daemon",
+      ["--foreground", "--unlock", "--components=secrets"],
+      { stdio: ["pipe", "ignore", "inherit"] },
+    );
+    keyring.stdin.end("\n");
+    await expect
+      .poll(async () => {
+        const { stdout } = await run("dbus-send", [
+          "--session",
+          "--print-reply",
+          "--dest=org.freedesktop.DBus",
+          "/org/freedesktop/DBus",
+          "org.freedesktop.DBus.NameHasOwner",
+          "string:org.freedesktop.secrets",
+        ]);
+        return stdout.includes("boolean true");
+      })
+      .toBe(true);
+  } else if (process.platform === "darwin") {
+    const keychain = path.join(scratch, "migration.keychain-db");
+    const password = randomUUID();
+    const { stdout } = await run("security", ["list-keychains", "-d", "user"]);
+    const previous = [...stdout.matchAll(/"([^"\n]+)"/g)].map(
+      (match) => match[1],
+    );
+    await run("security", ["create-keychain", "-p", password, keychain]);
+    restoreKeychain = async () => {
+      await run("security", [
+        "list-keychains",
+        "-d",
+        "user",
+        "-s",
+        ...previous,
+      ]);
+      await run("security", ["delete-keychain", keychain]);
+    };
+    await run("security", ["unlock-keychain", "-p", password, keychain]);
+    await run("security", ["set-keychain-settings", "-lut", "3600", keychain]);
+    await run("security", [
+      "list-keychains",
+      "-d",
+      "user",
+      "-s",
+      keychain,
+      ...previous,
+    ]);
+    // A private CI keychain allows both installed builds; no login keychain or
+    // existing user item is modified. Both clients still use real safeStorage.
+    for (const name of [LEGACY_PROFILE_NAME, "Haunt"])
+      await run("security", [
+        "add-generic-password",
+        "-a",
+        name,
+        "-s",
+        `${name} Safe Storage`,
+        "-w",
+        randomUUID(),
+        "-A",
+        keychain,
+      ]);
+  }
+  await launch(previousExecutable, prior.version, false);
+  const currentExecutable = await install(
+    await verifiedFile(path.resolve("release/updates"), current.installer),
+  );
+  await launch(currentExecutable, current.version, true, true);
+  await launch(currentExecutable, current.version, true);
+  report.secondLaunchPreserved = true;
   report.passed = true;
   report.privateProfilePreserved = true;
   console.log(
@@ -242,6 +415,8 @@ try {
   );
   await app?.close().finally(() => notificationFixture?.stop());
   notificationFixture?.stop();
+  keyring?.kill();
+  await restoreKeychain?.();
   await fs.rm(scratch, {
     recursive: true,
     force: true,

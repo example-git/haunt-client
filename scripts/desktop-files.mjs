@@ -3,6 +3,7 @@ export const desktopFiles = [
   "main.cjs",
   "appearance.cjs",
   "bootstrap.cjs",
+  "profile.cjs",
   "updates.cjs",
   "preload.cjs",
   "network.cjs",

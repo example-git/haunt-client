@@ -38,20 +38,17 @@ const {
 const { chooseCapture } = require("./capture-picker.cjs");
 const { installNativeMedia } = require("./native-media.cjs");
 const { DiskMediaCache } = require("./media-cache.cjs");
-// Branding must not move existing credentials, IndexedDB or Chromium partitions.
-// Respect explicit user-data-dir overrides used by portable installs and tests.
-if (!app.commandLine.hasSwitch("user-data-dir")) {
-  app.setPath(
-    "userData",
-    path.join(
-      app.getPath("appData"),
-      app.isPackaged ? "chat.xo.vg" : "chatxo-client",
-    ),
-  );
+const { initializeProfile, runKeyMigrationHelper } = require("./profile.cjs");
+if (runKeyMigrationHelper(app, safeStorage)) return;
+let profile;
+try {
+  profile = initializeProfile(app);
+} catch (error) {
+  console.error("Haunt profile migration:", error.message);
+  dialog.showErrorBox("Haunt profile migration", error.message);
+  app.exit(1);
+  return;
 }
-// Electron uses app.getName() for macOS Keychain/Linux secret-store keys.
-// Keep that technical identity; window, launcher and menu labels use Haunt.
-app.setName(app.isPackaged ? "chat.xo.vg" : "chatxo-client");
 if (process.platform === "win32") {
   const appId = app.isPackaged
     ? require("../../package.json").desktopAppId
@@ -62,8 +59,6 @@ if (process.platform === "linux" && !app.isReady())
   app.setDesktopName(require("../../package.json").desktopName);
 const APP_ORIGIN = "https://app.chatxo.local";
 const testMode = !app.isPackaged && process.env.HAUNT_DESKTOP_TEST === "1";
-const testProfile = process.env.HAUNT_DESKTOP_TEST_PROFILE;
-if (testMode && testProfile) app.setPath("userData", testProfile);
 if (!global[Symbol.for("haunt.updater")] && !app.requestSingleInstanceLock())
   app.quit();
 let window;
@@ -116,7 +111,8 @@ function validateAccounts(accounts) {
       throw Error("Invalid saved account");
   }
 }
-app.whenReady().then(async () => {
+async function startMain() {
+  await profile.migrateCredentials(safeStorage);
   app.setAboutPanelOptions({
     applicationName: "Haunt",
     applicationVersion:
@@ -694,7 +690,15 @@ app.whenReady().then(async () => {
   installNativeMedia(window, validateSender);
   global[Symbol.for("haunt.updater")]?.attach(window, validateSender);
   await window.loadURL(APP_ORIGIN);
-});
+}
+app
+  .whenReady()
+  .then(startMain)
+  .catch((error) => {
+    console.error("Haunt startup:", error.message);
+    dialog.showErrorBox("Haunt startup", error.message);
+    app.exit(1);
+  });
 app.on("second-instance", () => {
   if (window) {
     if (window.isMinimized()) window.restore();

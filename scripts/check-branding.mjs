@@ -80,14 +80,9 @@ export async function checkBranding(page, desktop) {
       background: BrowserWindow.getAllWindows()[0].getBackgroundColor(),
       packaged: app.isPackaged,
     }));
-    assert.equal(
-      details.name,
-      details.packaged ? "chat.xo.vg" : "chatxo-client",
-    );
+    assert.equal(details.name, "Haunt");
     assert.equal(details.background.toLowerCase(), "#161616");
-    assert(
-      details.profile.endsWith(details.packaged ? "/chat.xo.vg" : "/desktop"),
-    );
+    assert(details.profile.endsWith(details.packaged ? "/haunt" : "/desktop"));
     assert.equal(details.session, details.profile);
   } else {
     await page.setViewportSize({ width: 390, height: 844 });

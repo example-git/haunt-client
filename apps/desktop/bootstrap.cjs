@@ -1,4 +1,11 @@
-const { app, ipcMain, shell, dialog, powerMonitor } = require("electron");
+const {
+  app,
+  ipcMain,
+  shell,
+  dialog,
+  powerMonitor,
+  safeStorage,
+} = require("electron");
 const path = require("node:path");
 const {
   Updater,
@@ -7,16 +14,30 @@ const {
   updateActivityScript,
 } = require("./updates.cjs");
 const config = require("../../update-runtime.json");
-// These identities intentionally remain stable across releases and repository moves.
-if (!app.commandLine.hasSwitch("user-data-dir"))
-  app.setPath("userData", path.join(app.getPath("appData"), "chat.xo.vg"));
-app.setName("chat.xo.vg");
+const { initializeProfile, runKeyMigrationHelper } = require("./profile.cjs");
+if (runKeyMigrationHelper(app, safeStorage)) return;
+let profile;
+try {
+  profile = initializeProfile(app);
+} catch (error) {
+  console.error("Haunt profile migration:", error.message);
+  dialog.showErrorBox("Haunt profile migration", error.message);
+  app.exit(1);
+  return;
+}
 if (process.platform === "linux")
   app.setDesktopName(require("../../package.json").desktopName);
 if (!app.requestSingleInstanceLock()) app.exit(0);
-else void start();
+else
+  void start().catch((error) => {
+    console.error("Haunt startup:", error.message);
+    dialog.showErrorBox("Haunt startup", error.message);
+    app.exit(1);
+  });
 
 async function start() {
+  await app.whenReady();
+  await profile.migrateCredentials(safeStorage);
   const updater = new Updater({
     directory: path.join(app.getPath("userData"), "client-updates"),
     config,

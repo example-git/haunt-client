@@ -14,6 +14,7 @@ jobs:
   regression:
     uses: ./.github/workflows/regression.yml
   build:
+    timeout-minutes: 25
     needs: regression
     strategy:
       fail-fast: false
@@ -53,7 +54,7 @@ jobs:
       - run: npm run updates:pack
       - name: Install native Linux test dependencies
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 python3-dbus python3-gi
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi
       - name: Rehearse a full installer upgrade on the native runner
         env:
           GH_TOKEN: ${{ github.token }}
