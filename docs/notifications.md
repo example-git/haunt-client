@@ -29,7 +29,9 @@ or accounts sign out. macOS uses the Dock badge and menu-bar title. Allow Haunt
 alerts and badges in **System Settings → Notifications**. Linux uses the tray,
 window icon and the LauncherEntry badge API on supporting docks. Packaging and
 runtime share `com.exampleuser.haunt.desktop`, including Wayland app identity and
-X11 window grouping. A desktop without launcher badges still has the tray count.
+X11 window grouping. Linux native alerts require the system `libnotify` library
+(`libnotify4` on Ubuntu/Debian) and a running desktop notification service.
+A desktop without launcher badges still has the tray count.
 The desktop identity change requires a full installer update; the updater detects
 the changed launcher fingerprint and offers that installer. Existing profiles keep
 their current location.

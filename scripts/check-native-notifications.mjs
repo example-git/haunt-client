@@ -11,6 +11,12 @@ export async function prepareNativeNotifications(scratch, executable) {
     process.env.DBUS_SESSION_BUS_ADDRESS,
     "Use a private dbus-run-session on Linux",
   );
+  // Electron loads libnotify dynamically, so missing it does not stop startup.
+  // Require the actual system library before testing native popup delivery.
+  await promisify(execFile)("/usr/bin/python3", [
+    "-c",
+    "import ctypes; ctypes.CDLL('libnotify.so.4')",
+  ]);
   const desktop = "com.exampleuser.haunt.desktop";
   const entry = await fs.readFile(
     path.join(path.dirname(executable), desktop),
