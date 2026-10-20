@@ -227,9 +227,12 @@ input[type="checkbox"] {
   border-right: 1px solid var(--line);
 }
 .community-head {
+  --community-padding-block: 18px;
+  --community-padding-inline: 16px;
   flex: none;
-  padding: 18px 16px;
+  padding: var(--community-padding-block) var(--community-padding-inline);
   border-bottom: 1px solid var(--line);
+  overflow: clip;
 }
 .eyebrow {
   font-size: 10px;
@@ -1214,9 +1217,6 @@ summary {
 @media (max-width: 1000px) {
   .sidebar {
     width: 220px;
-  }
-  .community-head {
-    padding-left: 18px;
   }
   .composer-hint > span:last-child {
     display: none;
@@ -2664,7 +2664,8 @@ summary {
   position: relative;
 }
 .community-cover.has-banner {
-  margin: -27px -24px -25px;
+  margin: calc(-1 * var(--community-padding-block))
+    calc(-1 * var(--community-padding-inline));
   min-height: 132px;
   display: flex;
   align-items: flex-end;

@@ -423,6 +423,108 @@ export async function checkUIRefresh(browser, fixtures) {
       request: (method, path, body) =>
         request(method, path, ownerAPI.token, body, 201),
     });
+    const banner = Buffer.from(
+      await owner.evaluate(() => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1200;
+        canvas.height = 400;
+        const context = canvas.getContext("2d");
+        context.fillStyle = "#f7439a";
+        context.fillRect(0, 0, 600, 400);
+        context.fillStyle = "#39d6c5";
+        context.fillRect(600, 0, 600, 400);
+        return canvas.toDataURL("image/png").split(",")[1];
+      }),
+      "base64",
+    );
+    const uploaded = await fetch(fixture.url + "/api/v1/instance/banner", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${ownerAPI.token}`,
+        "Content-Type": "application/octet-stream",
+      },
+      body: banner,
+    });
+    assert.equal(uploaded.status, 200);
+    await owner.setViewportSize({ width: 1400, height: 960 });
+    await owner.reload();
+    await owner
+      .getByRole("button", { name: "Open The Common Room", exact: true })
+      .click();
+    await expect(owner.locator(".server-banner")).toBeVisible();
+    await owner.locator(".server-banner").evaluate((image) => image.decode());
+    for (const width of [1400, 800, 390]) {
+      await owner.setViewportSize({ width, height: 960 });
+      if (width <= 720) {
+        const hideMembers = owner.getByRole("button", {
+          name: "Hide member list",
+          exact: true,
+        });
+        if (await hideMembers.isVisible()) await hideMembers.click();
+        await owner
+          .getByRole("button", { name: "Show channels", exact: true })
+          .click();
+      }
+      await expect(owner.locator(".sidebar .server-banner")).toBeVisible();
+      const bounds = await owner.evaluate(() => {
+        const rect = (selector) =>
+          document.querySelector(selector).getBoundingClientRect().toJSON();
+        const rail = rect(".server-rail");
+        const header = rect(".community-head");
+        return {
+          rail,
+          header,
+          banner: rect(".community-cover.has-banner"),
+          railCovered: !!document
+            .elementFromPoint(rail.right - 2, header.top + 30)
+            ?.closest(".community-head"),
+        };
+      });
+      assert(
+        bounds.banner.left >= bounds.rail.right,
+        "Banner overlaps server rail",
+      );
+      assert(
+        bounds.banner.left >= bounds.header.left,
+        "Banner escapes header left",
+      );
+      assert(
+        bounds.banner.right <= bounds.header.right,
+        "Banner escapes header right",
+      );
+      assert(
+        bounds.banner.top >= bounds.header.top,
+        "Banner overlaps title bar",
+      );
+      assert.equal(bounds.railCovered, false, "Banner paints over the rail");
+      await owner.screenshot({
+        path: `test-results/server-banner-${width}.png`,
+      });
+      if (width <= 720)
+        await owner
+          .getByRole("button", { name: "Hide channels", exact: true })
+          .click();
+    }
+    await owner.setViewportSize({ width: 1400, height: 960 });
+    await request(
+      "DELETE",
+      "/api/v1/instance/banner",
+      ownerAPI.token,
+      undefined,
+      204,
+    );
+    await owner.reload();
+    await owner
+      .getByRole("button", { name: "Open The Common Room", exact: true })
+      .click();
+    await expect(owner.locator(".community-cover.has-banner")).toHaveCount(0);
+    await expect(owner.locator(".community-head h2")).toBeVisible();
+    report.serverBanner = {
+      widths: [1400, 800, 390],
+      containedInHeader: true,
+      railUncovered: true,
+      removalPreservesHeader: true,
+    };
     assert.deepEqual(errors, []);
     await fs.writeFile(
       "test-results/ui-refresh.json",
