@@ -48,11 +48,15 @@ assert.equal(packagedIdentity.desktopName, `${config.appId}.desktop`);
 const files = asar
   .listPackage(filename)
   .map((file) => file.replaceAll("\\", "/"));
+const allowedDesktopFiles = new Set(
+  desktopFiles.map((name) => `/apps/desktop/${name}`),
+);
 for (const file of files)
   assert(
-    /^\/(main\.cjs|package\.json|update-runtime\.json|apps(\/desktop(\/((main|appearance|bootstrap|updates|preload|network|media-cache|notifications|tray|capture-preload|capture-picker|swiftcapture|native-media|native-publisher)\.cjs|capture-picker\.(html|js|css)))?)?|dist(\/.*)?|resources(\/icon\.png)?)$/.test(
-      file,
-    ),
+    allowedDesktopFiles.has(file) ||
+      /^\/(main\.cjs|package\.json|update-runtime\.json|apps(\/desktop)?|dist(\/.*)?|resources(\/icon\.png)?)$/.test(
+        file,
+      ),
     `Unexpected packaged file: ${file}`,
   );
 for (const name of [
