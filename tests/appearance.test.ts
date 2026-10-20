@@ -117,6 +117,13 @@ it.each(["unchanged", "edited", "custom"])(
       preset: kind === "custom" ? "custom" : rose.id,
       colors: {
         ...rose.colors,
+        background: "#1b1c20",
+        surface: "#242529",
+        raised: "#303136",
+        text: "#f5f3f7",
+        muted: "#b7bac4",
+        border: "#484a54",
+        selectionText: "#1b1c20",
         sidebar: "#c8b8ee",
         ...(kind === "edited" ? { surface: "#202020" } : {}),
       },

@@ -45,6 +45,7 @@ export async function checkUIRefresh(browser, fixtures) {
   const login = async (username) => {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
+      hasTouch: true,
     });
     contexts.push(context);
     const page = await context.newPage();
@@ -224,6 +225,23 @@ export async function checkUIRefresh(browser, fixtures) {
       replyNavigation: true,
     };
 
+    if (process.env.HAUNT_THEME_AUDIT) {
+      const { auditThemes } = await import("./audit-themes.mjs");
+      await auditThemes(
+        owner,
+        { appearance, close, reply },
+        process.env.HAUNT_THEME_AUDIT,
+      );
+      assert.deepEqual(errors, []);
+      if (process.env.HAUNT_THEME_AUDIT === "before") return;
+      await owner.setViewportSize({ width: 1440, height: 1000 });
+      const show = owner.getByRole("button", {
+        name: "Show member list",
+        exact: true,
+      });
+      if (await show.isVisible()) await show.click();
+    }
+
     for (const name of [
       "Rose Slate",
       "Mint Ink",
@@ -238,7 +256,18 @@ export async function checkUIRefresh(browser, fixtures) {
         await owner.evaluate(() => {
           const key = "chatxo-client-preferences-v1";
           const preferences = JSON.parse(localStorage.getItem(key));
-          preferences.theme.colors.sidebar = "#c8b8ee";
+          preferences.theme.colors = {
+            background: "#1b1c20",
+            sidebar: "#c8b8ee",
+            chrome: "#f7abc3",
+            surface: "#242529",
+            raised: "#303136",
+            text: "#f5f3f7",
+            muted: "#b7bac4",
+            border: "#484a54",
+            selection: "#f7abc3",
+            selectionText: "#1b1c20",
+          };
           localStorage.setItem(key, JSON.stringify(preferences));
         });
         await owner.reload();
@@ -312,11 +341,10 @@ export async function checkUIRefresh(browser, fixtures) {
         assert.equal(layers.header.background, "rgb(247, 171, 195)");
         assert.equal(layers.sidebar.background, "rgb(50, 50, 50)");
         assert.equal(layers.members.background, "rgb(50, 50, 50)");
-        assert.equal(layers.chat.background, "rgb(36, 37, 41)");
+        assert.equal(layers.chat.background, "rgb(36, 36, 36)");
         assert.equal(layers.selected.background, layers.header.background);
-      } else {
-        assert.equal(layers.selected.color, layers.sidebar.background);
       }
+      assert.equal(layers.selected.background, layers.header.background);
       assert(contrast(layers.sidebar.color, layers.sidebar.background) >= 4.5);
       assert.notEqual(layers.button.background, layers.header.background);
       assert(
@@ -359,6 +387,7 @@ export async function checkUIRefresh(browser, fixtures) {
       .getByRole("button", { name: "Hide member list", exact: true })
       .click();
     await expect(owner.locator(".message.has-reply").last()).toBeVisible();
+    await restoredReply.locator(".message-body").click();
     await restoredReply
       .getByRole("button", { name: "Message options", exact: true })
       .click();
@@ -383,6 +412,9 @@ export async function checkUIRefresh(browser, fixtures) {
     await owner.screenshot({
       path: "test-results/theme-pastel-settings-mobile.png",
     });
+    await close(owner);
+    const { checkUIPolish } = await import("./check-ui-polish.mjs");
+    report.polish = await checkUIPolish(owner, { appearance, close });
     assert.deepEqual(errors, []);
     await fs.writeFile(
       "test-results/ui-refresh.json",

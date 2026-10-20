@@ -122,6 +122,13 @@ export async function checkNotifications(browser, fixtures) {
     await expect(composer).toHaveValue("Hello @owner ");
     await composer.press("Enter");
     await count(owner, 1);
+    await owner.setViewportSize({ width: 390, height: 844 });
+    await expect(owner.locator(".server-rail")).toBeHidden();
+    await expect(owner.locator(".navigation-unread")).toBeVisible();
+    await owner.screenshot({
+      path: "test-results/mobile-navigation-unread.png",
+    });
+    await owner.setViewportSize({ width: 1360, height: 950 });
     await expect
       .poll(() => owner.evaluate(() => window.pingTones.map(Math.round)))
       .toContain(1047);

@@ -175,16 +175,16 @@ export const themePresets: {
     name: "Rose Slate",
     accent: "#f7abc3",
     colors: {
-      background: "#1b1c20",
+      background: "#1b1b1b",
       sidebar: "#323232",
       chrome: "#f7abc3",
-      surface: "#242529",
-      raised: "#303136",
-      text: "#f5f3f7",
-      muted: "#b7bac4",
-      border: "#484a54",
+      surface: "#242424",
+      raised: "#2c2c2c",
+      text: "#f4f4f4",
+      muted: "#b8b8b8",
+      border: "#414141",
       selection: "#f7abc3",
-      selectionText: "#1b1c20",
+      selectionText: "#1b1b1b",
     },
   },
   {
@@ -192,16 +192,16 @@ export const themePresets: {
     name: "Mint Ink",
     accent: "#a4e5cc",
     colors: {
-      background: "#1b1c20",
-      sidebar: "#b9d3f8",
+      background: "#1b1b1b",
+      sidebar: "#323232",
       chrome: "#a4e5cc",
-      surface: "#242529",
-      raised: "#303136",
-      text: "#f5f3f7",
-      muted: "#b7bac4",
-      border: "#484a54",
+      surface: "#242424",
+      raised: "#2c2c2c",
+      text: "#f4f4f4",
+      muted: "#b8b8b8",
+      border: "#414141",
       selection: "#a4e5cc",
-      selectionText: "#1b1c20",
+      selectionText: "#1b1b1b",
     },
   },
   {
@@ -209,16 +209,16 @@ export const themePresets: {
     name: "Peach Noir",
     accent: "#ffc39c",
     colors: {
-      background: "#1b1c20",
-      sidebar: "#efb6d8",
+      background: "#1b1b1b",
+      sidebar: "#323232",
       chrome: "#ffc39c",
-      surface: "#242529",
-      raised: "#303136",
-      text: "#f5f3f7",
-      muted: "#b7bac4",
-      border: "#484a54",
+      surface: "#242424",
+      raised: "#2c2c2c",
+      text: "#f4f4f4",
+      muted: "#b8b8b8",
+      border: "#414141",
       selection: "#ffc39c",
-      selectionText: "#1b1c20",
+      selectionText: "#1b1b1b",
     },
   },
   {
@@ -226,16 +226,16 @@ export const themePresets: {
     name: "Lilac Carbon",
     accent: "#d1b9ff",
     colors: {
-      background: "#1b1c20",
-      sidebar: "#a5dfed",
+      background: "#1b1b1b",
+      sidebar: "#323232",
       chrome: "#d1b9ff",
-      surface: "#242529",
-      raised: "#303136",
-      text: "#f5f3f7",
-      muted: "#b7bac4",
-      border: "#484a54",
+      surface: "#242424",
+      raised: "#2c2c2c",
+      text: "#f4f4f4",
+      muted: "#b8b8b8",
+      border: "#414141",
       selection: "#d1b9ff",
-      selectionText: "#1b1c20",
+      selectionText: "#1b1b1b",
     },
   },
   {
@@ -272,18 +272,37 @@ export const minimumSidebarOpacity = (effect: WindowEffect) =>
 export function restoreTheme(raw: unknown): ThemePreferences {
   const value =
     raw && typeof raw === "object" ? (raw as Partial<ThemePreferences>) : {};
-  const rose = themePresets.find((preset) => preset.id === "rose-slate")!;
-  const originalRose =
-    value.preset === rose.id &&
+  const preset = themePresets.find((preset) => preset.id === value.preset);
+  const legacySidebars: Record<string, string[]> = {
+    "rose-slate": ["#c8b8ee", "#323232"],
+    "mint-ink": ["#b9d3f8"],
+    "peach-noir": ["#efb6d8"],
+    "lilac-carbon": ["#a5dfed"],
+  };
+  const unchanged =
+    preset &&
     value.gradient == null &&
-    colorKeys.every(
-      (key) =>
-        hexColor(value.colors?.[key]) &&
-        value.colors![key].toLowerCase() ===
-          (key === "sidebar" ? "#c8b8ee" : rose.colors[key]),
-    );
+    legacySidebars[preset.id]?.some((sidebar) => {
+      const old: ThemeColors = {
+        background: "#1b1c20",
+        sidebar,
+        chrome: preset.colors.chrome,
+        surface: "#242529",
+        raised: "#303136",
+        text: "#f5f3f7",
+        muted: "#b7bac4",
+        border: "#484a54",
+        selection: preset.accent,
+        selectionText: "#1b1c20",
+      };
+      return colorKeys.every(
+        (key) =>
+          hexColor(value.colors?.[key]) &&
+          value.colors![key].toLowerCase() === old[key],
+      );
+    });
   return normalizeTheme(
-    originalRose ? { ...value, colors: rose.colors } : value,
+    unchanged ? { ...value, colors: preset.colors } : value,
   );
 }
 
@@ -415,9 +434,7 @@ export function layerPalette(
     ? contrast(colors.background, background) >= 4.5
       ? colors.background
       : "#161616"
-    : contrast(accent, background) >= 4.5
-      ? accent
-      : accentText(background);
+    : accent;
   return {
     background,
     text,
@@ -425,7 +442,11 @@ export function layerPalette(
     button,
     buttonText: light ? background : accentText(button),
     hover: mix(text, background, light ? 0.1 : 0.08),
-    border: light ? mix(text, background, 0.35) : colors.border,
+    border: mix(text, background, light ? 0.14 : 0.08),
+    controlBorder: mix(text, background, light ? 0.35 : 0.24),
+    utility: light ? button : mix(text, background, 0.07),
+    utilityText: light ? background : muted,
+    focus: light ? button : accent,
     danger: light ? "#92213f" : "#f28ca6",
     success: light ? "#175b3b" : "#83d6b1",
     warning: light ? "#5b3d0a" : "#e6c778",

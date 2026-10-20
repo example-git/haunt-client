@@ -12,13 +12,27 @@ reverts on blur. A low-contrast notice helps with custom choices; Reset appearan
 returns to neutral Charcoal and the original accent. The 96-pastel accent palette
 remains available in a collapsible section.
 
+Rose Slate, Mint Ink, Peach Noir and Lilac Carbon combine neutral dark chat and
+side panels with pastel title bars and account controls. Buttons on pastel areas
+use dark fills with pastel text; primary buttons in dark areas use the accent.
+The preset cards show a miniature of the actual layout, with a checkmark on the
+selected preset. Unchanged older pastel presets adopt the refined neutral colors
+on startup; custom edits and saved/imported theme snapshots keep their colors.
+
+Desktop channel and member panels can be resized by dragging their inner edge.
+Focus the divider and use arrow keys for 16-pixel adjustments, Home/End for the
+minimum/maximum, or double-click to restore the default. Widths are saved on this
+device. On mobile, the header's server/menu button opens servers and channels;
+an unread dot keeps activity visible while the drawer is closed. Chat uses the
+full width when navigation is closed.
+
 Preferences apply across servers on the current client, survive logout/restart and
 are included in configuration backups. They are local UI settings, not a server's
 branding or permission to change another user's appearance.
 
 ## Save and share
 
-Name the current appearance and choose **Save as new theme**. Select a saved
+Choose the **Saved** tab, name the current appearance and choose **Save as new theme**. Select a saved
 entry to apply, rename/update it with the current appearance, or delete it.
 Up to 64 named presets are saved locally and included in client backups.
 **Export theme** downloads the current colors, background blend and desktop
@@ -27,6 +41,8 @@ saves a shared file; it does not apply it until you click **Apply saved theme**.
 Exports contain no accounts, sessions or device identifiers. Imports accept only
 bounded numeric settings and hex colors, never CSS, scripts or external assets.
 Unsupported file versions and files larger than 32 KiB are rejected.
+**Built-in** returns to the preset gallery; **Import theme** is available beside
+both tabs. Arrow keys move between tabs, and importing opens the Saved tab.
 
 ## Desktop materials
 

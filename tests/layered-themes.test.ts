@@ -3,6 +3,7 @@ import {
   contrast,
   layerPalette,
   normalizeTheme,
+  restoreTheme,
   themePresets,
 } from "../packages/browser/src/themes";
 import { exportTheme, importTheme } from "../packages/browser/src/saved-themes";
@@ -66,4 +67,41 @@ it("imports pre-layer themes using their own surface color for chrome", () => {
     }),
   );
   expect(theme.theme.colors.chrome).toBe("#303040");
+});
+
+it.each([
+  ["rose-slate", "#323232"],
+  ["mint-ink", "#b9d3f8"],
+  ["peach-noir", "#efb6d8"],
+  ["lilac-carbon", "#a5dfed"],
+])("upgrades only the unchanged installed %s palette", (id, sidebar) => {
+  const preset = themePresets.find((p) => p.id === id)!;
+  const legacy = {
+    preset: id,
+    gradient: null,
+    windowEffect: "transparent",
+    sidebarOpacity: 75,
+    colors: {
+      background: "#1b1c20",
+      sidebar,
+      chrome: preset.accent,
+      surface: "#242529",
+      raised: "#303136",
+      text: "#f5f3f7",
+      muted: "#b7bac4",
+      border: "#484a54",
+      selection: preset.accent,
+      selectionText: "#1b1c20",
+    },
+  };
+  expect(restoreTheme(legacy)).toMatchObject({
+    ...legacy,
+    colors: preset.colors,
+  });
+  const edited = { ...legacy, colors: { ...legacy.colors, raised: "#303030" } };
+  expect(restoreTheme(edited).colors).toEqual(edited.colors);
+  expect(restoreTheme({ ...legacy, preset: "custom" }).colors).toEqual(
+    legacy.colors,
+  );
+  expect(normalizeTheme(legacy).colors).toEqual(legacy.colors);
 });

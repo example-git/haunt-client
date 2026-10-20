@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import { SavedThemes } from "./SavedThemes";
 import {
   useEffect,
@@ -116,8 +117,7 @@ export function AppearanceSettings() {
       );
   return (
     <section className="appearance-settings form">
-      <fieldset className="theme-picker">
-        <legend>Theme</legend>
+      <SavedThemes>
         <div className="theme-presets">
           {themePresets.map((preset) => (
             <button
@@ -142,25 +142,59 @@ export function AppearanceSettings() {
             >
               <span
                 className="theme-preview"
-                style={{
-                  background: themeBackground(preset),
-                  borderColor: preset.colors.border,
-                }}
+                style={
+                  {
+                    "--preview-backdrop": themeBackground(preset),
+                    "--preview-rail": themeBackground(preset),
+                    "--preview-sidebar": themeBackground({
+                      ...preset,
+                      colors: {
+                        ...preset.colors,
+                        background: preset.colors.sidebar,
+                      },
+                    }),
+                    "--preview-chrome": preset.colors.chrome,
+                    "--preview-chat": preset.colors.surface,
+                    "--preview-raised": preset.colors.raised,
+                    "--preview-accent": layerPalette(
+                      preset.colors.sidebar,
+                      preset.colors,
+                      preset.accent,
+                    ).button,
+                    "--preview-muted": preset.colors.muted,
+                  } as CSSProperties
+                }
                 aria-hidden="true"
               >
-                <i style={{ background: preset.colors.sidebar }} />
-                <span>
-                  <b style={{ background: preset.colors.chrome }} />
-                  <b style={{ background: preset.colors.raised }} />
-                  <b style={{ background: preset.colors.muted }} />
+                <span className="preview-header" />
+                <span className="preview-rail">
+                  <i />
+                  <i />
+                </span>
+                <span className="preview-sidebar">
+                  <i />
+                  <i />
+                  <span />
+                </span>
+                <span className="preview-chat">
+                  <i />
+                  <i />
+                  <b />
                 </span>
               </span>
+              {theme.preset === preset.id &&
+                prefs.accentColor === preset.accent && (
+                  <Check
+                    className="theme-selected-check"
+                    size={15}
+                    aria-hidden="true"
+                  />
+                )}
               {preset.name}
             </button>
           ))}
         </div>
-      </fieldset>
-      <SavedThemes />
+      </SavedThemes>
       <fieldset>
         <legend>Custom colors</legend>
         <div className="theme-colors">

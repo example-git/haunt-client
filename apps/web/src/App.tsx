@@ -1,3 +1,4 @@
+import { PanelResize, usePanelWidths } from "./PanelResize";
 import {
   messageDay,
   messageDayLabel,
@@ -84,6 +85,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  Reply,
   ArrowLeft,
   ArrowUp,
   Check,
@@ -327,6 +329,8 @@ function NotificationSubscription({ instance }: { instance: InstanceClient }) {
   return null;
 }
 export function App() {
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const panels = usePanelWidths();
   useDesktopUpdateHealth();
   const syncSession = useSyncExternalStore(subscribeSync, syncStatus).session;
   const syncUpdateIssuer =
@@ -410,6 +414,7 @@ export function App() {
       ? directMessages.find((e) => e.key === dmKey(direct.scope, direct.id))
       : undefined;
   const openDM = (target: InstanceClient, id: string) => {
+    setNavigationOpen(false);
     setSelected(target.account.instance.instance_id);
     setDirect({ scope: target.scope, id });
     setView("dm");
@@ -418,10 +423,28 @@ export function App() {
   };
   const openDMEntry = (entry: DirectMessage) =>
     openDM(entry.instance, entry.conversation.id);
-  const openHome = () => setView("home");
+  const openHome = () => {
+    setNavigationOpen(false);
+    setView("home");
+  };
   const pings = useSyncExternalStore(
     notifications.subscribe,
     notifications.getSnapshot,
+  );
+  const unreadServers = useSyncExternalStore(
+    useMemo(
+      () => (listener: () => void) => {
+        const subscriptions = instances.map((server) =>
+          server.subscribe(listener),
+        );
+        return () => subscriptions.forEach((unsubscribe) => unsubscribe());
+      },
+      [instances],
+    ),
+    () =>
+      instances.some(
+        (server) => unreadSummary(server.snapshot.readStates).unread,
+      ),
   );
   const openPing = (ping: Pick<Ping, "instance" | "conversation">) => {
     const target = client.instances.get(ping.instance);
@@ -612,12 +635,31 @@ export function App() {
   };
   return (
     <div
-      className={`app ${call ? "in-call" : ""} ${view !== "server" ? "dm-shell" : ""}`}
+      className={`app ${call ? "in-call" : ""} ${view !== "server" ? "dm-shell" : ""} ${navigationOpen ? "mobile-nav-open" : ""}`}
+      style={
+        {
+          "--preferred-sidebar-width": `${panels.widths.channels}px`,
+          "--member-width": `${panels.widths.members}px`,
+        } as CSSProperties
+      }
+      onKeyDown={(event) => {
+        if (event.key === "Escape") setNavigationOpen(false);
+      }}
     >
       <Titlebar>
         <div className="global-header-slot" ref={setHeaderTarget}>
           {(view !== "server" || !instance) && (
-            <span className="titlebar-name">Haunt</span>
+            <>
+              <button
+                className="icon mobile-menu"
+                aria-label="Show servers"
+                aria-expanded={navigationOpen}
+                onClick={() => setNavigationOpen(!navigationOpen)}
+              >
+                <Menu size={18} />
+              </button>
+              <span className="titlebar-name">Haunt</span>
+            </>
           )}
         </div>
         {instance && (
@@ -652,6 +694,13 @@ export function App() {
           <ServerBrandingCache instance={instance} />
         </Fragment>
       ))}
+      {navigationOpen && (
+        <button
+          className="navigation-scrim"
+          aria-label="Close navigation"
+          onClick={() => setNavigationOpen(false)}
+        />
+      )}
       <nav className="server-rail" aria-label="Servers">
         <div className="server-rail-scroll">
           <button
@@ -659,7 +708,10 @@ export function App() {
             aria-label="Direct messages and notifications"
             title="Direct messages and notifications"
             aria-current={view === "home" ? "page" : undefined}
-            onClick={openHome}
+            onClick={() => {
+              setNavigationOpen(false);
+              openHome();
+            }}
           >
             <img
               src={brandAsset("notification-mark.svg")}
@@ -740,6 +792,10 @@ export function App() {
       ) : instance ? (
         <Workspace
           headerTarget={headerTarget}
+          sidebar={navigationOpen}
+          setSidebar={setNavigationOpen}
+          panels={panels}
+          navigationUnread={pings.length > 0 || unreadServers}
           key={selected}
           instance={instance}
           activeCall={call?.client === instance ? call : undefined}
@@ -860,6 +916,10 @@ export function App() {
   );
 }
 function Workspace({
+  sidebar,
+  setSidebar,
+  panels,
+  navigationUnread,
   headerTarget,
   instance,
   activeCall,
@@ -870,6 +930,10 @@ function Workspace({
   joinCall,
   onOpenDM,
 }: {
+  sidebar: boolean;
+  setSidebar: (open: boolean) => void;
+  panels: ReturnType<typeof usePanelWidths>;
+  navigationUnread: boolean;
   headerTarget: HTMLDivElement | null;
   instance: InstanceClient;
   activeCall?: Call;
@@ -889,7 +953,6 @@ function Workspace({
       "dm" | "channel" | "settings" | "server"
     >(),
     [error, setError] = useState(""),
-    [sidebar, setSidebar] = useState(false),
     [channelMenu, setChannelMenu] = useState<string>(),
     [editingChannel, setEditingChannel] =
       useState<Schemas["IdentityChannel"]>(),
@@ -1209,12 +1272,18 @@ function Workspace({
       )}
       <aside
         className={`sidebar ${sidebar ? "open" : ""}`}
+        id="channel-navigation"
         style={
           {
             "--server-accent": accent(instance.account.instance.accent_color),
           } as CSSProperties
         }
       >
+        <PanelResize
+          panel="channels"
+          width={panels.widths.channels}
+          onResize={(width) => panels.resize("channels", width)}
+        />
         <header
           className="community-head"
           tabIndex={0}
@@ -1407,10 +1476,22 @@ function Workspace({
             <div className="conversation-head">
               <button
                 className="icon mobile-menu"
-                aria-label="Show channels"
+                aria-label={sidebar ? "Hide channels" : "Show channels"}
+                aria-expanded={sidebar}
+                aria-controls="channel-navigation"
+                title={instance.account.instance.name}
                 onClick={() => setSidebar(!sidebar)}
               >
-                <Menu />
+                <Menu size={16} />
+                <span className="mobile-server-identity">
+                  <ServerArt instance={instance} kind="icon" />
+                </span>
+                {navigationUnread && (
+                  <span
+                    className="navigation-unread"
+                    aria-label="Unread activity"
+                  />
+                )}
               </button>
               <span className="titlebar-server">
                 {instance.account.instance.name}
@@ -1531,6 +1612,11 @@ function Workspace({
             className="member-scrim"
             aria-label="Dismiss member list"
             onClick={() => setMembersOpen(false)}
+          />
+          <PanelResize
+            panel="members"
+            width={panels.widths.members}
+            onResize={(width) => panels.resize("members", width)}
           />
           <MemberList
             instance={instance}
@@ -1989,6 +2075,18 @@ function MessageRow({
     (user) => user.id === reply?.author_id,
   );
   const timestamp = messageTimestamp(message.created_at, now);
+  const dated =
+    now - new Date(message.created_at).getTime() >= 24 * 60 * 60 * 1000;
+  const press = useRef<{
+    timer: ReturnType<typeof setTimeout>;
+    x: number;
+    y: number;
+  } | null>(null);
+  const cancelPress = () => {
+    if (press.current) clearTimeout(press.current.timer);
+    press.current = null;
+  };
+  useEffect(() => cancelPress, []);
   const canRemove =
     own ||
     (can(instance, 4096) &&
@@ -2034,7 +2132,57 @@ function MessageRow({
       className={`message ${grouped ? "grouped" : ""} ${!message.deleted && message.reply_to_id ? "has-reply" : ""} ${highlighted ? "highlighted" : ""}`}
       tabIndex={0}
       onKeyDown={actions.onKeyDown}
+      onClick={(event) => {
+        if (
+          !(event.target as HTMLElement).closest(
+            "button, a, input, textarea, video, audio",
+          )
+        )
+          event.currentTarget.focus({ preventScroll: true });
+      }}
+      onPointerDown={(event) => {
+        cancelPress();
+        if (
+          event.pointerType === "mouse" ||
+          (event.target as HTMLElement).closest(
+            "button, a, input, textarea, video, audio",
+          )
+        )
+          return;
+        const node = event.currentTarget,
+          x = event.clientX,
+          y = event.clientY;
+        press.current = {
+          x,
+          y,
+          timer: setTimeout(() => {
+            press.current = null;
+            if (node.isConnected)
+              node.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                  bubbles: true,
+                  cancelable: true,
+                  clientX: x,
+                  clientY: y,
+                }),
+              );
+          }, 500),
+        };
+      }}
+      onPointerMove={(event) => {
+        if (
+          press.current &&
+          Math.hypot(
+            event.clientX - press.current.x,
+            event.clientY - press.current.y,
+          ) > 8
+        )
+          cancelPress();
+      }}
+      onPointerUp={cancelPress}
+      onPointerCancel={cancelPress}
       onContextMenu={(e) => {
+        cancelPress();
         if (
           !(e.target as HTMLElement).closest("input, textarea, a, img, video")
         )
@@ -2044,7 +2192,7 @@ function MessageRow({
       <div className="message-avatar">
         {!grouped ? (
           <Avatar instance={instance} user={user} />
-        ) : (
+        ) : !dated ? (
           <time
             className="message-compact-time"
             dateTime={message.created_at}
@@ -2052,9 +2200,18 @@ function MessageRow({
           >
             {timestamp}
           </time>
-        )}
+        ) : null}
       </div>
       <div className="message-content">
+        {grouped && dated && (
+          <time
+            className="message-group-date"
+            dateTime={message.created_at}
+            title={new Date(message.created_at).toLocaleString()}
+          >
+            {timestamp}
+          </time>
+        )}
         {!message.deleted && message.reply_to_id && (
           <button
             type="button"
@@ -2157,22 +2314,29 @@ function MessageRow({
         )}
         <ErrorNotice error={error} />
       </div>
-      {(canReply || canRemove) && !message.deleted && !edit && (
-        <div className="message-actions">
-          {canReply && <button onClick={() => onReply(message)}>Reply</button>}
-          {own && <button onClick={() => setEdit(true)}>Edit</button>}
-          {canRemove && <button onClick={() => setRemove(true)}>Delete</button>}
-        </div>
-      )}
       {!message.deleted && !edit && (
-        <button
-          type="button"
-          className="message-options-toggle"
-          aria-label="Message options"
-          onClick={actions.onContextMenu}
-        >
-          <MoreHorizontal size={18} />
-        </button>
+        <div className="message-actions" aria-label="Message actions">
+          {canReply && (
+            <button
+              className="message-reply-action"
+              aria-label="Reply"
+              title="Reply"
+              onClick={() => onReply(message)}
+            >
+              <Reply size={18} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="message-options-toggle"
+            aria-label="Message options"
+            aria-haspopup="menu"
+            title="More options"
+            onClick={actions.onContextMenu}
+          >
+            <MoreHorizontal size={18} />
+          </button>
+        </div>
       )}
       {remove && (
         <Modal title="Delete this message?" onClose={() => setRemove(false)}>
@@ -2236,6 +2400,24 @@ function Composer({
   useEffect(() => () => uploads.dispose(), [uploads]);
   useAttachmentDrop(dropTarget, uploads, busy);
   const input = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const node = input.current;
+    if (!node) return;
+    const fit = () => {
+      node.style.height = "0px";
+      node.style.height = `${Math.min(180, Math.max(32, node.scrollHeight))}px`;
+    };
+    fit();
+    const observer = new ResizeObserver(() => {
+      if (node.clientWidth !== width) {
+        width = node.clientWidth;
+        fit();
+      }
+    });
+    let width = node.clientWidth;
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [body]);
   useEffect(() => {
     if (replyTo) input.current?.focus();
   }, [replyTo?.id]);

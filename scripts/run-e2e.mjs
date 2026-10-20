@@ -174,6 +174,7 @@ async function audioPeak(page) {
 try {
   if (
     ![
+      "demo",
       "signin-browser",
       "secure-dm",
       "source-audio",
@@ -615,7 +616,12 @@ try {
       .locator(".message")
       .filter({ hasText: "Hello from the browser" });
     await row.hover();
-    await row.getByRole("button", { name: "Edit", exact: true }).click();
+    await row
+      .getByRole("button", { name: "Message options", exact: true })
+      .click();
+    await alice
+      .getByRole("menuitem", { name: "Edit message", exact: true })
+      .click();
     await row.locator("textarea").fill("Edited from the browser");
     await row.getByRole("button", { name: "Save", exact: true }).click();
     await expect(
@@ -644,7 +650,12 @@ try {
       .locator(".message")
       .filter({ hasText: "Edited from the browser" });
     await deleted.hover();
-    await deleted.getByRole("button", { name: "Delete", exact: true }).click();
+    await deleted
+      .getByRole("button", { name: "Message options", exact: true })
+      .click();
+    await alice
+      .getByRole("menuitem", { name: "Delete message…", exact: true })
+      .click();
     await alice
       .getByRole("button", { name: "Delete message", exact: true })
       .click();

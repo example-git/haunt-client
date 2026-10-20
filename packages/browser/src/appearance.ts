@@ -68,7 +68,7 @@ export function installAppearance() {
       "--haunt-raised": colors.raised,
       "--haunt-text": colors.text,
       "--haunt-muted": colors.muted,
-      "--haunt-border": colors.border,
+      "--haunt-border": `color-mix(in srgb, ${colors.text} ${dark ? 8 : 14}%, ${colors.surface})`,
       "--selection-background": colors.selection,
       "--selection-text": colors.selectionText,
       "--haunt-control-border": `color-mix(in srgb, ${colors.border} 65%, ${colors.text})`,
@@ -80,10 +80,7 @@ export function installAppearance() {
         color === defaultAccent
           ? "#ffb16a"
           : `color-mix(in srgb, ${color} 80%, ${dark ? "white" : "black"})`,
-      "--haunt-focus":
-        color === defaultAccent
-          ? "#b8c6ff"
-          : `color-mix(in srgb, ${color} 70%, ${dark ? "white" : "black"})`,
+      "--haunt-focus": color,
       "--haunt-glow-warm": `0 0 14px color-mix(in srgb, ${color} 10%, transparent)`,
       "--sidebar-opacity": `${effect === "solid" ? 100 : sidebarOpacity}%`,
       "--window-background":

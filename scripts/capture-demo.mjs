@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fillSignin } from "./signin-fields.mjs";
+import { composeDemoBanner } from "./compose-demo-banner.mjs";
 
 // Uses only the isolated integration fixtures; never connects to a saved account.
 export async function captureDemo(browser, fixtures) {
@@ -38,7 +39,7 @@ export async function captureDemo(browser, fixtures) {
     const page = await ctx.newPage();
     page.setDefaultTimeout(20000);
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.goto("http://127.0.0.1:5173");
+    await page.goto(fixtures.rtc.url);
     await page.getByRole("button", { name: "Add server", exact: true }).click();
     await fillSignin(page, fixtures.rtc.url, user);
     await page.getByLabel("Password", { exact: true }).fill(fixtures.password);
@@ -175,6 +176,11 @@ export async function captureDemo(browser, fixtures) {
       "Ultraviolet",
       "Tidal",
       "Afterglow",
+      "Rose Slate",
+      "Mint Ink",
+      "Peach Noir",
+      "Lilac Carbon",
+      "wumpoff",
     ]) {
       await settings(page, "Appearance");
       await page.getByRole("button", { name, exact: true }).click();
@@ -190,13 +196,14 @@ export async function captureDemo(browser, fixtures) {
       await close(page);
       await shot(
         page,
-        `${name.toLowerCase()}`,
+        name.toLowerCase().replaceAll(" ", "-"),
         `${name} theme with community chat and members`,
       );
     }
     await settings(page, "Appearance");
     await page.getByRole("button", { name: "Midnight", exact: true }).click();
     await page.getByLabel("Accent hex", { exact: true }).fill("#a4cfef");
+    await page.getByRole("tab", { name: "Saved", exact: true }).click();
     await page.getByLabel("Theme name", { exact: true }).fill("Evening blue");
     await page
       .getByRole("button", { name: "Save as new theme", exact: true })
@@ -225,10 +232,12 @@ export async function captureDemo(browser, fixtures) {
       mimeType: "application/json",
       buffer: exported,
     });
-    await expect(page.locator(".saved-themes [role=status]")).toContainText(
-      "Theme imported",
-    );
+    await expect(
+      page.locator(".theme-picker").getByRole("status"),
+    ).toContainText("Theme imported");
+    await page.getByRole("tab", { name: "Built-in", exact: true }).click();
     await page.getByRole("button", { name: "Charcoal", exact: true }).click();
+    await page.getByRole("tab", { name: "Saved", exact: true }).click();
     await page
       .getByRole("button", { name: "Apply saved theme", exact: true })
       .click();
@@ -242,8 +251,9 @@ export async function captureDemo(browser, fixtures) {
       "#a4cfef",
     );
     await expect(
-      page.getByLabel("Background hex", { exact: true }),
+      page.getByLabel("Background and server rail hex", { exact: true }),
     ).toHaveValue("#101622");
+    await page.getByRole("tab", { name: "Saved", exact: true }).click();
     await expect(
       page
         .getByLabel("Your themes", { exact: true })
@@ -258,6 +268,19 @@ export async function captureDemo(browser, fixtures) {
       "11-saved-themes",
       "Save, import and export named themes with editable colors",
     );
+    const bannerTheme = process.env.HAUNT_DEMO_THEME ?? "Midnight";
+    await page.getByRole("tab", { name: "Built-in", exact: true }).click();
+    const preset = page.locator(".theme-presets").getByRole("button", {
+      name: bannerTheme,
+      exact: true,
+    });
+    assert.equal(
+      await preset.count(),
+      1,
+      `Unknown banner theme: ${bannerTheme}`,
+    );
+    await preset.click();
+    await expect(preset).toHaveAttribute("aria-pressed", "true");
     await close(page);
     await settings(page, "Server audio plugins");
     await page
@@ -335,6 +358,7 @@ export async function captureDemo(browser, fixtures) {
         2,
       ),
     );
+    await composeDemoBanner(browser, directory, bannerTheme);
     console.log(
       JSON.stringify({
         check: "themes-and-demo",

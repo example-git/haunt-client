@@ -210,7 +210,12 @@ export async function checkEmbeds(browser, fixtures) {
 
     await row.scrollIntoViewIfNeeded();
     await row.hover();
-    await row.getByRole("button", { name: "Edit", exact: true }).click();
+    await row
+      .getByRole("button", { name: "Message options", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "Edit message", exact: true })
+      .click();
     await page
       .locator(".message textarea")
       .fill("Edited article without a link");

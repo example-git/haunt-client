@@ -118,7 +118,7 @@ input[type="checkbox"] {
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
-  width: 79px;
+  width: var(--rail-width);
   flex: none;
   background: var(--haunt-black);
   border-right: 1px solid var(--line);
@@ -217,7 +217,8 @@ input[type="checkbox"] {
 }
 .sidebar {
   min-height: 0;
-  width: 258px;
+  width: var(--sidebar-width);
+  position: relative;
   flex: none;
   background: var(--haunt-surface);
   display: flex;
@@ -226,7 +227,7 @@ input[type="checkbox"] {
 }
 .community-head {
   flex: none;
-  padding: 27px 24px 25px;
+  padding: 18px 16px;
   border-bottom: 1px solid var(--line);
 }
 .eyebrow {
@@ -633,46 +634,55 @@ input[type="checkbox"] {
   white-space: nowrap;
 }
 .message-compact-time {
-  display: block;
   position: absolute;
   left: 0;
-  top: 4px;
-  padding: 3px 5px;
-  border-radius: 4px;
-  background: var(--haunt-raised);
+  top: 6px;
+  width: 48px;
   color: var(--muted);
   font-size: 10px;
+  line-height: 18px;
+  text-align: center;
   white-space: nowrap;
-  z-index: 1;
   opacity: 0;
   pointer-events: none;
 }
 .message:is(:hover, :focus-within) .message-compact-time {
   opacity: 1;
 }
+.message-group-date {
+  display: block;
+  margin: 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
 .message-actions {
   display: none;
   position: absolute;
   right: 8px;
-  top: -14px;
-  background: var(--haunt-surface);
-  border: 1px solid var(--line);
-  border-radius: 5px;
+  top: -16px;
+  background: var(--haunt-raised);
+  border: 1px solid var(--haunt-control-border);
+  border-radius: 10px;
   padding: 3px;
+  box-shadow: 0 4px 12px #0002;
+  z-index: 2;
 }
-.message:hover .message-actions,
-.message:focus-within .message-actions {
+.message:is(:hover, :focus-within) .message-actions {
   display: flex;
 }
 .message-actions button {
-  font-size: 10px;
-  padding: 4px 8px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 30px;
+  padding: 5px;
+  border-radius: 7px;
+  color: var(--muted);
 }
 .message-actions button:hover {
-  color: var(--accent);
-}
-.message-options-toggle {
-  display: none;
+  background: var(--haunt-hover);
+  color: var(--text);
 }
 .deleted {
   font-size: 12px;
@@ -680,8 +690,8 @@ input[type="checkbox"] {
   font-style: italic;
 }
 .composer-wrap {
-  padding: 15px 28px 19px;
-  background: var(--haunt-raised);
+  padding: 12px 24px 14px;
+  background: transparent;
 }
 .composer-reply {
   display: flex;
@@ -718,27 +728,38 @@ input[type="checkbox"] {
 .composer {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
+  min-height: 52px;
+  gap: 8px;
   background: var(--haunt-raised);
   border: 1px solid var(--haunt-control-border);
-  border-radius: 11px;
-  padding: 11px 12px;
+  border-radius: 12px;
+  padding: 9px 10px;
+}
+.composer :is(.attach, .icon, .send) {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 5px;
+  margin: 0;
+  border-radius: 8px;
 }
 .composer .attach {
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  width: 23px;
-  height: 23px;
-  margin: 2px 1px 5px 2px;
+  border: 0;
   color: var(--muted);
+}
+.composer :is(.attach, .icon):hover {
+  background: var(--haunt-hover);
+  color: var(--text);
 }
 .composer textarea {
   border: 0;
   resize: none;
   max-height: 180px;
   background: none;
-  font-size: 13px;
-  min-height: 30px;
+  font-size: 14px;
+  min-height: 32px;
   padding: 5px 1px;
   line-height: 22px;
 }
@@ -746,7 +767,13 @@ input[type="checkbox"] {
   outline: 0;
 }
 .composer:focus-within {
-  border-color: var(--line);
+  border-color: var(--haunt-focus);
+  box-shadow: 0 0 0 1px var(--haunt-focus);
+}
+.send:disabled {
+  background: var(--haunt-hover);
+  color: var(--muted);
+  opacity: 0.65;
 }
 .send {
   width: 30px;
@@ -1282,28 +1309,20 @@ summary {
   .composer-hint > span:last-child {
     display: none;
   }
-  .message {
-    padding-right: 30px;
-  }
   .message-actions,
-  .message:is(:hover, :focus-within) .message-actions {
+  .message:hover .message-actions {
     display: none;
   }
-  .message-options-toggle {
-    display: grid;
-    place-items: center;
-    position: absolute;
-    right: 0;
-    top: 0;
-    width: 28px;
-    height: 28px;
-    padding: 4px;
-    border-radius: 6px;
-    color: var(--muted);
+  .message:focus-within .message-actions {
+    display: flex;
+    top: -12px;
   }
-  .message-options-toggle:hover {
-    background: var(--haunt-hover);
-    color: var(--text);
+  .message-actions .message-reply-action {
+    display: none;
+  }
+  .message-actions button {
+    width: 36px;
+    height: 32px;
   }
   .history-note {
     font-size: 8px;
@@ -1486,7 +1505,7 @@ summary {
   border-color: var(--line);
 }
 .member-panel {
-  width: 255px;
+  width: var(--member-width, 220px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -3241,8 +3260,8 @@ summary {
 /* A global dock stays with the call when the selected channel/server changes. */
 .app {
   --call-dock-height: 106px;
-  --sidebar-width: 258px;
-  --rail-width: 79px;
+  --sidebar-width: var(--preferred-sidebar-width, 236px);
+  --rail-width: 68px;
 }
 .app.in-call .channel-scroll {
   margin-bottom: var(--call-dock-height);
@@ -4828,30 +4847,6 @@ button.mention {
 .theme-preset[aria-pressed="true"] {
   border-color: var(--accent);
 }
-.theme-preview {
-  display: flex;
-  height: 64px;
-  margin-bottom: 8px;
-  border: 1px solid;
-  border-radius: 5px;
-  overflow: hidden;
-}
-.theme-preview > i {
-  width: 28%;
-}
-.theme-preview > span {
-  flex: 1;
-  padding: 10px;
-  display: grid;
-  gap: 5px;
-}
-.theme-preview b {
-  height: 7px;
-  border-radius: 3px;
-}
-.theme-preview b:last-child {
-  width: 65%;
-}
 .theme-colors {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5156,6 +5151,10 @@ button.mention {
   --layer-text: var(--sidebar-text);
   --layer-muted: var(--sidebar-muted);
   --layer-border: var(--sidebar-border);
+  --layer-control-border: var(--sidebar-control-border);
+  --layer-utility: var(--sidebar-utility);
+  --layer-utility-text: var(--sidebar-utility-text);
+  --layer-focus: var(--sidebar-focus);
   --layer-hover: var(--sidebar-hover);
   --layer-button: var(--sidebar-button);
   --layer-button-text: var(--sidebar-button-text);
@@ -5168,6 +5167,10 @@ button.mention {
   --layer-text: var(--chrome-text);
   --layer-muted: var(--chrome-muted);
   --layer-border: var(--chrome-border);
+  --layer-control-border: var(--chrome-control-border);
+  --layer-utility: var(--chrome-utility);
+  --layer-utility-text: var(--chrome-utility-text);
+  --layer-focus: var(--chrome-focus);
   --layer-hover: var(--chrome-hover);
   --layer-button: var(--chrome-button);
   --layer-button-text: var(--chrome-button-text);
@@ -5194,8 +5197,8 @@ button.mention {
   --haunt-text: var(--layer-text);
   --haunt-muted: var(--layer-muted);
   --haunt-border: var(--layer-border);
-  --haunt-control-border: var(--layer-border);
-  --haunt-focus: var(--layer-button);
+  --haunt-control-border: var(--layer-control-border);
+  --haunt-focus: var(--layer-focus);
   --haunt-surface: var(--layer-fill);
   --haunt-raised: var(--layer-hover);
   --haunt-hover: var(--layer-hover);
@@ -5239,12 +5242,9 @@ button.mention {
   )
   :is(
     .primary,
-    .secondary,
-    .icon,
     .channel.active,
     .channel.voice-connected,
-    .settings-nav-item.active,
-    .window-controls button
+    .settings-nav-item.active
   ) {
   --text: var(--layer-button-text);
   --muted: var(--layer-button-text);
@@ -5264,12 +5264,9 @@ button.mention {
   )
   :is(
     .primary,
-    .secondary,
-    .icon,
     .channel.active,
     .channel.voice-connected,
-    .settings-nav-item.active,
-    .window-controls button
+    .settings-nav-item.active
   ):hover {
   background: color-mix(in srgb, var(--layer-button) 88%, var(--layer-fill));
   color: var(--layer-button-text);
@@ -5287,4 +5284,299 @@ button.mention {
 .window-controls .window-close:hover {
   background: #b83245;
   color: #fff;
+}
+
+/* Shared layout and controls, independent of the selected preset. */
+[hidden] {
+  display: none !important;
+}
+:is(.app-titlebar, .dialog-head, .profile, .voice-chat > header)
+  :is(.icon, .header-members, .window-controls button) {
+  background: var(--layer-utility);
+  color: var(--layer-utility-text);
+  border: 1px solid transparent;
+  border-radius: 9px;
+}
+:is(.app-titlebar, .dialog-head, .profile, .voice-chat > header)
+  :is(.icon, .header-members, .window-controls button):hover {
+  background: color-mix(in srgb, var(--layer-utility) 86%, var(--layer-text));
+  color: var(--layer-utility-text);
+}
+.app-titlebar .header-members.active {
+  box-shadow: inset 0 -2px var(--layer-focus);
+}
+:is(.sidebar, .member-panel, .settings-nav, .dm-directory) .icon {
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+}
+:is(.sidebar, .member-panel, .settings-nav, .dm-directory) .icon:hover {
+  background: var(--layer-hover);
+  color: var(--text);
+}
+.sidebar .channel-menu-button {
+  opacity: 1;
+}
+.channel-entry .channel-menu-button:hover,
+.channel-entry .channel-menu-button[aria-expanded="true"] {
+  background: var(--layer-hover);
+}
+:is(button, [role="separator"], .message):focus-visible {
+  outline: 2px solid var(--haunt-focus);
+  outline-offset: 2px;
+}
+button:disabled:hover {
+  filter: none;
+}
+.message {
+  margin-top: 18px;
+}
+.message-meta {
+  gap: 8px;
+  margin-bottom: 3px;
+  flex-wrap: wrap;
+}
+.message-meta :is(.user-name, strong) {
+  font-size: 14px;
+  font-weight: 600;
+}
+.message-meta time,
+.message-day-divider,
+.edited {
+  font-size: 12px;
+}
+.message-body {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.message-day-divider {
+  margin-top: 20px;
+  font-weight: 600;
+}
+.composer-hint {
+  font-size: 10px;
+  margin-top: 6px;
+}
+.profile,
+.app.in-call .profile {
+  min-height: 64px;
+  height: 64px;
+  padding: 10px 12px;
+}
+.call-dock {
+  bottom: 64px;
+}
+.channel-scroll {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.channel-section-title {
+  font-size: 11px;
+}
+.server-rail .brand-mark {
+  width: 48px;
+}
+.server-rail .brand-mark img {
+  width: 42px;
+  height: 42px;
+}
+.panel-resize {
+  position: relative;
+  flex: none;
+  width: 0;
+  z-index: 22;
+  cursor: col-resize;
+  touch-action: none;
+  outline-offset: -2px;
+}
+.panel-resize::after {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+  width: 6px;
+}
+.panel-resize:hover::after,
+.panel-resize:focus-visible::after {
+  background: color-mix(in srgb, var(--accent) 65%, transparent);
+}
+.panel-resize-channels {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+}
+.navigation-scrim {
+  display: none;
+}
+.mobile-server-identity {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.mobile-server-identity img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.navigation-unread {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  top: 1px;
+  right: 1px;
+  background: var(--layer-text);
+  border: 1px solid var(--layer-fill);
+}
+@media (min-width: 721px) {
+  .app {
+    --sidebar-width: var(--preferred-sidebar-width, 236px);
+  }
+  .app .sidebar {
+    width: var(--sidebar-width);
+  }
+}
+@media (max-width: 1100px) {
+  .panel-resize-members {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .app {
+    --rail-width: 62px;
+    --sidebar-width: min(264px, calc(100vw - 100px));
+  }
+  .app .server-rail {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: var(--titlebar-height);
+    bottom: 0;
+    width: var(--rail-width);
+    z-index: 22;
+  }
+  .app.mobile-nav-open .server-rail {
+    display: flex;
+  }
+  .app .sidebar {
+    left: var(--rail-width);
+    width: var(--sidebar-width);
+    box-shadow: none;
+    z-index: 22;
+  }
+  .app .navigation-scrim {
+    display: block;
+    position: absolute;
+    inset: var(--titlebar-height) 0 0;
+    z-index: 21;
+    background: #0008;
+  }
+  .app.dm-shell.mobile-nav-open .server-rail {
+    box-shadow: 16px 0 40px #0006;
+  }
+  .app-titlebar .mobile-menu {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    width: auto;
+    min-width: 38px;
+    position: relative;
+    padding: 4px 6px;
+  }
+  .app-titlebar .conversation-head {
+    gap: 6px;
+  }
+  .app-titlebar .conversation-head h1 {
+    max-width: none;
+    flex: 1;
+  }
+  .app-titlebar .conversation-head .refresh {
+    margin-left: auto;
+  }
+  .panel-resize {
+    display: none;
+  }
+  .messages {
+    padding: 16px 14px;
+  }
+  .message {
+    gap: 12px;
+  }
+  .message-body {
+    font-size: 14px;
+  }
+  .message-compact-time {
+    width: 40px;
+    font-size: 9px;
+  }
+  .composer-wrap {
+    padding: 10px 12px max(10px, env(safe-area-inset-bottom));
+  }
+  .composer {
+    gap: 6px;
+  }
+  .composer-hint {
+    display: none;
+  }
+  .member-panel {
+    width: min(280px, calc(100vw - 48px));
+  }
+  .call-dock {
+    bottom: 0;
+    left: 0;
+    width: 100%;
+  }
+  .dm-invite-panel {
+    width: 100%;
+  }
+}
+
+.sidebar .profile .icon {
+  background: var(--layer-utility);
+  color: var(--layer-utility-text);
+}
+.sidebar .profile .icon:hover {
+  background: color-mix(in srgb, var(--layer-utility) 86%, var(--layer-text));
+}
+.profile small {
+  font-size: 11px;
+}
+
+@media (max-width: 720px) {
+  .dm-shell .call-dock {
+    left: 0;
+    width: 100%;
+  }
+}
+
+/* Wide chat keeps dated metadata beside the body; narrow panes stack it. */
+.conversation-view {
+  container-type: inline-size;
+  container-name: chat;
+}
+@container chat (min-width: 600px) {
+  .message-content:has(> .message-group-date) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    column-gap: 18px;
+    align-items: start;
+  }
+  .message-content > .message-group-date {
+    grid-column: 2;
+    grid-row: 1;
+    margin-top: 2px;
+  }
+  .message-content:has(> .message-group-date) > .message-body {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .message-content:has(> .message-group-date)
+    > :not(.message-group-date, .message-body) {
+    grid-column: 1 / -1;
+  }
 }
