@@ -85,7 +85,7 @@ const account = {
     token: marker,
     user: {
       id: marker,
-      username: "migration-fixture",
+      username: "migration_fixture",
       display_name: "Migration fixture",
     },
   },
@@ -196,8 +196,14 @@ async function launch(
       session: app.getPath("sessionData"),
     }));
     assert.equal(identity.name, "Haunt");
-    assert.equal(identity.profile, profile);
-    assert.equal(identity.session, profile);
+    assert.equal(
+      await fs.realpath(identity.profile),
+      await fs.realpath(profile),
+    );
+    assert.equal(
+      await fs.realpath(identity.session),
+      await fs.realpath(profile),
+    );
     assert.equal(
       await fs.stat(legacyProfile).then(
         () => true,
