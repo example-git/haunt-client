@@ -1,6 +1,6 @@
 {
   "name": "@haunt/core",
-  "version": "0.6.5",
+  "version": "0.7.0",
   "license": "BSD-3-Clause",
   "type": "module",
   "description": "Platform-neutral, multi-instance Haunt messaging SDK",
