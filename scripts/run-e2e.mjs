@@ -1,6 +1,7 @@
 import { checkNotificationSearch } from "./check-notification-search.mjs";
 import { captureDemo } from "./capture-demo.mjs";
 import { checkSourceAudio } from "./check-source-audio.mjs";
+import { checkNarrator } from "./check-narrator.mjs";
 import { fillSignin } from "./signin-fields.mjs";
 import { checkVoiceSettings } from "./check-voice-settings.mjs";
 import { checkSecureDM } from "./check-dm-secure.mjs";
@@ -170,7 +171,7 @@ async function audioPeak(page) {
 
 try {
   if (
-    !["signin-browser", "secure-dm", "source-audio"].includes(
+    !["signin-browser", "secure-dm", "source-audio", "narrator"].includes(
       process.env.HAUNT_CLIENT_CHECK,
     )
   )
@@ -206,6 +207,8 @@ try {
     await captureDemo(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "source-audio") {
     await checkSourceAudio(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "narrator") {
+    await checkNarrator(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "media-status") {
     await checkMediaStatus(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "desktop-media-status") {

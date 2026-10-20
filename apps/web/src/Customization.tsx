@@ -1,5 +1,6 @@
 import { AudioPluginsAdmin } from "./AudioPluginsAdmin";
 import { ServerExtensionsAdmin } from "./ServerExtensionsAdmin";
+import { SettingsNavigation } from "./SettingsNavigation";
 import { useServerMenu, MenuLoadStatus, ServerMenuPage } from "./ServerMenus";
 import { ServerConfiguration, StorageSettings } from "./ServerConfiguration";
 import {
@@ -665,8 +666,10 @@ export function ServerSettings({
 }) {
   useSyncExternalStore(instance.subscribe, instance.getSnapshot);
   const fallbackTabs = [
-    ...(instance.account.login.user.is_owner && instance.account.instance.capabilities?.includes("server.extensions.v1")
-      ? [["server-extensions", "Server extensions"]] : []),
+    ...(instance.account.login.user.is_owner &&
+    instance.account.instance.capabilities?.includes("server.extensions.v1")
+      ? [["server-extensions", "Server extensions"]]
+      : []),
     ...(can(instance, 16384) &&
     instance.account.instance.capabilities?.includes("instance.configuration")
       ? [
@@ -712,21 +715,16 @@ export function ServerSettings({
       />
     );
   return (
-    <Modal title="Server settings" onClose={onClose} wide>
+    <Modal title="Server settings" onClose={onClose} wide settings>
       <div className="settings-layout">
-        <nav className="settings-nav" aria-label="Server settings sections">
-          <strong>{info.name}</strong>
-          {tabs.map(([id, label]) => (
-            <button
-              key={id}
-              className={selectedID === id ? "active" : ""}
-              onClick={() => setTab(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
-        <div className="settings-content">
+        <SettingsNavigation
+          kind="server"
+          scope={info.name}
+          selected={selectedID}
+          items={tabs.map(([id, label]) => [id, label] as const)}
+          onSelect={setTab}
+        />
+        <div className="settings-content" key={selectedID}>
           <MenuLoadStatus state={serverMenu} />
           {page && <ServerMenuPage instance={instance} page={page} />}
           {tab === "configuration" && (
@@ -734,7 +732,9 @@ export function ServerSettings({
           )}
           {tab === "storage" && <StorageSettings instance={instance} />}
           {tab === "audio-plugins" && <AudioPluginsAdmin instance={instance} />}
-          {tab === "server-extensions" && <ServerExtensionsAdmin key={instance.scope} instance={instance} />}
+          {tab === "server-extensions" && (
+            <ServerExtensionsAdmin key={instance.scope} instance={instance} />
+          )}
           {tab === "bans" && <BanManager instance={instance} />}
           {tab === "audit" && <AuditLog instance={instance} />}
           {tab === "emojis" && <EmojiSettings instance={instance} />}

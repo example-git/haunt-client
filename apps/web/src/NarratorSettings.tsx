@@ -20,6 +20,8 @@ import {
   type NarratorSettings as Settings,
 } from "@haunt/browser/narrator/settings";
 import { useServerExtensions } from "./useServerExtensions";
+import { TikTokVoiceSelect } from "./TikTokVoiceSelect";
+import { SlidersHorizontal, TextCursorInput, Users } from "lucide-react";
 import "./tts-settings.css";
 
 export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
@@ -78,7 +80,8 @@ export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
         {instance
           ? `Personal settings for ${instance.account.instance.name}.`
           : "Local device speech."}{" "}
-        Only you hear announcements.
+        Announce participants’ actions in your current call. Only you hear
+        announcements.
       </p>
       <div className="tts-grid">
         <label>
@@ -123,11 +126,16 @@ export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
               ))}
             </select>
           </label>
+        ) : settings.provider === "tiktok-tts" ? (
+          <TikTokVoiceSelect
+            label="TikTok voice"
+            value={settings.voice}
+            onChange={(voice) => set({ voice })}
+          />
         ) : (
           <label>
             Extension voice ID
             <input
-              list="tts-voice-options"
               value={settings.voice}
               maxLength={64}
               onChange={(event) => set({ voice: event.target.value })}
@@ -135,13 +143,6 @@ export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
           </label>
         )}
       </div>
-      <datalist id="tts-voice-options">
-        <option value="en_us_001">US female</option>
-        <option value="en_us_006">US male</option>
-        <option value="en_male_narration">Narrator</option>
-        <option value="en_us_ghostface">Ghost Face</option>
-        <option value="en_us_stitch">Stitch</option>
-      </datalist>
       {settings.provider !== "device" && (
         <>
           <label className="sound-setting">
@@ -177,7 +178,7 @@ export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
             and fallback preference are unchanged.
           </p>
         )}
-      <div className="tts-grid">
+      <div className="tts-grid tts-sliders">
         <label>
           Volume · {settings.volume}%
           <input
@@ -222,7 +223,10 @@ export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
         ))}
       </div>
       <details>
-        <summary>Advanced speech options</summary>
+        <summary>
+          <SlidersHorizontal size={15} aria-hidden="true" />
+          Advanced speech options
+        </summary>
         <div className="form">
           <label>
             Per-user cooldown (seconds)
@@ -266,7 +270,10 @@ export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
         </div>
       </details>
       <details>
-        <summary>Announcement text</summary>
+        <summary>
+          <TextCursorInput size={15} aria-hidden="true" />
+          Announcement text
+        </summary>
         <div className="form">
           <p className="muted small">
             Use {"{{USER}}"}, {"{{DISPLAY_NAME}}"} and {"{{CHANNEL}}"}. Blank
@@ -295,11 +302,15 @@ export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
       </details>
       {instance && (
         <details>
-          <summary>Voices and ignored users · this server</summary>
+          <summary>
+            <Users size={15} aria-hidden="true" />
+            Voices and ignored users · this server
+          </summary>
           <div className="form">
             <label>
               User
               <select
+                aria-label="User"
                 value={user}
                 onChange={(event) => setUser(event.target.value)}
               >
@@ -313,17 +324,27 @@ export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
             </label>
             {userKey && (
               <>
-                <label>
-                  Extension voice override
-                  <input
+                {settings.provider === "tiktok-tts" ? (
+                  <TikTokVoiceSelect
+                    key={userKey}
+                    label="Extension voice override"
                     value={override?.voice ?? ""}
-                    maxLength={64}
-                    placeholder="Default voice"
-                    onChange={(event) =>
-                      changeUser({ voice: event.target.value })
-                    }
+                    defaultLabel="Use default voice"
+                    onChange={(voice) => changeUser({ voice })}
                   />
-                </label>
+                ) : (
+                  <label>
+                    Extension voice override
+                    <input
+                      value={override?.voice ?? ""}
+                      maxLength={64}
+                      placeholder="Default voice"
+                      onChange={(event) =>
+                        changeUser({ voice: event.target.value })
+                      }
+                    />
+                  </label>
+                )}
                 <label className="sound-setting">
                   <input
                     type="checkbox"

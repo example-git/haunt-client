@@ -2,6 +2,7 @@ import { DMStorageMeter } from "./DMStorage";
 import { NoiseControls, useAudioPlugins } from "./NoiseControls";
 import { copyText } from "./clipboard";
 import { ClientSettingsContent, clientSettingsTabs } from "./ClientSettings";
+import { SettingsNavigation } from "./SettingsNavigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { Copy, LogOut, Monitor, Plus, Trash2 } from "lucide-react";
 import {
@@ -75,64 +76,31 @@ export function AccountSettings({
     void load().catch((e) => setError(friendlyError(e)));
   }, [tab]);
   return (
-    <Modal title="User settings" onClose={onClose} wide>
+    <Modal title="User settings" onClose={onClose} wide settings>
       <div className="settings-layout user-settings-layout">
-        <nav className="settings-nav" aria-label="User settings sections">
-          <strong>{instance.account.instance.name}</strong>
-          {[
+        <SettingsNavigation
+          scope={instance.account.instance.name}
+          selected={tab}
+          items={[
             ["profile", "Profile"],
             ["account", "Account"],
             ...(canInvite ? [["invites", "Invitations"]] : []),
-          ].map(([id, label]) => (
-            <button
-              key={id}
-              className={tab === id ? "active" : ""}
-              onClick={() => {
-                setTab(id);
-                onTabChange?.(id);
-                setError("");
-                setNotice("");
-              }}
-            >
-              {label}
-            </button>
-          ))}
-          {audioPlugins.length > 0 && (
-            <button
-              className={tab === "audio-plugins" ? "active" : ""}
-              onClick={() => setTab("audio-plugins")}
-            >
-              Server audio plugins
-            </button>
-          )}
-          <button
-            className={tab === "narrator" ? "active" : ""}
-            onClick={() => { setTab("narrator"); onTabChange?.("narrator"); }}
-          >
-            Text to speech
-          </button>
-          <strong className="settings-group">This device</strong>
-          {clientSettingsTabs
-            .filter(
-              ([id]) => id !== "updates" || !!window.hauntDesktop?.updates,
-            )
-            .filter(([id]) => id !== "audio-plugins" && id !== "narrator")
-            .map(([id, label]) => (
-              <button
-                key={id}
-                className={tab === id ? "active" : ""}
-                onClick={() => {
-                  setTab(id);
-                  onTabChange?.(id);
-                  setError("");
-                  setNotice("");
-                }}
-              >
-                {label}
-              </button>
-            ))}
-        </nav>
-        <div className="settings-content">
+            ...clientSettingsTabs
+              .filter(
+                ([id]) => id !== "updates" || !!window.hauntDesktop?.updates,
+              )
+              .filter(
+                ([id]) => id !== "audio-plugins" || audioPlugins.length > 0,
+              ),
+          ].map(([id, label]) => [id, label] as const)}
+          onSelect={(id) => {
+            setTab(id);
+            onTabChange?.(id);
+            setError("");
+            setNotice("");
+          }}
+        />
+        <div className="settings-content" key={tab}>
           {tab === "audio-plugins" && <NoiseControls instance={instance} />}
           {[
             "appearance",

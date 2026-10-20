@@ -25,6 +25,15 @@
 .tts-settings .sound-setting {
   margin: 0;
 }
+.tts-voice-select {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.tts-voice-select select {
+  width: 100%;
+}
 .tts-settings details > .form {
   margin-top: 0.65rem;
   gap: 0.65rem;
@@ -37,8 +46,7 @@
   width: 100%;
 }
 @media (max-width: 560px) {
-  .tts-grid,
-  .tts-events {
+  .tts-grid:not(.tts-sliders) {
     grid-template-columns: 1fr;
   }
 }

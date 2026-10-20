@@ -9,6 +9,7 @@ import { SyncPanel } from "./SyncPanel";
 import { desktopClient } from "@haunt/browser/client-context";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { NarratorSettings } from "./NarratorSettings";
+import { SettingsNavigation } from "./SettingsNavigation";
 import { MicrophoneMeter } from "./MicrophoneMeter";
 import { NoiseControls, useAudioPlugins } from "./NoiseControls";
 import { pluginSelection } from "@haunt/browser/audio-plugins/preferences";
@@ -308,30 +309,31 @@ export function ClientSettings({
       ? "devices"
       : selectedTab;
   return (
-    <Modal title="User settings" onClose={onClose} wide>
-      <div className="tabs">
-        {clientSettingsTabs
-          .filter(([id]) => id !== "updates" || !!window.hauntDesktop?.updates)
-          .filter(([id]) => id !== "audio-plugins" || plugins.length > 0)
-          .map(([id, label]) => (
-            <button
-              key={id}
-              className={tab === id ? "active" : ""}
-              onClick={() => {
-                setTab(id);
-                onTabChange?.(id);
-              }}
-            >
-              {label}
-            </button>
-          ))}
+    <Modal title="User settings" onClose={onClose} wide settings>
+      <div className="settings-layout">
+        <SettingsNavigation
+          kind="device"
+          scope="This device"
+          selected={tab}
+          items={clientSettingsTabs
+            .filter(
+              ([id]) => id !== "updates" || !!window.hauntDesktop?.updates,
+            )
+            .filter(([id]) => id !== "audio-plugins" || plugins.length > 0)}
+          onSelect={(id) => {
+            setTab(id);
+            onTabChange?.(id);
+          }}
+        />
+        <div className="settings-content" key={tab}>
+          <ClientSettingsContent
+            key={tab}
+            instances={instances}
+            tab={tab}
+            call={call}
+          />
+        </div>
       </div>
-      <ClientSettingsContent
-        key={tab}
-        instances={instances}
-        tab={tab}
-        call={call}
-      />
     </Modal>
   );
 }
@@ -457,10 +459,12 @@ export function ClientSettingsContent({
   };
   return (
     <>
-      <p className="muted small">
-        Saved on this device for{" "}
-        {desktopClient() ? "all your servers" : "this server"}.
-      </p>
+      {tab !== "narrator" && (
+        <p className="muted small">
+          Saved on this device for{" "}
+          {desktopClient() ? "all your servers" : "this server"}.
+        </p>
+      )}
       <ErrorNotice error={error} />
       {tab === "updates" && <DesktopUpdates />}
       {tab === "audio-plugins" && (
@@ -488,7 +492,9 @@ export function ClientSettingsContent({
         </section>
       )}
       {tab === "appearance" && <AppearanceSettings />}
-      {tab === "narrator" && <NarratorSettings instance={instance ?? instances[0]} />}
+      {tab === "narrator" && (
+        <NarratorSettings instance={instance ?? instances[0]} />
+      )}
       {tab === "backups" && <Backups />}
       {tab === "sync" && <SyncPanel />}
       {(tab === "notifications" || tab === "servers") && (

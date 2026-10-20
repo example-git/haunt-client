@@ -1,9 +1,14 @@
 # Text to speech
 
-Open **Client settings → Text to speech**, below voice plugins. This compact
+Open **Account settings → Text to speech**, below voice plugins. This compact
 section controls personal narration for the current server/account; provider
 credentials and setup belong in the separate owner-only **Server settings →
 Server extensions** page.
+
+Settings navigation is grouped and searchable: search **TikTok** to find the
+speech page or the server extension. Groups collapse independently, and the
+header's expand control gives you more room without losing the close button.
+On narrow screens, use **Browse settings** to switch sections.
 
 ## Provider and fallback
 
@@ -23,9 +28,20 @@ are available, install a system voice supported by your browser or desktop
 runtime. Device speech uses the OS default output; extension audio follows
 Haunt's Devices output selection. Volume and speed apply only to the narrator.
 
+The **TikTok voice** picker lists 42 voices grouped by language/region and
+characters, with readable names and their IDs. The same list is available for
+per-user overrides and the owner's extension test. Choose **Custom voice ID**
+to use an unlisted voice; existing custom IDs remain editable. A user's
+**Use default voice** option removes their override. Actual voice availability
+depends on the upstream provider.
+
 ## Announcements
 
 Enable narration and choose joins/leaves, mute/deafen changes or screen sharing.
+These events announce **other participants in your current call**, using the
+name and voice override of the person who acted. **Ignore myself** suppresses
+only your own actions; it does not suppress anyone else's. Turn it off to also
+hear your own state changes. **Ignore this user** suppresses that user's events.
 Only you hear the audio; it is not published into the call or sent as a message.
 Expand advanced settings for cooldown and fallback voice, announcement text, or
 voices/ignored users on this server. Templates support `{{USER}}`,
@@ -47,7 +63,12 @@ a call or enabling automatic announcements.
 ```sh
 npm test -- tests/server-extensions.test.ts tests/narrator-events.test.ts tests/narrator-playback.test.ts
 npm run typecheck
+HAUNT_CLIENT_CHECK=narrator npm run test:integration
 ```
 
-Transport tests mock the server/provider. Live TikTok credentials and audio
-availability still require an owner-operated test before release.
+The browser check signs in two independent clients on real isolated servers and
+tests both WebRTC and WebSocket calls. It asserts the actor's name and voice in
+speech requests, measures actual audio playback, and checks ignores and disabled
+events. Only the external TikTok response is simulated with a generated MP3 tone;
+no live credentials are needed. Use the owner's **Test extension** control to
+check live TikTok voice availability and pronunciation.

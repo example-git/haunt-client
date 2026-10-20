@@ -95,6 +95,8 @@ import {
   Users,
   X,
   MoreHorizontal,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import {
   friendlyError,
@@ -134,13 +136,16 @@ export function Modal({
   onClose,
   children,
   wide = false,
+  settings = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
+  settings?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     dialog.current?.showModal();
     return () => dialog.current?.close();
@@ -148,7 +153,15 @@ export function Modal({
   return (
     <dialog
       aria-label={title}
-      className={wide ? "wide-dialog" : undefined}
+      className={
+        [
+          wide && "wide-dialog",
+          settings && "settings-dialog",
+          expanded && "settings-expanded",
+        ]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
       ref={dialog}
       onCancel={(event) => {
         event.preventDefault();
@@ -159,10 +172,27 @@ export function Modal({
       }}
     >
       <div className="dialog-head">
-        <h2>{title}</h2>
-        <button className="icon" aria-label="Close" onClick={onClose}>
-          <X size={20} />
-        </button>
+        <h2>
+          {settings && <Settings size={18} aria-hidden="true" />}
+          {title}
+        </h2>
+        <div className={settings ? "settings-dialog-actions" : undefined}>
+          {settings && (
+            <button
+              className="icon"
+              aria-label={
+                expanded ? "Restore settings size" : "Expand settings"
+              }
+              title={expanded ? "Restore size" : "Expand"}
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+            </button>
+          )}
+          <button className="icon" aria-label="Close" onClick={onClose}>
+            <X size={20} />
+          </button>
+        </div>
       </div>
       {children}
     </dialog>

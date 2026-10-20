@@ -7,6 +7,7 @@ for (const mode of [
   "signin-browser",
   "secure-dm",
   "source-audio",
+  "narrator",
   "web-updates",
 ]) {
   console.log(`Browser regression: ${mode}`);

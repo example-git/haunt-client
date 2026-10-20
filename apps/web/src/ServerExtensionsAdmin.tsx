@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { InstanceClient, ServerExtensionConfiguration } from "@haunt/core";
 import { followAudioOutput } from "@haunt/browser/audio-output";
 import { Status, useAction } from "./Customization";
+import { TikTokVoiceSelect } from "./TikTokVoiceSelect";
+import { KeyRound } from "lucide-react";
 import "./tts-settings.css";
 
 export function ServerExtensionsAdmin({
@@ -187,7 +189,10 @@ export function ServerExtensionsAdmin({
             </fieldset>
           </form>
           <details>
-            <summary>About credentials</summary>
+            <summary>
+              <KeyRound size={15} aria-hidden="true" />
+              About credentials
+            </summary>
             <p className="muted small">
               Use a TikTok sessionid obtained from an account you control. This
               endpoint uses a session token, not the old Worker’s relay API key.
@@ -202,14 +207,11 @@ export function ServerExtensionsAdmin({
             device fallback.
           </p>
           <div className="tts-grid">
-            <label>
-              Test voice
-              <input
-                value={voice}
-                maxLength={64}
-                onChange={(event) => setVoice(event.target.value)}
-              />
-            </label>
+            <TikTokVoiceSelect
+              label="Test voice"
+              value={voice}
+              onChange={setVoice}
+            />
             <label>
               Test text
               <input

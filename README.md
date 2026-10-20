@@ -19,6 +19,7 @@ under active development and does not implement every Discord feature.
 - Per-user/source volume settings, device selection, microphone monitoring and local audio controls.
 - Optional server audio plugins with cached packages and schema-driven settings.
 - Optional [text to speech](docs/narrator.md) with server-hosted speech extensions and independently optional device TTS fallback.
+- Compact, rounded settings with icon navigation, search, collapsible groups and expandable desktop/mobile layouts.
 - Call tiles, speaking indicators, persistent controls and a movable picture-in-picture view.
 - Native desktop windows, call popouts, screen-source selection and native Apple Silicon capture.
 - Archive-based desktop updates, with signature verification and failed-startup rollback.
