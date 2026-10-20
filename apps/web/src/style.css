@@ -173,8 +173,9 @@ input[type="checkbox"] {
   height: 27px;
   width: 3px;
   position: absolute;
-  left: -17px;
-  top: 9px;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
   background: var(--accent);
   border-radius: 4px;
 }
@@ -1242,7 +1243,7 @@ summary {
     border-radius: 14px;
   }
   .server-icon.selected:before {
-    left: -11px;
+    left: -8px;
   }
   .sidebar {
     display: none;
@@ -5392,6 +5393,9 @@ button:disabled:hover {
 }
 .server-rail .brand-mark {
   width: 48px;
+  height: 48px;
+  padding: 3px;
+  margin-top: 0;
 }
 .server-rail .brand-mark img {
   width: 42px;
