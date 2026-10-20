@@ -361,7 +361,7 @@ app.whenReady().then(async () => {
   });
   const nativeNotifications = createNotificationService({
     Notification,
-    window,
+    getWindow: () => window,
     icon: path.join(app.getAppPath(), "dist/brand/logo-128.png"),
     onError: (message) => {
       if (!window.isDestroyed())

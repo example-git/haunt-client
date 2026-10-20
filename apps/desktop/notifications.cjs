@@ -51,7 +51,7 @@ function validateBadge(value) {
 /** Native delivery is shared by real message events and the settings test. */
 function createNotificationService({
   Notification,
-  window,
+  getWindow,
   icon,
   onError = () => {},
 }) {
@@ -81,6 +81,7 @@ function createNotificationService({
       if (popups.get(key) === popup) popups.delete(key);
     };
     popup.on("click", () => {
+      const window = getWindow();
       if (!window || window.isDestroyed()) return;
       if (window.isMinimized()) window.restore();
       window.show();

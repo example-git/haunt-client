@@ -30,7 +30,7 @@ function fixture() {
   const onError = vi.fn();
   const service = createNotificationService({
     Notification,
-    window,
+    getWindow: () => window,
     onError,
     icon: "haunt.png",
   });
@@ -65,6 +65,25 @@ it("delivers simultaneous conversations, replaces the same conversation, and ret
   expect(f.popups[1].close).toHaveBeenCalledOnce();
 });
 
+it("resolves the window at click time when the service precedes window creation", async () => {
+  const f = fixture();
+  let window: typeof f.window | undefined;
+  const service = createNotificationService({
+    Notification: f.Notification,
+    getWindow: () => window,
+    icon: "haunt.png",
+  });
+  await service.show(message);
+  window = f.window;
+  f.popups[0].emit("click");
+  expect(window.show).toHaveBeenCalledOnce();
+  expect(window.webContents.send).toHaveBeenCalledWith("notification:click", {
+    instance: "server",
+    conversation: "conversation",
+  });
+  service.dispose();
+});
+
 it("surfaces native failure and distinguishes unacknowledged submission from display", async () => {
   vi.useFakeTimers();
   const f = fixture();
@@ -77,7 +96,7 @@ it("surfaces native failure and distinguishes unacknowledged submission from dis
   };
   const service = createNotificationService({
     Notification: Native,
-    window: f.window,
+    getWindow: () => f.window,
     onError: f.onError,
   });
   const failing = service.show(message);
