@@ -1,3 +1,4 @@
+import { Permission } from "./Permissions";
 import { AudioPluginsAdmin } from "./AudioPluginsAdmin";
 import { ServerExtensionsAdmin } from "./ServerExtensionsAdmin";
 import { SettingsNavigation } from "./SettingsNavigation";
@@ -30,6 +31,7 @@ import { Avatar, displayName, useArt } from "./People";
 
 type Role = Schemas["IdentityRole"];
 const permissions = [
+  [Permission.Administrator, "Administrator"],
   [1, "View channels"],
   [2, "Send messages"],
   [4, "Join voice channels"],
@@ -44,7 +46,7 @@ const permissions = [
   [2048, "View member IPs & manage IP bans"],
   [4096, "Delete channel messages"],
   [8192, "Reset member passwords"],
-  [16384, "Manage server configuration & storage"],
+  [16384, "Manage configuration, storage & extensions"],
 ] as const;
 export function useAction() {
   const [busy, setBusy] = useState(false),
@@ -608,25 +610,29 @@ function ChannelPermissions({
           ))}
         </select>
       </label>
-      {permissions.slice(0, 3).map(([bit, label]) => (
-        <label className="permission-row" key={bit}>
-          <span>{label}</span>
-          <select
-            aria-label={label}
-            value={deny & bit ? "deny" : allow & bit ? "allow" : "inherit"}
-            onChange={(e) => {
-              setAllow((v) =>
-                e.target.value === "allow" ? v | bit : v & ~bit,
-              );
-              setDeny((v) => (e.target.value === "deny" ? v | bit : v & ~bit));
-            }}
-          >
-            <option value="inherit">Inherit</option>
-            <option value="allow">Allow</option>
-            <option value="deny">Deny</option>
-          </select>
-        </label>
-      ))}
+      {permissions
+        .filter(([bit]) => bit <= 4)
+        .map(([bit, label]) => (
+          <label className="permission-row" key={bit}>
+            <span>{label}</span>
+            <select
+              aria-label={label}
+              value={deny & bit ? "deny" : allow & bit ? "allow" : "inherit"}
+              onChange={(e) => {
+                setAllow((v) =>
+                  e.target.value === "allow" ? v | bit : v & ~bit,
+                );
+                setDeny((v) =>
+                  e.target.value === "deny" ? v | bit : v & ~bit,
+                );
+              }}
+            >
+              <option value="inherit">Inherit</option>
+              <option value="allow">Allow</option>
+              <option value="deny">Deny</option>
+            </select>
+          </label>
+        ))}
       <Status action={action} />
       <button
         className="primary"
@@ -666,7 +672,7 @@ export function ServerSettings({
 }) {
   useSyncExternalStore(instance.subscribe, instance.getSnapshot);
   const fallbackTabs = [
-    ...(instance.account.login.user.is_owner &&
+    ...(can(instance, Permission.ManageConfiguration) &&
     instance.account.instance.capabilities?.includes("server.extensions.v1")
       ? [["server-extensions", "Server extensions"]]
       : []),
@@ -1027,7 +1033,8 @@ function RoleManager({ instance }: { instance: InstanceClient }) {
                 value={r.id}
                 disabled={
                   !instance.account.login.user.is_owner &&
-                  (r.is_default || r.position >= instance.snapshot.rolePosition)
+                  ((r.is_default && !can(instance, Permission.Administrator)) ||
+                    r.position >= instance.snapshot.rolePosition)
                 }
               >
                 {r.name}
@@ -1082,20 +1089,39 @@ function RoleManager({ instance }: { instance: InstanceClient }) {
         )}
         <fieldset className="permission-checks">
           <legend>Server permissions</legend>
-          {permissions.map(([bit, label]) => (
-            <label key={bit}>
-              <input
-                type="checkbox"
-                checked={!!(bits & bit)}
-                disabled={!can(instance, bit)}
-                onChange={(e) =>
-                  setBits((v) => (e.target.checked ? v | bit : v & ~bit))
-                }
-              />
-              {label}
-            </label>
-          ))}
+          {permissions
+            .filter(
+              ([bit]) =>
+                bit !== Permission.Administrator ||
+                instance.account.instance.capabilities?.includes(
+                  "community.administrator",
+                ),
+            )
+            .map(([bit, label]) => (
+              <label key={bit}>
+                <input
+                  type="checkbox"
+                  checked={!!(bits & (bit | Permission.Administrator))}
+                  disabled={
+                    !can(instance, bit) ||
+                    (bit !== Permission.Administrator &&
+                      !!(bits & Permission.Administrator))
+                  }
+                  onChange={(e) =>
+                    setBits((v) => (e.target.checked ? v | bit : v & ~bit))
+                  }
+                />
+                {label}
+              </label>
+            ))}
         </fieldset>
+        {!!(bits & Permission.Administrator) && (
+          <p className="muted small">
+            Administrator grants every server permission, including extensions,
+            and bypasses channel permission overrides. Role ranking still
+            applies.
+          </p>
+        )}
         <Status action={action} />
         <div className="button-row">
           <button className="primary" disabled={action.busy}>

@@ -30,7 +30,11 @@ const {
   installDesktopCors,
 } = require("./network.cjs");
 const { installTray } = require("./tray.cjs");
-const { validateNotification, validateBadge } = require("./notifications.cjs");
+const {
+  validateNotification,
+  validateBadge,
+  createNotificationService,
+} = require("./notifications.cjs");
 const { chooseCapture } = require("./capture-picker.cjs");
 const { installNativeMedia } = require("./native-media.cjs");
 const { DiskMediaCache } = require("./media-cache.cjs");
@@ -54,6 +58,8 @@ if (process.platform === "win32") {
     : require("../../electron-builder.config.json").appId;
   app.setAppUserModelId(appId);
 }
+if (process.platform === "linux" && !app.isReady())
+  app.setDesktopName(require("../../package.json").desktopName);
 const APP_ORIGIN = "https://app.chatxo.local";
 const testMode = !app.isPackaged && process.env.HAUNT_DESKTOP_TEST === "1";
 const testProfile = process.env.HAUNT_DESKTOP_TEST_PROFILE;
@@ -274,7 +280,13 @@ app.whenReady().then(async () => {
       return;
     }
     if (
-      ["clipboard-sanitized-write", "speaker-selection", "local-network-access", "local-network", "loopback-network"].includes(permission)
+      [
+        "clipboard-sanitized-write",
+        "speaker-selection",
+        "local-network-access",
+        "local-network",
+        "loopback-network",
+      ].includes(permission)
     ) {
       callback(true);
       return;
@@ -347,52 +359,28 @@ app.whenReady().then(async () => {
       }
     }
   });
-  const popups = new Set();
-  let lastPopup = 0;
+  const nativeNotifications = createNotificationService({
+    Notification,
+    window,
+    icon: path.join(app.getAppPath(), "dist/brand/logo-128.png"),
+    onError: (message) => {
+      if (!window.isDestroyed())
+        window.webContents.send("notification:error", message);
+    },
+  });
   ipcMain.handle("notification:available", (event) => {
     validateSender(event);
     return Notification.isSupported();
   });
   ipcMain.handle("notification:show", (event, raw) => {
     validateSender(event);
-    const value = validateNotification(raw);
-    if (!Notification.isSupported() || Date.now() - lastPopup < 1000) return;
-    lastPopup = Date.now();
-    const popup = new Notification({
-      title: value.title,
-      body: value.body,
-      silent: true,
-    });
-    popups.add(popup);
-    while (popups.size > 5) {
-      const oldest = popups.values().next().value;
-      oldest.close();
-      popups.delete(oldest);
-    }
-    popup.on("click", () => {
-      if (!window || window.isDestroyed()) return;
-      if (window.isMinimized()) window.restore();
-      window.show();
-      window.focus();
-      window.webContents.send("notification:click", {
-        instance: value.instance,
-        conversation: value.conversation,
-      });
-      popup.close();
-      popups.delete(popup);
-    });
-    popup.on("close", () => popups.delete(popup));
-    popup.on("failed", () => popups.delete(popup));
-    popup.show();
-    setTimeout(() => {
-      popup.close();
-      popups.delete(popup);
-    }, 15000).unref();
+    return nativeNotifications.show(validateNotification(raw));
   });
-  app.on("before-quit", () => {
-    for (const popup of popups) popup.close();
-    popups.clear();
+  ipcMain.handle("notification:test", (event) => {
+    validateSender(event);
+    return nativeNotifications.test();
   });
+  app.on("before-quit", nativeNotifications.dispose);
   const serversPath = path.join(app.getPath("userData"), "known-servers.json");
   const mediaCache = new DiskMediaCache(
     path.join(app.getPath("userData"), "media-cache-v1"),

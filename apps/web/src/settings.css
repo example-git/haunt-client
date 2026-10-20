@@ -29,11 +29,8 @@ dialog.settings-dialog {
   margin: 0;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(
-    110deg,
-    color-mix(in srgb, var(--accent) 13%, transparent),
-    transparent 65%
-  );
+  background: var(--chrome-fill, var(--haunt-surface));
+  border-radius: 22px 22px 0 0;
 }
 .settings-dialog .dialog-head h2 {
   display: flex;
@@ -77,7 +74,8 @@ dialog.settings-dialog {
   padding: 12px 10px;
   margin: 0;
   border-right: 1px solid var(--line);
-  background: color-mix(in srgb, var(--haunt-surface) 52%, transparent);
+  background: var(--sidebar-fill, var(--haunt-surface));
+  border-radius: 0;
   overflow: auto;
   scrollbar-width: thin;
 }
@@ -163,8 +161,8 @@ dialog.settings-dialog {
 }
 .settings-dialog .settings-nav-item.active {
   border-color: color-mix(in srgb, var(--accent) 25%, transparent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--haunt-surface));
-  color: var(--accent);
+  background: var(--layer-button);
+  color: var(--layer-button-text);
 }
 .settings-dialog .settings-nav-item.active svg {
   filter: drop-shadow(

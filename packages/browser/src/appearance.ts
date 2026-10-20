@@ -3,6 +3,7 @@ import { defaultAccent } from "./palette";
 import {
   accentText,
   luminance,
+  layerPalette,
   minimumSidebarOpacity,
   themeBackground,
   type WindowEffect,
@@ -39,10 +40,26 @@ export function installAppearance() {
     const chatBackground = theme.gradient
       ? `linear-gradient(${theme.gradient.angle}deg, ${theme.gradient.colors.map((c) => `color-mix(in srgb, ${colors.surface} 88%, ${c})`).join(", ")})`
       : colors.surface;
+    const layers = Object.fromEntries(
+      ["sidebar", "chrome"].flatMap((name) => {
+        const palette = layerPalette(
+          colors[name as "sidebar" | "chrome"],
+          colors,
+          color,
+        );
+        return Object.entries(palette).map(([key, value]) => [
+          `--${name}-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
+          String(value),
+        ]);
+      }),
+    );
     // The rim stays bright even in light themes; its tint follows the palette.
     const ice = `color-mix(in srgb, ${colors.text} ${dark ? 18 : 6}%, white)`;
     const variables: Record<string, string> = {
+      ...layers,
       "--haunt-black": colors.background,
+      "--chrome-fill": colors.chrome,
+      "--sidebar-fill": colors.sidebar,
       "--brand-icon-filter": dark ? "none" : "invert(1)",
       "--identity-text-mix": dark ? "0%" : "65%",
       "--theme-backdrop": themeBackground(theme),
@@ -87,16 +104,16 @@ export function installAppearance() {
           : themeBackground(theme, railOpacity),
       "--sidebar-surface":
         effect === "solid"
-          ? colors.surface
+          ? colors.sidebar
           : themeBackground(
-              { ...theme, colors: { ...colors, background: colors.surface } },
+              { ...theme, colors: { ...colors, background: colors.sidebar } },
               sidebarOpacity,
             ),
       "--titlebar-background":
         effect === "solid"
-          ? colors.surface
+          ? colors.chrome
           : themeBackground(
-              { ...theme, colors: { ...colors, background: colors.surface } },
+              { ...theme, colors: { ...colors, background: colors.chrome } },
               titlebarOpacity,
             ),
       "--glass-content-background": chatBackground,

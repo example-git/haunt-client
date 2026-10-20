@@ -1,3 +1,7 @@
+import {
+  prepareNativeNotifications,
+  checkNativeNotifications,
+} from "./check-native-notifications.mjs";
 // Native CI only. Install two real releases into a private directory/profile.
 // This tests full-installer replacement; the automatic ASAR restart is a separate
 // qualification case and is never inferred from this result.
@@ -64,7 +68,7 @@ const profile = path.join(scratch, "profile");
 await fs.mkdir(downloads);
 await fs.mkdir(installed);
 const marker = randomUUID();
-let app;
+let app, notificationFixture;
 const report = {
   target,
   from: previousTag.slice(8),
@@ -129,6 +133,11 @@ async function install(filename) {
   return path.join(installed, "squashfs-root/haunt");
 }
 async function launch(executablePath, version, restore) {
+  if (restore)
+    notificationFixture = await prepareNativeNotifications(
+      scratch,
+      executablePath,
+    );
   app = await electron.launch({
     executablePath,
     args: [
@@ -155,6 +164,12 @@ async function launch(executablePath, version, restore) {
     await page.evaluate(
       (value) => localStorage.setItem("haunt-upgrade-rehearsal", value),
       marker,
+    );
+  if (restore)
+    report.notifications = await checkNativeNotifications(
+      app,
+      page,
+      notificationFixture,
     );
   assert.deepEqual(errors, []);
   await app.close();
@@ -218,7 +233,8 @@ try {
     `test-results/installed-upgrade-${target}.json`,
     JSON.stringify(report, null, 2),
   );
-  await app?.close();
+  await app?.close().finally(() => notificationFixture?.stop());
+  notificationFixture?.stop();
   await fs.rm(scratch, {
     recursive: true,
     force: true,

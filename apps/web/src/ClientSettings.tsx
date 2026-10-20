@@ -45,7 +45,13 @@ import {
   setSoundsEnabled,
   soundsEnabled,
 } from "@haunt/browser/sounds";
-import { enablePopups, popupPermission } from "@haunt/browser/notifications";
+import {
+  enablePopups,
+  popupPermission,
+  testNotification,
+  notificationError,
+  subscribeNotificationHealth,
+} from "@haunt/browser/notifications";
 import { ErrorNotice, Modal } from "./App";
 import type { Call } from "@haunt/browser/media/call";
 const ruleOptions = (
@@ -348,6 +354,11 @@ export function ClientSettingsContent({
   call?: Call;
   tab: string;
 }) {
+  const notificationFailure = useSyncExternalStore(
+    subscribeNotificationHealth,
+    notificationError,
+  );
+  const [notificationTest, setNotificationTest] = useState("");
   const [audioServer, setAudioServer] = useState(
     instance?.scope ?? instances[0]?.scope,
   );
@@ -636,6 +647,45 @@ export function ClientSettingsContent({
             />
             Desktop popups when the app is in the background
           </label>
+          <div className="button-row">
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  setNotificationTest("");
+                  setNotificationTest(await testNotification());
+                })
+              }
+            >
+              Send test notification
+            </button>
+          </div>
+          {notificationTest && (
+            <p className="muted small" role="status">
+              {notificationTest}
+            </p>
+          )}
+          {notificationFailure && (
+            <p className="error" role="alert">
+              {notificationFailure}
+            </p>
+          )}
+          {window.hauntDesktop?.platform === "darwin" && (
+            <p className="muted small">
+              Allow Haunt alerts and badges in macOS System Settings →
+              Notifications. Focus modes can silence alerts. Unread counts also
+              appear beside Haunt in the menu bar.
+            </p>
+          )}
+          {window.hauntDesktop?.platform === "linux" && (
+            <p className="muted small">
+              Unread counts appear in the tray and supported docks. Your desktop
+              must support launcher badges; desktop notification settings can
+              silence popups.
+            </p>
+          )}
           {prefs.desktopPopups && (
             <>
               <label className="sound-setting">

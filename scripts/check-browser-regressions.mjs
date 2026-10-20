@@ -8,6 +8,8 @@ for (const mode of [
   "secure-dm",
   "source-audio",
   "narrator",
+  "ui-refresh",
+  "notifications",
   "web-updates",
 ]) {
   console.log(`Browser regression: ${mode}`);

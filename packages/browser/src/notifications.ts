@@ -218,7 +218,40 @@ export async function enablePopups() {
       "Allow notifications for this site in your browser settings to enable desktop popups.",
     );
 }
-let lastPopup = 0;
+let deliveryError = "";
+const healthListeners = new Set<() => void>();
+export const notificationError = () => deliveryError;
+export const subscribeNotificationHealth = (listener: () => void) => {
+  healthListeners.add(listener);
+  return () => {
+    healthListeners.delete(listener);
+  };
+};
+export function reportNotificationError(message: string) {
+  deliveryError = message;
+  healthListeners.forEach((listener) => listener());
+}
+export async function testNotification() {
+  reportNotificationError("");
+  if (window.hauntDesktop) {
+    if (!window.hauntDesktop.testNotification)
+      throw Error("Update the desktop client to use the notification test.");
+    const result = await window.hauntDesktop.testNotification();
+    return result === "shown"
+      ? "The system acknowledged the test. Check your notifications for Haunt."
+      : "Test sent to the system. Check your notifications and system notification settings.";
+  }
+  await enablePopups();
+  const popup = new Notification("Haunt notification test", {
+    body: "Notifications can appear here while Haunt is in the background.",
+    silent: true,
+  });
+  popup.onerror = () =>
+    reportNotificationError(
+      "The browser could not display the test notification.",
+    );
+  return "Test sent to your browser. Check for a Haunt notification.";
+}
 const livePopups = new Set<Notification>();
 export function deliverPing(
   ping: Ping,
@@ -236,11 +269,9 @@ export function deliverPing(
   ).catch(() => {});
   if (
     !prefs.desktopPopups ||
-    (document.visibilityState === "visible" && document.hasFocus()) ||
-    Date.now() - lastPopup < 1000
+    (document.visibilityState === "visible" && document.hasFocus())
   )
     return;
-  lastPopup = Date.now();
   const payload = {
     title: ping.title,
     body: prefs.previewMessages ? ping.body : "New message",
@@ -248,7 +279,11 @@ export function deliverPing(
     conversation: ping.conversation,
   };
   if (window.hauntDesktop) {
-    void window.hauntDesktop.showNotification(payload).catch(() => {});
+    void window.hauntDesktop.showNotification(payload).catch((error) => {
+      reportNotificationError(
+        error instanceof Error ? error.message : String(error),
+      );
+    });
     return;
   }
   if (popupPermission() !== "granted") return;
@@ -259,7 +294,7 @@ export function deliverPing(
       silent: true,
     });
     livePopups.add(popup);
-    while (livePopups.size > 5) {
+    while (livePopups.size > 50) {
       const oldest = livePopups.values().next().value!;
       oldest.close();
       livePopups.delete(oldest);
@@ -271,11 +306,13 @@ export function deliverPing(
       popup.close();
       livePopups.delete(popup);
     };
-    setTimeout(() => {
-      popup.close();
-      livePopups.delete(popup);
-    }, 15000);
-  } catch {
-    /* OS/browser may decline delivery after permission changes. */
+    popup.onerror = () =>
+      reportNotificationError(
+        "The browser could not display a notification. Check site permissions.",
+      );
+  } catch (error) {
+    reportNotificationError(
+      error instanceof Error ? error.message : String(error),
+    );
   }
 }

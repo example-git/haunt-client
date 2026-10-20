@@ -30,6 +30,57 @@ const raw = (body = wire): Message => ({
   attachment_ids: ["image"],
   body,
 });
+for (const kind of ["memory", "indexeddb"]) {
+  it(`${kind} resolves old replies by ID within the account and conversation, including encrypted edits and deletion`, async () => {
+    const store =
+      kind === "memory"
+        ? new MemoryStore()
+        : new IndexedDBStore(`reply-cache-${crypto.randomUUID()}`);
+    const instance = client(store, async (message) => ({
+      ...message,
+      body: "Decrypted reply target",
+      security: "encrypted",
+    }));
+    try {
+      await store.merge(instance.scope, [
+        raw(),
+        ...Array.from({ length: 105 }, (_, i) => ({
+          ...raw("Newer message"),
+          id: `newer-${i}`,
+          seq: i + 2,
+        })),
+      ]);
+      expect(
+        (await instance.messages("dm", { limit: 100 })).some(
+          (message) => message.id === "message",
+        ),
+      ).toBe(false);
+      expect(
+        await instance.message("other-conversation", "message"),
+      ).toBeUndefined();
+      expect(
+        await store.message("other-account", "dm", "message"),
+      ).toBeUndefined();
+      expect(await instance.message("dm", "message")).toMatchObject({
+        body: "Decrypted reply target",
+        security: "encrypted",
+      });
+      await store.merge(instance.scope, [
+        { ...raw("Edited target"), edited_at: "2026-10-12T12:01:00Z" },
+      ]);
+      expect((await instance.message("dm", "message"))?.body).toBe(
+        "Edited target",
+      );
+      await store.merge(instance.scope, [{ ...raw(), deleted: true }]);
+      expect(await instance.message("dm", "message")).toMatchObject({
+        deleted: true,
+        body: "",
+      });
+    } finally {
+      if (store instanceof IndexedDBStore) await store.close();
+    }
+  });
+}
 function client(
   store: MemoryStore | IndexedDBStore,
   decode: DMEncryption["decode"],

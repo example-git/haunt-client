@@ -162,8 +162,13 @@ export class InstanceClient {
     test = false,
   ) {
     return requestExtensionSpeech(
-      (request) => this.runtime.fetch(request), this.origin,
-      this.account.login.token, extension, prompt, signal, test,
+      (request) => this.runtime.fetch(request),
+      this.origin,
+      this.account.login.token,
+      extension,
+      prompt,
+      signal,
+      test,
     );
   }
   dmRequest(path: string, method = "GET", body?: unknown) {
@@ -936,6 +941,17 @@ export class InstanceClient {
     if (repaired.length) await this.store.merge(this.scope, repaired);
     const byID = new Map(repaired.map((message) => [message.id, message]));
     return safe.map((message) => byID.get(message.id) ?? message);
+  }
+  /** Resolve a downloaded reply without loading unrelated history. */
+  async message(conversation: string, id: string) {
+    let message = await this.store.message(this.scope, conversation, id);
+    if (!message) return;
+    if (cachedMessage(message).security === "pending") {
+      await this.resolveCachedMessages([message]);
+      // A newer edit/delete may have arrived during decryption.
+      message = await this.store.message(this.scope, conversation, id);
+    }
+    return message && cachedMessage(message);
   }
   async messages(
     conversation: string,

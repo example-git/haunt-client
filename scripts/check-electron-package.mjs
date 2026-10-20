@@ -22,6 +22,7 @@ assert.equal(config.mac.hardenedRuntime, true);
 assert.equal(config.mac.notarize, false);
 for (const target of config.mac.target)
   assert.deepEqual(target.arch, ["arm64"]);
+assert.equal(config.linux.syncDesktopName, true);
 assert.equal(config.nsis.perMachine, false);
 assert.equal(config.nsis.allowToChangeInstallationDirectory, true);
 for (const platform of ["mac", "win", "linux"])
@@ -40,6 +41,10 @@ const filename = path.resolve(
   root,
   process.argv[2] ?? path.join(config.directories.output, defaultArchive),
 );
+const packagedIdentity = JSON.parse(
+  asar.extractFile(filename, "package.json").toString(),
+);
+assert.equal(packagedIdentity.desktopName, `${config.appId}.desktop`);
 const files = asar
   .listPackage(filename)
   .map((file) => file.replaceAll("\\", "/"));

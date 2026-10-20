@@ -544,39 +544,111 @@ input[type="checkbox"] {
   color: var(--muted);
   margin-left: 5px;
 }
-.message-reply-reference {
+.message-day-divider {
   display: flex;
-  align-items: baseline;
-  gap: 7px;
-  max-width: min(100%, 620px);
-  margin: 1px 0 5px;
-  padding: 3px 8px;
-  border: 0;
-  border-left: 2px solid var(--accent);
-  border-radius: 0 5px 5px 0;
+  align-items: center;
+  gap: 10px;
+  margin: 24px 0 8px;
   color: var(--muted);
-  background: color-mix(in srgb, var(--haunt-hover) 55%, transparent);
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.message-day-divider::before,
+.message-day-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.message-day-divider + .message {
+  margin-top: 8px;
+}
+.message.has-reply > .message-avatar {
+  padding-top: 21px;
+}
+.message-reply-reference {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  height: 18px;
+  margin: 0 0 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+  line-height: 18px;
   text-align: left;
 }
+.message-reply-reference::before {
+  content: "";
+  position: absolute;
+  left: -31px;
+  top: 8px;
+  width: 27px;
+  height: 12px;
+  border: 2px solid var(--line);
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 7px 0 0;
+}
 .message-reply-reference:not(:disabled):hover {
-  background: var(--haunt-hover);
   color: var(--text);
+}
+.message-reply-reference:not(:disabled):hover::before {
+  border-color: var(--muted);
 }
 .message-reply-reference:disabled {
-  opacity: 0.75;
+  opacity: 1;
+  cursor: default;
 }
 .message-reply-reference strong {
-  flex: none;
+  flex: 0 1 auto;
+  max-width: 35%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text);
-  font-size: 11px;
+  font-size: inherit;
+  font-weight: 600;
 }
-.message-reply-reference q {
+.message-reply-reference .reply-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 9px;
+}
+.reply-avatar .user-status {
+  display: none;
+}
+.reply-preview {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  quotes: none;
+}
+.message-compact-time {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 4px;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: var(--haunt-raised);
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+}
+.message:is(:hover, :focus-within) .message-compact-time {
+  opacity: 1;
 }
 .message-actions {
   display: none;
@@ -598,6 +670,9 @@ input[type="checkbox"] {
 }
 .message-actions button:hover {
   color: var(--accent);
+}
+.message-options-toggle {
+  display: none;
 }
 .deleted {
   font-size: 12px;
@@ -1207,18 +1282,28 @@ summary {
   .composer-hint > span:last-child {
     display: none;
   }
-  .message-actions {
-    position: static;
-    display: flex;
-    flex-direction: column;
-    background: none;
-    border: none;
-    opacity: 0.7;
-    padding: 0;
+  .message {
+    padding-right: 30px;
   }
-  .message-actions button {
-    font-size: 9px;
+  .message-actions,
+  .message:is(:hover, :focus-within) .message-actions {
+    display: none;
+  }
+  .message-options-toggle {
+    display: grid;
+    place-items: center;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 28px;
+    height: 28px;
     padding: 4px;
+    border-radius: 6px;
+    color: var(--muted);
+  }
+  .message-options-toggle:hover {
+    background: var(--haunt-hover);
+    color: var(--text);
   }
   .history-note {
     font-size: 8px;
@@ -5062,4 +5147,144 @@ button.mention {
   width: 100%;
   min-height: 72px;
   resize: vertical;
+}
+
+/* A layer owns its foreground and controls as well as its background. This
+   keeps pastel shell surfaces legible without recoloring the chat canvas. */
+:is(.sidebar, .member-panel, .dm-directory, .settings-nav) {
+  --layer-fill: var(--sidebar-fill);
+  --layer-text: var(--sidebar-text);
+  --layer-muted: var(--sidebar-muted);
+  --layer-border: var(--sidebar-border);
+  --layer-hover: var(--sidebar-hover);
+  --layer-button: var(--sidebar-button);
+  --layer-button-text: var(--sidebar-button-text);
+  --layer-danger: var(--sidebar-danger);
+  --layer-success: var(--sidebar-success);
+  --layer-warning: var(--sidebar-warning);
+}
+:is(.app-titlebar, .dialog-head, .voice-chat > header, .profile) {
+  --layer-fill: var(--chrome-fill);
+  --layer-text: var(--chrome-text);
+  --layer-muted: var(--chrome-muted);
+  --layer-border: var(--chrome-border);
+  --layer-hover: var(--chrome-hover);
+  --layer-button: var(--chrome-button);
+  --layer-button-text: var(--chrome-button-text);
+  --layer-danger: var(--chrome-danger);
+  --layer-success: var(--chrome-success);
+  --layer-warning: var(--chrome-warning);
+}
+:is(
+  .sidebar,
+  .member-panel,
+  .dm-directory,
+  .settings-nav,
+  .app-titlebar,
+  .dialog-head,
+  .voice-chat > header,
+  .profile
+) {
+  --text: var(--layer-text);
+  --muted: var(--layer-muted);
+  --line: var(--layer-border);
+  --accent: var(--layer-button);
+  --accent-text: var(--layer-button-text);
+  --accent-hover: var(--layer-button);
+  --haunt-text: var(--layer-text);
+  --haunt-muted: var(--layer-muted);
+  --haunt-border: var(--layer-border);
+  --haunt-control-border: var(--layer-border);
+  --haunt-focus: var(--layer-button);
+  --haunt-surface: var(--layer-fill);
+  --haunt-raised: var(--layer-hover);
+  --haunt-hover: var(--layer-hover);
+  --haunt-ember: var(--layer-button);
+  --danger: var(--layer-danger);
+  --success: var(--layer-success);
+  --haunt-danger: var(--layer-danger);
+  --haunt-success: var(--layer-success);
+  --haunt-warning: var(--layer-warning);
+  --identity-text-mix: 65%;
+  --glass-control-background: var(--layer-hover);
+  --glass-hover-background: var(--layer-hover);
+  color: var(--text);
+}
+.app-titlebar {
+  background: var(--titlebar-background);
+}
+:is(.member-panel, .dm-directory) {
+  background: var(--sidebar-surface);
+}
+:is(.settings-nav, .dialog-head, .voice-chat > header, .profile) {
+  background: var(--layer-fill);
+}
+.settings-nav {
+  border-radius: 14px;
+  padding: 10px;
+}
+.dialog-head {
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+:is(
+    .sidebar,
+    .member-panel,
+    .dm-directory,
+    .settings-nav,
+    .app-titlebar,
+    .dialog-head,
+    .voice-chat > header,
+    .profile
+  )
+  :is(
+    .primary,
+    .secondary,
+    .icon,
+    .channel.active,
+    .channel.voice-connected,
+    .settings-nav-item.active,
+    .window-controls button
+  ) {
+  --text: var(--layer-button-text);
+  --muted: var(--layer-button-text);
+  background: var(--layer-button);
+  color: var(--layer-button-text);
+  border-color: transparent;
+}
+:is(
+    .sidebar,
+    .member-panel,
+    .dm-directory,
+    .settings-nav,
+    .app-titlebar,
+    .dialog-head,
+    .voice-chat > header,
+    .profile
+  )
+  :is(
+    .primary,
+    .secondary,
+    .icon,
+    .channel.active,
+    .channel.voice-connected,
+    .settings-nav-item.active,
+    .window-controls button
+  ):hover {
+  background: color-mix(in srgb, var(--layer-button) 88%, var(--layer-fill));
+  color: var(--layer-button-text);
+}
+.channel:is(.active, .voice-connected) :is(svg, .join-label) {
+  color: inherit;
+}
+.window-controls {
+  gap: 3px;
+  padding: 5px;
+}
+.window-controls button {
+  border-radius: 6px;
+}
+.window-controls .window-close:hover {
+  background: #b83245;
+  color: #fff;
 }

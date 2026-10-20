@@ -60,6 +60,11 @@ export interface PendingMessage {
 }
 /** Implement with IndexedDB on the web or a transactional SQLite adapter on Android. */
 export interface MessageStore {
+  message(
+    scope: Scope,
+    conversation: string,
+    id: string,
+  ): Promise<Message | undefined>;
   messages(
     scope: Scope,
     conversation: string,

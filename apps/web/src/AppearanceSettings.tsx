@@ -14,6 +14,7 @@ import { defaultAccent, pastelPalette } from "@haunt/browser/palette";
 import {
   colorKeys,
   contrast,
+  layerPalette,
   defaultTheme,
   hexColor,
   minimumSidebarOpacity,
@@ -23,7 +24,8 @@ import {
 } from "@haunt/browser/themes";
 const labels = {
   background: "Background and server rail",
-  sidebar: "Channel sidebar",
+  sidebar: "Side panels",
+  chrome: "Title bars and headers",
   surface: "Chat and panels",
   raised: "Cards and controls",
   text: "Main text",
@@ -94,6 +96,17 @@ export function AppearanceSettings() {
         contrast(theme.colors.muted, c) < 4.5,
     ) ??
       false) ||
+    ["sidebar", "chrome"].some((key) => {
+      const layer = layerPalette(
+        theme.colors[key as "sidebar" | "chrome"],
+        theme.colors,
+        prefs.accentColor,
+      );
+      return (
+        contrast(layer.text, layer.background) < 4.5 ||
+        contrast(layer.button, layer.buttonText) < 4.5
+      );
+    }) ||
     colorKeys
       .filter((k) => ["background", "surface", "raised"].includes(k))
       .some(
@@ -135,9 +148,9 @@ export function AppearanceSettings() {
                 }}
                 aria-hidden="true"
               >
-                <i style={{ background: preset.colors.background }} />
+                <i style={{ background: preset.colors.sidebar }} />
                 <span>
-                  <b style={{ background: preset.accent }} />
+                  <b style={{ background: preset.colors.chrome }} />
                   <b style={{ background: preset.colors.raised }} />
                   <b style={{ background: preset.colors.muted }} />
                 </span>

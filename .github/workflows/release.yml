@@ -37,7 +37,7 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - run: npm test -- --run tests/desktop-updates.test.ts tests/desktop-installer.test.ts tests/desktop-appearance.test.ts tests/desktop-tray.test.ts
+      - run: npm test -- --run tests/desktop-updates.test.ts tests/desktop-installer.test.ts tests/desktop-appearance.test.ts tests/desktop-tray.test.ts tests/desktop-notifications.test.ts
       - run: npm run build
       - run: npm run electron:stage
       - run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never
@@ -48,13 +48,13 @@ jobs:
       - run: npm run updates:pack
       - name: Install native Linux test dependencies
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 dbus-x11 python3-dbus python3-gi
       - name: Rehearse a full installer upgrade on the native runner
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${{ matrix.platform }}" = linux ]; then
-            xvfb-run -a node scripts/check-installed-upgrade.mjs
+            dbus-run-session -- xvfb-run -a node scripts/check-installed-upgrade.mjs
           else
             node scripts/check-installed-upgrade.mjs
           fi

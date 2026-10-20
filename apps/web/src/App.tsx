@@ -1,3 +1,8 @@
+import {
+  messageDay,
+  messageDayLabel,
+  messageTimestamp,
+} from "@haunt/browser/message-dates";
 import { SyncHealthNotice } from "./SyncHealthNotice";
 import { DesktopDownload } from "./DesktopDownload";
 import { resumeSync, subscribeSync, syncStatus } from "./sync-runtime";
@@ -113,6 +118,7 @@ import { ClientSettings, NotificationRules } from "./ClientSettings";
 import {
   notifications,
   deliverPing,
+  reportNotificationError,
   type Ping,
 } from "@haunt/browser/notifications";
 import { AccountSettings } from "./Settings";
@@ -524,6 +530,10 @@ export function App() {
     return () => window.removeEventListener("haunt-sync-restored", restored);
   }, []);
   useEffect(() => installBadges(client.instances.values()), [version]);
+  useEffect(
+    () => window.hauntDesktop?.onNotificationError?.(reportNotificationError),
+    [],
+  );
   useEffect(() => {
     for (const [id, instance] of client.instances)
       instance.setForeground(view === "server" && id === selected);
@@ -1672,22 +1682,61 @@ export function ConversationView({
     [pending, setPending] = useState<PendingMessage[]>([]),
     [error, setError] = useState(""),
     [limit, setLimit] = useState(100),
+    [historyBefore, setHistoryBefore] = useState<number>(),
+    [references, setReferences] = useState(new Map<string, Message>()),
     [replyingTo, setReplyingTo] = useState<Message>(),
-    [highlighted, setHighlighted] = useState("");
+    [highlighted, setHighlighted] = useState(""),
+    [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const dropTarget = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null),
     list = useRef<HTMLDivElement>(null),
     previousHeight = useRef(0),
-    stick = useRef(true);
+    stick = useRef(true),
+    pendingReplyJump = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    setHistoryBefore(undefined);
+    setLimit(100);
+    pendingReplyJump.current = undefined;
+    stick.current = true;
+  }, [instance, conversation]);
   useEffect(() => {
     let live = true;
     void Promise.all([
-      instance.messages(conversation, { limit: limit + 1 }),
+      instance.messages(conversation, {
+        before: historyBefore,
+        limit: limit + 1,
+      }),
       instance.pending(),
     ])
-      .then(([items, drafts]) => {
+      .then(async ([items, drafts]) => {
+        const missing = [
+          ...new Set(
+            items
+              .slice(-limit)
+              .flatMap((message) =>
+                message.reply_to_id &&
+                !items.some((item) => item.id === message.reply_to_id)
+                  ? [message.reply_to_id]
+                  : [],
+              ),
+          ),
+        ];
+        const replies = await Promise.all(
+          missing.map((id) => instance.message(conversation, id)),
+        );
         if (live) {
           setMessages(items);
+          setReferences(
+            new Map(
+              replies
+                .filter((message): message is Message => !!message)
+                .map((message) => [message.id, message]),
+            ),
+          );
           setPending(drafts.filter((m) => m.conversation_id === conversation));
         }
       })
@@ -1695,11 +1744,15 @@ export function ConversationView({
     return () => {
       live = false;
     };
-  }, [instance, conversation, state.revision, limit]);
+  }, [instance, conversation, state.revision, limit, historyBefore]);
   useLayoutEffect(() => {
+    if (pendingReplyJump.current && revealReply(pendingReplyJump.current)) {
+      pendingReplyJump.current = undefined;
+      return;
+    }
     if (stick.current && list.current)
       list.current.scrollTop = list.current.scrollHeight;
-  }, [messages.at(-1)?.id, pending.length]);
+  }, [messages, pending.length]);
   useEffect(() => {
     const element = list.current;
     if (!element) return;
@@ -1736,23 +1789,28 @@ export function ConversationView({
       document.removeEventListener("visibilitychange", acknowledge);
     };
   }, [messages, conversation, state.status, visible]);
+  function revealReply(id: string) {
+    const owner = list.current?.ownerDocument;
+    if (!owner) return false;
+    const target = owner.getElementById(`message-${id}`);
+    if (!target) return false;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlighted(id);
+    owner.defaultView?.setTimeout(
+      () => setHighlighted((current) => (current === id ? "" : current)),
+      1600,
+    );
+    return true;
+  }
   const navigateReply = (id: string) => {
-    const reveal = () => {
-      const owner = list.current?.ownerDocument;
-      if (!owner) return false;
-      const target = owner.getElementById(`message-${id}`);
-      if (!target) return false;
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
-      setHighlighted(id);
-      owner.defaultView?.setTimeout(
-        () => setHighlighted((current) => (current === id ? "" : current)),
-        1600,
-      );
-      return true;
-    };
-    if (reveal() || !messages.some((message) => message.id === id)) return;
-    setLimit((current) => current + 100);
-    requestAnimationFrame(() => requestAnimationFrame(reveal));
+    stick.current = false;
+    if (revealReply(id)) return;
+    const target =
+      references.get(id) ?? messages.find((message) => message.id === id);
+    if (!target) return;
+    pendingReplyJump.current = id;
+    setLimit(100);
+    setHistoryBefore(target.seq + 1);
   };
   return (
     <div className="conversation-view" ref={dropTarget}>
@@ -1774,6 +1832,18 @@ export function ConversationView({
       >
         <div className="history-note">
           <span>Downloaded messages stay on this device</span>
+          {historyBefore !== undefined && (
+            <button
+              className="text-button"
+              onClick={() => {
+                stick.current = true;
+                setHistoryBefore(undefined);
+                setLimit(100);
+              }}
+            >
+              Return to latest messages
+            </button>
+          )}
         </div>
         {messages.length > limit && (
           <button
@@ -1787,34 +1857,54 @@ export function ConversationView({
           </button>
         )}
         {messages.slice(-limit).map((message, index, items) => (
-          <MessageRow
-            key={message.id}
-            instance={instance}
-            message={message}
-            reply={messages.find((item) => item.id === message.reply_to_id)}
-            highlighted={highlighted === message.id}
-            canReply={
-              writable &&
-              !!instance.account.instance.capabilities?.includes(
-                "messages.replies",
-              )
-            }
-            onReply={setReplyingTo}
-            onNavigateReply={navigateReply}
-            grouped={
-              index > 0 &&
-              !message.reply_to_id &&
-              items[index - 1].author_id === message.author_id &&
-              items[index - 1].security === message.security &&
-              items[index - 1].securityError === message.securityError &&
-              items[index - 1].deleted === message.deleted &&
-              Date.parse(message.created_at) -
-                Date.parse(items[index - 1].created_at) <
-                300_000
-            }
-          />
+          <Fragment key={message.id}>
+            {(index === 0 ||
+              messageDay(items[index - 1].created_at) !==
+                messageDay(message.created_at)) && (
+              <div
+                className="message-day-divider"
+                role="separator"
+                aria-label={messageDayLabel(message.created_at)}
+              >
+                <time dateTime={message.created_at}>
+                  {messageDayLabel(message.created_at)}
+                </time>
+              </div>
+            )}
+            <MessageRow
+              now={now}
+              instance={instance}
+              message={message}
+              reply={
+                messages.find((item) => item.id === message.reply_to_id) ??
+                references.get(message.reply_to_id ?? "")
+              }
+              highlighted={highlighted === message.id}
+              canReply={
+                writable &&
+                !!instance.account.instance.capabilities?.includes(
+                  "messages.replies",
+                )
+              }
+              onReply={setReplyingTo}
+              onNavigateReply={navigateReply}
+              grouped={
+                index > 0 &&
+                messageDay(items[index - 1].created_at) ===
+                  messageDay(message.created_at) &&
+                !message.reply_to_id &&
+                items[index - 1].author_id === message.author_id &&
+                items[index - 1].security === message.security &&
+                items[index - 1].securityError === message.securityError &&
+                items[index - 1].deleted === message.deleted &&
+                Date.parse(message.created_at) -
+                  Date.parse(items[index - 1].created_at) <
+                  300_000
+              }
+            />
+          </Fragment>
         ))}
-        {pending.map((message) => (
+        {(historyBefore === undefined ? pending : []).map((message) => (
           <div className="pending-message" key={message.request_id}>
             <p>{message.body || "Attachment message"}</p>
             <small>{message.error || "Sending…"}</small>
@@ -1873,6 +1963,7 @@ export function ConversationView({
   );
 }
 function MessageRow({
+  now,
   instance,
   message,
   reply,
@@ -1882,6 +1973,7 @@ function MessageRow({
   onReply,
   onNavigateReply,
 }: {
+  now: number;
   instance: InstanceClient;
   message: Message;
   reply?: Message;
@@ -1893,6 +1985,10 @@ function MessageRow({
 }) {
   const user = instance.snapshot.users.find((u) => u.id === message.author_id),
     own = message.author_id === instance.account.login.user.id;
+  const replyUser = instance.snapshot.users.find(
+    (user) => user.id === reply?.author_id,
+  );
+  const timestamp = messageTimestamp(message.created_at, now);
   const canRemove =
     own ||
     (can(instance, 4096) &&
@@ -1935,7 +2031,7 @@ function MessageRow({
   return (
     <article
       id={`message-${message.id}`}
-      className={`message ${grouped ? "grouped" : ""} ${highlighted ? "highlighted" : ""}`}
+      className={`message ${grouped ? "grouped" : ""} ${!message.deleted && message.reply_to_id ? "has-reply" : ""} ${highlighted ? "highlighted" : ""}`}
       tabIndex={0}
       onKeyDown={actions.onKeyDown}
       onContextMenu={(e) => {
@@ -1946,9 +2042,52 @@ function MessageRow({
       }}
     >
       <div className="message-avatar">
-        {!grouped && <Avatar instance={instance} user={user} />}
+        {!grouped ? (
+          <Avatar instance={instance} user={user} />
+        ) : (
+          <time
+            className="message-compact-time"
+            dateTime={message.created_at}
+            title={new Date(message.created_at).toLocaleString()}
+          >
+            {timestamp}
+          </time>
+        )}
       </div>
       <div className="message-content">
+        {!message.deleted && message.reply_to_id && (
+          <button
+            type="button"
+            className="message-reply-reference"
+            disabled={!reply}
+            aria-label={
+              reply
+                ? `Reply to ${displayName(replyUser)}: ${reply.deleted ? "Message deleted" : reply.body || "Attachment message"}`
+                : "Original message unavailable"
+            }
+            onClick={() => onNavigateReply(message.reply_to_id!)}
+          >
+            {reply ? (
+              <>
+                <Avatar
+                  instance={instance}
+                  user={replyUser}
+                  size="reply-avatar"
+                />
+                <strong>{displayName(replyUser)}</strong>
+                <span className="reply-preview">
+                  {reply.deleted
+                    ? "Message deleted"
+                    : reply.body || "Attachment message"}
+                </span>
+              </>
+            ) : (
+              <span className="reply-preview">
+                Original message unavailable
+              </span>
+            )}
+          </button>
+        )}
         {!grouped && (
           <div className="message-meta">
             {instance.isDM(message.conversation_id) && !message.deleted && (
@@ -1969,40 +2108,9 @@ function MessageRow({
               dateTime={message.created_at}
               title={new Date(message.created_at).toLocaleString()}
             >
-              {new Date(message.created_at).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              {timestamp}
             </time>
           </div>
-        )}
-        {!message.deleted && message.reply_to_id && (
-          <button
-            type="button"
-            className="message-reply-reference"
-            disabled={!reply}
-            onClick={() => onNavigateReply(message.reply_to_id!)}
-          >
-            <span>
-              {reply ? "Replying to" : "Original message unavailable"}
-            </span>
-            {reply && (
-              <>
-                <strong>
-                  {displayName(
-                    instance.snapshot.users.find(
-                      (user) => user.id === reply.author_id,
-                    ),
-                  )}
-                </strong>
-                <q>
-                  {reply.deleted
-                    ? "Message deleted"
-                    : reply.body || "Attachment message"}
-                </q>
-              </>
-            )}
-          </button>
         )}
         {message.deleted ? (
           <p className="deleted">Message deleted</p>
@@ -2055,6 +2163,16 @@ function MessageRow({
           {own && <button onClick={() => setEdit(true)}>Edit</button>}
           {canRemove && <button onClick={() => setRemove(true)}>Delete</button>}
         </div>
+      )}
+      {!message.deleted && !edit && (
+        <button
+          type="button"
+          className="message-options-toggle"
+          aria-label="Message options"
+          onClick={actions.onContextMenu}
+        >
+          <MoreHorizontal size={18} />
+        </button>
       )}
       {remove && (
         <Modal title="Delete this message?" onClose={() => setRemove(false)}>

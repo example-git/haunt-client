@@ -32,6 +32,7 @@ const manifestPath = path.join(app, "package.json");
 const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
 manifest.version = pkg.version;
 manifest.productName = pkg.productName;
+manifest.desktopName = pkg.desktopName;
 manifest.desktopAppId = JSON.parse(
   await fs.readFile(path.join(root, "electron-builder.config.json"), "utf8"),
 ).appId;

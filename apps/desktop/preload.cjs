@@ -58,6 +58,12 @@ contextBridge.exposeInMainWorld("hauntDesktop", {
   },
   openExternal: (url) => ipcRenderer.invoke("link:open", url),
   setBadge: (value) => ipcRenderer.invoke("badge:set", value),
+  testNotification: () => ipcRenderer.invoke("notification:test"),
+  onNotificationError: (callback) => {
+    const receive = (_event, message) => callback(message);
+    ipcRenderer.on("notification:error", receive);
+    return () => ipcRenderer.removeListener("notification:error", receive);
+  },
   notificationAvailable: () => ipcRenderer.invoke("notification:available"),
   showNotification: (value) => ipcRenderer.invoke("notification:show", value),
   onNotificationClick: (callback) => {

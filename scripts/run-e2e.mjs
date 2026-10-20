@@ -1,3 +1,5 @@
+import { checkUIRefresh } from "./check-ui-refresh.mjs";
+import { checkNotificationDelivery } from "./check-notification-delivery.mjs";
 import { checkNotificationSearch } from "./check-notification-search.mjs";
 import { captureDemo } from "./capture-demo.mjs";
 import { checkSourceAudio } from "./check-source-audio.mjs";
@@ -171,9 +173,14 @@ async function audioPeak(page) {
 
 try {
   if (
-    !["signin-browser", "secure-dm", "source-audio", "narrator"].includes(
-      process.env.HAUNT_CLIENT_CHECK,
-    )
+    ![
+      "signin-browser",
+      "secure-dm",
+      "source-audio",
+      "narrator",
+      "ui-refresh",
+      "notifications",
+    ].includes(process.env.HAUNT_CLIENT_CHECK)
   )
     vite = await serveBuild();
   const chrome = launch("/usr/bin/google-chrome", [
@@ -207,6 +214,8 @@ try {
     await captureDemo(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "source-audio") {
     await checkSourceAudio(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "ui-refresh") {
+    await checkUIRefresh(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "narrator") {
     await checkNarrator(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "media-status") {
@@ -571,7 +580,7 @@ try {
   } else if (process.env.HAUNT_CLIENT_CHECK === "gateway") {
     await checkGateway(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "notifications") {
-    await checkNotifications(browser, fixtures);
+    await checkNotificationDelivery(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "customization") {
     await checkCustomization(browser, fixtures);
   } else {

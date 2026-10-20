@@ -51,9 +51,7 @@
     "target": [
       {
         "target": "dmg",
-        "arch": [
-          "arm64"
-        ]
+        "arch": ["arm64"]
       }
     ],
     "extendInfo": {
@@ -72,9 +70,7 @@
     "target": [
       {
         "target": "nsis",
-        "arch": [
-          "x64"
-        ]
+        "arch": ["x64"]
       }
     ],
     "asar": true,
@@ -90,7 +86,8 @@
     "category": "Network",
     "executableName": "haunt",
     "icon": "static/icons",
-    "artifactName": "Haunt-${version}-linux-${arch}.${ext}"
+    "artifactName": "Haunt-${version}-linux-${arch}.${ext}",
+    "syncDesktopName": true
   },
   "nsis": {
     "oneClick": false,

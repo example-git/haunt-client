@@ -12,6 +12,12 @@ export class MemoryStore implements MessageStore {
   private rows = new Map<Scope, Map<string, Message>>();
   private cursors = new Map<Scope, number>();
   private outbox = new Map<Scope, Map<string, PendingMessage>>();
+  async message(scope: Scope, conversation: string, id: string) {
+    const value = this.rows.get(scope)?.get(id);
+    return value?.conversation_id === conversation
+      ? cachedMessage(structuredClone(value))
+      : undefined;
+  }
   async messages(
     scope: Scope,
     conversation: string,

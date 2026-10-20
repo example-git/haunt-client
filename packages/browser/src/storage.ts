@@ -86,6 +86,12 @@ export class IndexedDBStore implements MessageStore {
       },
     });
   }
+  async message(scope: Scope, conversation: string, id: string) {
+    const value = await (await this.db).get("messages", [scope, id]);
+    return value?.conversation_id === conversation
+      ? cachedMessage(value)
+      : undefined;
+  }
   async messages(
     scope: Scope,
     conversation: string,
@@ -325,13 +331,15 @@ export interface DesktopBridge extends NativeBridge {
     icon: string;
     overlay: string;
   }): Promise<void>;
+  testNotification?(): Promise<"shown" | "submitted">;
+  onNotificationError?(callback: (message: string) => void): () => void;
   notificationAvailable(): Promise<boolean>;
   showNotification(value: {
     title: string;
     body: string;
     instance: string;
     conversation: string;
-  }): Promise<void>;
+  }): Promise<"shown" | "submitted" | void>;
   onNotificationClick(
     callback: (value: { instance: string; conversation: string }) => void,
   ): () => void;

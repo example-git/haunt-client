@@ -2,6 +2,7 @@ import { defaultAccent } from "./palette";
 export const colorKeys = [
   "background",
   "sidebar",
+  "chrome",
   "surface",
   "raised",
   "text",
@@ -37,6 +38,7 @@ export const themePresets: {
     colors: {
       background: "#161616",
       sidebar: "#161616",
+      chrome: "#202020",
       surface: "#202020",
       raised: "#292929",
       text: "#f2f2f2",
@@ -53,6 +55,7 @@ export const themePresets: {
     colors: {
       background: "#101622",
       sidebar: "#101622",
+      chrome: "#182131",
       surface: "#182131",
       raised: "#222e41",
       text: "#edf2ff",
@@ -69,6 +72,7 @@ export const themePresets: {
     colors: {
       background: "#1c1520",
       sidebar: "#1c1520",
+      chrome: "#281e2d",
       surface: "#281e2d",
       raised: "#35283b",
       text: "#f5edf8",
@@ -85,6 +89,7 @@ export const themePresets: {
     colors: {
       background: "#121c19",
       sidebar: "#121c19",
+      chrome: "#1b2823",
       surface: "#1b2823",
       raised: "#26382f",
       text: "#edf4ef",
@@ -101,6 +106,7 @@ export const themePresets: {
     colors: {
       background: "#e6e9ef",
       sidebar: "#e6e9ef",
+      chrome: "#f7f8fb",
       surface: "#f7f8fb",
       raised: "#ffffff",
       text: "#202735",
@@ -117,6 +123,7 @@ export const themePresets: {
     colors: {
       background: "#201239",
       sidebar: "#201239",
+      chrome: "#292041",
       surface: "#292041",
       raised: "#3c2852",
       text: "#fbf4ff",
@@ -134,6 +141,7 @@ export const themePresets: {
     colors: {
       background: "#09272e",
       sidebar: "#09272e",
+      chrome: "#142e3e",
       surface: "#142e3e",
       raised: "#24344d",
       text: "#edfaff",
@@ -151,6 +159,7 @@ export const themePresets: {
     colors: {
       background: "#331829",
       sidebar: "#331829",
+      chrome: "#3b2634",
       surface: "#3b2634",
       raised: "#49343d",
       text: "#fff4ed",
@@ -162,12 +171,81 @@ export const themePresets: {
     gradient: { angle: 135, colors: ["#512336", "#492d19", "#28214f"] },
   },
   {
+    id: "rose-slate",
+    name: "Rose Slate",
+    accent: "#f7abc3",
+    colors: {
+      background: "#1b1c20",
+      sidebar: "#c8b8ee",
+      chrome: "#f7abc3",
+      surface: "#242529",
+      raised: "#303136",
+      text: "#f5f3f7",
+      muted: "#b7bac4",
+      border: "#484a54",
+      selection: "#f7abc3",
+      selectionText: "#1b1c20",
+    },
+  },
+  {
+    id: "mint-ink",
+    name: "Mint Ink",
+    accent: "#a4e5cc",
+    colors: {
+      background: "#1b1c20",
+      sidebar: "#b9d3f8",
+      chrome: "#a4e5cc",
+      surface: "#242529",
+      raised: "#303136",
+      text: "#f5f3f7",
+      muted: "#b7bac4",
+      border: "#484a54",
+      selection: "#a4e5cc",
+      selectionText: "#1b1c20",
+    },
+  },
+  {
+    id: "peach-noir",
+    name: "Peach Noir",
+    accent: "#ffc39c",
+    colors: {
+      background: "#1b1c20",
+      sidebar: "#efb6d8",
+      chrome: "#ffc39c",
+      surface: "#242529",
+      raised: "#303136",
+      text: "#f5f3f7",
+      muted: "#b7bac4",
+      border: "#484a54",
+      selection: "#ffc39c",
+      selectionText: "#1b1c20",
+    },
+  },
+  {
+    id: "lilac-carbon",
+    name: "Lilac Carbon",
+    accent: "#d1b9ff",
+    colors: {
+      background: "#1b1c20",
+      sidebar: "#a5dfed",
+      chrome: "#d1b9ff",
+      surface: "#242529",
+      raised: "#303136",
+      text: "#f5f3f7",
+      muted: "#b7bac4",
+      border: "#484a54",
+      selection: "#d1b9ff",
+      selectionText: "#1b1c20",
+    },
+  },
+  {
     id: "wumpoff",
     name: "wumpoff",
     accent: "#5865f2",
     colors: {
       background: "#121214",
       sidebar: "#1a1a1e",
+      chrome: "#202024",
       surface: "#202024",
       raised: "#242429",
       text: "#efeff1",
@@ -202,7 +280,9 @@ export function normalizeTheme(raw: unknown): ThemePreferences {
       key,
       hexColor(value.colors?.[key])
         ? value.colors![key].toLowerCase()
-        : base[key],
+        : key === "chrome" && hexColor(value.colors?.surface)
+          ? value.colors.surface.toLowerCase()
+          : base[key],
     ]),
   ) as ThemeColors;
   const gradient = normalizeGradient(
@@ -282,4 +362,54 @@ export function themeBackground(
   return theme.gradient
     ? `linear-gradient(${theme.gradient.angle}deg, ${theme.gradient.colors.map(tint).join(", ")})`
     : tint(theme.colors.background);
+}
+
+/** Each shell layer carries its own legible text and contrasting controls. */
+export function layerPalette(
+  background: string,
+  colors: ThemeColors,
+  accent: string,
+) {
+  const light = luminance(background) > 0.35;
+  const text =
+    contrast(colors.text, background) >= 4.5
+      ? colors.text
+      : accentText(background);
+  const mix = (a: string, b: string, amount: number) =>
+    "#" +
+    [1, 3, 5]
+      .map((i) =>
+        Math.round(
+          parseInt(a.slice(i, i + 2), 16) * amount +
+            parseInt(b.slice(i, i + 2), 16) * (1 - amount),
+        )
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("");
+  let muted = colors.muted;
+  if (contrast(muted, background) < 4.5) {
+    muted = mix(text, background, 0.72);
+    if (contrast(muted, background) < 4.5) muted = text;
+  }
+  const button = light
+    ? contrast(colors.background, background) >= 4.5
+      ? colors.background
+      : "#161616"
+    : contrast(accent, background) >= 4.5
+      ? accent
+      : accentText(background);
+  return {
+    background,
+    text,
+    muted,
+    button,
+    buttonText: light ? background : accentText(button),
+    hover: mix(text, background, light ? 0.1 : 0.08),
+    border: light ? mix(text, background, 0.35) : colors.border,
+    danger: light ? "#92213f" : "#f28ca6",
+    success: light ? "#175b3b" : "#83d6b1",
+    warning: light ? "#5b3d0a" : "#e6c778",
+    light,
+  };
 }

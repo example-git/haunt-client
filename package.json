@@ -79,5 +79,6 @@
   "build": {
     "extends": "./electron-builder.config.json"
   },
-  "productName": "Haunt"
+  "productName": "Haunt",
+  "desktopName": "com.exampleuser.haunt.desktop"
 }

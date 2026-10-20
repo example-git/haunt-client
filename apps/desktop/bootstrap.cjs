@@ -11,6 +11,8 @@ const config = require("../../update-runtime.json");
 if (!app.commandLine.hasSwitch("user-data-dir"))
   app.setPath("userData", path.join(app.getPath("appData"), "chat.xo.vg"));
 app.setName("chat.xo.vg");
+if (process.platform === "linux")
+  app.setDesktopName(require("../../package.json").desktopName);
 if (!app.requestSingleInstanceLock()) app.exit(0);
 else void start();
 

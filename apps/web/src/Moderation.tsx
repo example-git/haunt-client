@@ -10,36 +10,18 @@ import {
 import { MenuAction } from "./ContextMenu";
 import { ServerSettings, Status, useAction } from "./Customization";
 
-export const Permission = {
-  ManageServer: 32,
-  ManageRoles: 64,
-  KickMembers: 128,
-  BanMembers: 256,
-  DeleteMembers: 512,
-  ViewAuditLog: 1024,
-  ViewMemberIPs: 2048,
-  ManageMessages: 4096,
-  ResetPasswords: 8192,
-  ManageConfiguration: 16384,
-} as const;
-export function can(instance: InstanceClient, bits: number) {
-  return (
-    instance.account.login.user.is_owner ||
-    (instance.snapshot.permissions & bits) === bits
-  );
-}
-export function canManageServer(instance: InstanceClient) {
-  return (
-    instance.account.login.user.is_owner ||
-    !!(instance.snapshot.permissions & (4080 | 8192 | 16384))
-  );
-}
-export function canManageMembers(instance: InstanceClient) {
-  return (
-    instance.account.login.user.is_owner ||
-    !!(instance.snapshot.permissions & (64 | 128 | 256 | 512 | 2048 | 8192))
-  );
-}
+import {
+  Permission,
+  can,
+  canManageServer,
+  canManageMembers,
+} from "./Permissions";
+export {
+  Permission,
+  can,
+  canManageServer,
+  canManageMembers,
+} from "./Permissions";
 export function ModerationMenu({
   instance,
   user,

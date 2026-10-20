@@ -4,6 +4,7 @@ import { followAudioOutput } from "@haunt/browser/audio-output";
 import { Status, useAction } from "./Customization";
 import { TikTokVoiceSelect } from "./TikTokVoiceSelect";
 import { KeyRound } from "lucide-react";
+import { can, Permission } from "./Permissions";
 import "./tts-settings.css";
 
 export function ServerExtensionsAdmin({
@@ -24,7 +25,7 @@ export function ServerExtensionsAdmin({
   const audio = useRef<HTMLAudioElement>(null);
   const testing = useRef<AbortController>(undefined);
   const action = useAction();
-  const owner = instance.account.login.user.is_owner;
+  const allowed = can(instance, Permission.ManageConfiguration);
   const path = "/api/v1/admin/server-extensions/tiktok-tts";
   const apply = (value: unknown) => {
     const next = value as ServerExtensionConfiguration;
@@ -36,7 +37,7 @@ export function ServerExtensionsAdmin({
     setToken("");
   };
   useEffect(() => {
-    if (!owner) return;
+    if (!allowed) return;
     const abort = new AbortController();
     void action.run(async () => {
       const value = await instance.menuRequest(
@@ -51,7 +52,7 @@ export function ServerExtensionsAdmin({
       abort.abort();
       testing.current?.abort();
     };
-  }, [instance, owner]);
+  }, [instance, allowed]);
   useEffect(() => {
     if (!audioURL) return;
     const off = audio.current ? followAudioOutput(audio.current) : undefined;
@@ -60,7 +61,13 @@ export function ServerExtensionsAdmin({
       URL.revokeObjectURL(audioURL);
     };
   }, [audioURL]);
-  if (!owner) return <p>Only the server owner can configure extensions.</p>;
+  if (!allowed)
+    return (
+      <p>
+        Managing server extensions requires Manage configuration or
+        Administrator.
+      </p>
+    );
   const dirty =
     !!configuration &&
     (token !== "" ||

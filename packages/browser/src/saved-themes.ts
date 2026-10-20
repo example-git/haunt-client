@@ -31,7 +31,10 @@ function parsePreset(value: unknown): Omit<SavedTheme, "id"> {
     !t.colors ||
     !colorKeys.every(
       (k) =>
-        ((k === "selection" || k === "selectionText" || k === "sidebar") &&
+        ((k === "selection" ||
+          k === "selectionText" ||
+          k === "sidebar" ||
+          k === "chrome") &&
           t.colors[k] === undefined) ||
         hexColor(t.colors[k]),
     ) ||

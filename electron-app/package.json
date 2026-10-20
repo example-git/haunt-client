@@ -9,5 +9,6 @@
   "main": "main.cjs",
   "type": "commonjs",
   "dependencies": {},
-  "desktopAppId": "com.exampleuser.haunt"
+  "desktopAppId": "com.exampleuser.haunt",
+  "desktopName": "com.exampleuser.haunt.desktop"
 }
