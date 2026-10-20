@@ -521,3 +521,70 @@ dialog.settings-dialog {
     font-size: 11px;
   }
 }
+
+.message-display-settings {
+  margin: 0;
+}
+.messages.message-display-preview {
+  flex: none;
+  padding: 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--chat-background);
+  container-type: inline-size;
+}
+.message-display-preview .message {
+  margin: 0;
+  padding-inline: 0;
+}
+.message-display-preview .avatar {
+  display: grid;
+  place-items: center;
+  color: var(--accent-text);
+  background: var(--accent);
+}
+.message-display-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.message-display-options .message-display-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.message-display-option:has(:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.message-display-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.message-display-option input {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.message-display-option strong,
+.message-display-option small {
+  display: block;
+}
+.message-display-option strong {
+  font-size: 13px;
+}
+.message-display-option small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}

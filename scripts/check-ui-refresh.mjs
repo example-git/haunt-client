@@ -415,6 +415,8 @@ export async function checkUIRefresh(browser, fixtures) {
     await close(owner);
     const { checkUIPolish } = await import("./check-ui-polish.mjs");
     report.polish = await checkUIPolish(owner, { appearance, close });
+    const { checkCompactChat } = await import("./check-compact-chat.mjs");
+    report.compact = await checkCompactChat(owner, { appearance, close });
     assert.deepEqual(errors, []);
     await fs.writeFile(
       "test-results/ui-refresh.json",

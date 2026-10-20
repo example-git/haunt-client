@@ -93,6 +93,12 @@ export async function checkSecureDM(
     await peer.goto(fixtures.rtc.url);
     await login(peer, peerUser);
     await login(page, "owner");
+    await peer
+      .getByRole("button", { name: "Account settings", exact: true })
+      .click();
+    await peer.getByRole("button", { name: "Appearance", exact: true }).click();
+    await peer.getByRole("radio", { name: "Compact", exact: true }).check();
+    await peer.getByRole("button", { name: "Close", exact: true }).click();
     await expect(
       page
         .locator(".sidebar")
@@ -118,6 +124,17 @@ export async function checkSecureDM(
     const greeting = `${label} secret first`;
     await send(page, greeting);
     await show(peer, greeting);
+    await expect(peer.locator(".dm-workspace .messages")).toHaveClass(
+      /chat-display-compact/,
+    );
+    await expect(peer.locator(".dm-workspace .message-avatar")).toHaveCount(0);
+    await expect(
+      peer
+        .locator(".message")
+        .filter({ hasText: greeting })
+        .locator(".compact-message-time"),
+    ).toBeVisible();
+    await peer.screenshot({ path: `test-results/compact-dm-${label}.png` });
     await expect(
       peer
         .locator(".message")

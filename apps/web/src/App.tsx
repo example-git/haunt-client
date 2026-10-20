@@ -1763,6 +1763,11 @@ export function ConversationView({
   writable: boolean;
   visible?: boolean;
 }) {
+  const compact =
+    useSyncExternalStore(
+      subscribePreferences,
+      () => getPreferences().chatDisplay,
+    ) === "compact";
   const state = useSyncExternalStore(instance.subscribe, instance.getSnapshot),
     [messages, setMessages] = useState<Message[]>([]),
     [pending, setPending] = useState<PendingMessage[]>([]),
@@ -1901,7 +1906,7 @@ export function ConversationView({
   return (
     <div className="conversation-view" ref={dropTarget}>
       <div
-        className="messages"
+        className={`messages ${compact ? "chat-display-compact" : ""}`}
         ref={list}
         onScroll={() => {
           const e = list.current!;
@@ -1958,6 +1963,7 @@ export function ConversationView({
               </div>
             )}
             <MessageRow
+              compact={compact}
               now={now}
               instance={instance}
               message={message}
@@ -2049,6 +2055,7 @@ export function ConversationView({
   );
 }
 function MessageRow({
+  compact,
   now,
   instance,
   message,
@@ -2059,6 +2066,7 @@ function MessageRow({
   onReply,
   onNavigateReply,
 }: {
+  compact: boolean;
   now: number;
   instance: InstanceClient;
   message: Message;
@@ -2189,21 +2197,31 @@ function MessageRow({
           actions.onContextMenu(e);
       }}
     >
-      <div className="message-avatar">
-        {!grouped ? (
-          <Avatar instance={instance} user={user} />
-        ) : !dated ? (
-          <time
-            className="message-compact-time"
-            dateTime={message.created_at}
-            title={new Date(message.created_at).toLocaleString()}
-          >
-            {timestamp}
-          </time>
-        ) : null}
-      </div>
+      {compact ? (
+        <time
+          className={`compact-message-time ${dated ? "dated" : ""}`}
+          dateTime={message.created_at}
+          title={new Date(message.created_at).toLocaleString()}
+        >
+          {timestamp}
+        </time>
+      ) : (
+        <div className="message-avatar">
+          {!grouped ? (
+            <Avatar instance={instance} user={user} />
+          ) : !dated ? (
+            <time
+              className="message-compact-time"
+              dateTime={message.created_at}
+              title={new Date(message.created_at).toLocaleString()}
+            >
+              {timestamp}
+            </time>
+          ) : null}
+        </div>
+      )}
       <div className="message-content">
-        {grouped && dated && (
+        {!compact && grouped && dated && (
           <time
             className="message-group-date"
             dateTime={message.created_at}
@@ -2245,7 +2263,7 @@ function MessageRow({
             )}
           </button>
         )}
-        {!grouped && (
+        {(!grouped || compact) && (
           <div className="message-meta">
             {instance.isDM(message.conversation_id) && !message.deleted && (
               <MessageSecurity message={message} />
@@ -2261,12 +2279,14 @@ function MessageRow({
               <strong>Deleted user</strong>
             )}
             {own && <span className="you">you</span>}
-            <time
-              dateTime={message.created_at}
-              title={new Date(message.created_at).toLocaleString()}
-            >
-              {timestamp}
-            </time>
+            {!compact && (
+              <time
+                dateTime={message.created_at}
+                title={new Date(message.created_at).toLocaleString()}
+              >
+                {timestamp}
+              </time>
+            )}
           </div>
         )}
         {message.deleted ? (

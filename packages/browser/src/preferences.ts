@@ -28,6 +28,7 @@ export interface ClientPreferences extends NotificationPolicy {
   narratorServers: Record<string, NarratorSettings>;
   audioPlugins: Record<string, ServerPluginPreferences>;
   accentColor: string;
+  chatDisplay: "default" | "compact";
   theme: ThemePreferences;
   savedThemes: SavedTheme[];
   microphone: string;
@@ -60,6 +61,7 @@ const defaults: ClientPreferences = {
   narratorServers: {},
   audioPlugins: {},
   accentColor: defaultAccent,
+  chatDisplay: "default",
   theme: defaultTheme,
   savedThemes: [],
   enabled: true,
@@ -130,6 +132,7 @@ function read(): ClientPreferences {
     next.narratorServers = normalizeNarratorServers(raw.narratorServers);
     next.audioPlugins = parsePluginPreferences(raw.audioPlugins);
     next.accentColor = normalizeAccent(raw.accentColor);
+    if (raw.chatDisplay === "compact") next.chatDisplay = "compact";
     next.theme = restoreTheme(raw.theme);
     next.savedThemes = normalizeSavedThemes(raw.savedThemes);
     for (const field of [
@@ -186,6 +189,12 @@ export const subscribePreferences = (fn: () => void) => {
   };
 };
 export function setPreferences(patch: Partial<ClientPreferences>) {
+  if (
+    "chatDisplay" in patch &&
+    patch.chatDisplay !== "default" &&
+    patch.chatDisplay !== "compact"
+  )
+    throw new Error("Choose Default or Compact message display.");
   const enablingSuppression =
     patch.noiseSuppression === true && !current.noiseSuppression;
   current = { ...current, ...patch };

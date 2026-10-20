@@ -301,3 +301,29 @@ it("persists selection colors and enforces the selected native effect's opacity 
   };
   expect(importTheme(exportTheme(saved))).toEqual(saved);
 });
+
+it("persists compact message display independently of themes and restores the default", async () => {
+  const storage = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+  });
+  const prefs = await import("../packages/browser/src/preferences");
+  expect(prefs.getPreferences().chatDisplay).toBe("default");
+  prefs.setPreferences({ chatDisplay: "compact" });
+  expect(() =>
+    prefs.setPreferences({ chatDisplay: "invalid" as never }),
+  ).toThrow("Default or Compact");
+  expect(prefs.getPreferences().chatDisplay).toBe("compact");
+  prefs.setPreferences({ accentColor: "#f7abc3" });
+  expect(prefs.getPreferences().chatDisplay).toBe("compact");
+  vi.resetModules();
+  const restored = await import("../packages/browser/src/preferences");
+  expect(restored.getPreferences().chatDisplay).toBe("compact");
+  restored.setPreferences({ chatDisplay: "default" });
+  vi.resetModules();
+  expect(
+    (await import("../packages/browser/src/preferences")).getPreferences()
+      .chatDisplay,
+  ).toBe("default");
+});

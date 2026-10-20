@@ -5580,3 +5580,95 @@ button:disabled:hover {
     grid-column: 1 / -1;
   }
 }
+
+.messages.chat-display-compact {
+  padding: 16px 20px;
+}
+.chat-display-compact .message {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 8px;
+  margin-top: 4px;
+  padding-block: 1px;
+  border-radius: 3px;
+}
+.chat-display-compact .message.grouped {
+  margin-top: 0;
+}
+.compact-message-time {
+  width: 64px;
+  padding-top: 1px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+  text-align: right;
+  white-space: nowrap;
+}
+.compact-message-time.dated {
+  width: auto;
+}
+.chat-display-compact .message.has-reply > .compact-message-time {
+  padding-top: 22px;
+}
+.chat-display-compact .message-content {
+  display: block;
+  line-height: 20px;
+}
+.chat-display-compact .message-meta {
+  display: inline-flex;
+  gap: 5px;
+  margin: 0 6px 0 0;
+  line-height: 20px;
+  vertical-align: baseline;
+}
+.chat-display-compact .message-meta :is(.user-name, strong) {
+  font-size: 14px;
+  line-height: inherit;
+}
+.chat-display-compact .you,
+.chat-display-compact .message-reply-reference .reply-avatar {
+  display: none;
+}
+.chat-display-compact .message-body,
+.chat-display-compact .message-body > p:first-child,
+.chat-display-compact .message-content > .deleted {
+  display: inline;
+  font-size: 14px;
+  line-height: 20px;
+}
+.chat-display-compact .message-body {
+  unicode-bidi: plaintext;
+}
+.chat-display-compact
+  .message-body.emoji-only
+  :is(.standard-emoji, .custom-emoji) {
+  width: 20px;
+  height: 20px;
+  margin: 0 1px;
+}
+.chat-display-compact .message-content:has(> form) .message-meta {
+  display: flex;
+  margin-bottom: 4px;
+}
+.chat-display-compact .message-reply-reference::before {
+  left: -22px;
+  width: 18px;
+}
+.chat-display-compact .message-day-divider {
+  margin: 16px 0 6px;
+}
+@container chat (max-width: 480px) {
+  .messages.chat-display-compact {
+    padding-inline: 12px;
+  }
+  .compact-message-time {
+    width: 54px;
+    font-size: 10px;
+  }
+  .compact-message-time.dated {
+    width: 76px;
+    white-space: normal;
+    line-height: 16px;
+  }
+}

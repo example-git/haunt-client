@@ -95,6 +95,19 @@ export async function checkSourceAudio(browser, fixtures) {
           .click();
         await expect(page.getByRole("dialog")).toHaveCount(0);
       }
+
+      await receiver
+        .getByRole("button", { name: "Account settings", exact: true })
+        .click();
+      await receiver
+        .getByRole("button", { name: "Appearance", exact: true })
+        .click();
+      await receiver
+        .getByRole("radio", { name: "Compact", exact: true })
+        .check();
+      await receiver
+        .getByRole("button", { name: "Close", exact: true })
+        .click();
       await sender
         .getByRole("button", { name: "Account settings", exact: true })
         .click();
@@ -244,6 +257,16 @@ export async function checkSourceAudio(browser, fixtures) {
             .locator(".message-body")
             .filter({ hasText: `${mode} ${label} hidden chat 2` }),
         ).toBeVisible();
+        await expect(chat.locator(".messages")).toHaveClass(
+          /chat-display-compact/,
+        );
+        await expect(chat.locator(".message-avatar")).toHaveCount(0);
+        await expect(
+          chat.locator(".compact-message-time").last(),
+        ).toBeVisible();
+        await view.screenshot({
+          path: `test-results/compact-voice-${mode}-${label}.png`,
+        });
         await expect(draft).toHaveValue("unsent chat draft");
         await draft.fill("");
         await expect(view.locator(".voice-chat-badge")).toHaveCount(0);

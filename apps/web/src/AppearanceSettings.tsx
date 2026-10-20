@@ -117,6 +117,57 @@ export function AppearanceSettings() {
       );
   return (
     <section className="appearance-settings form">
+      <fieldset className="message-display-settings">
+        <legend>Message display</legend>
+        <div
+          className={`messages message-display-preview ${prefs.chatDisplay === "compact" ? "chat-display-compact" : ""}`}
+          role="group"
+          aria-label="Message preview"
+        >
+          <article className="message">
+            {prefs.chatDisplay === "compact" ? (
+              <time className="compact-message-time">09:41 AM</time>
+            ) : (
+              <div className="message-avatar">
+                <span className="avatar" aria-hidden="true">
+                  H
+                </span>
+              </div>
+            )}
+            <div className="message-content">
+              <div className="message-meta">
+                <strong>Haunt</strong>
+                {prefs.chatDisplay === "default" && <time>09:41 AM</time>}
+              </div>
+              <div className="message-body markdown">
+                <p>Hi there! Here’s how your messages will look.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+        <div className="message-display-options">
+          {(["default", "compact"] as const).map((mode) => (
+            <label className="message-display-option" key={mode}>
+              <input
+                type="radio"
+                name="message-display"
+                aria-label={mode === "compact" ? "Compact" : "Default"}
+                value={mode}
+                checked={prefs.chatDisplay === mode}
+                onChange={() => setPreferences({ chatDisplay: mode })}
+              />
+              <span>
+                <strong>{mode === "compact" ? "Compact" : "Default"}</strong>
+                <small>
+                  {mode === "compact"
+                    ? "Inline names and tighter rows"
+                    : "Avatars and spaced messages"}
+                </small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <SavedThemes>
         <div className="theme-presets">
           {themePresets.map((preset) => (
