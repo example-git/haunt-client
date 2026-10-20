@@ -18,6 +18,7 @@ under active development and does not implement every Discord feature.
 - Voice rooms, camera/capture-card video and screen sharing with automatic transport selection.
 - Per-user/source volume settings, device selection, microphone monitoring and local audio controls.
 - Optional server audio plugins with cached packages and schema-driven settings.
+- Optional [text to speech](docs/narrator.md) with server-hosted speech extensions and independently optional device TTS fallback.
 - Call tiles, speaking indicators, persistent controls and a movable picture-in-picture view.
 - Native desktop windows, call popouts, screen-source selection and native Apple Silicon capture.
 - Archive-based desktop updates, with signature verification and failed-startup rollback.

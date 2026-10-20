@@ -8,6 +8,7 @@ import { Backups } from "./Backups";
 import { SyncPanel } from "./SyncPanel";
 import { desktopClient } from "@haunt/browser/client-context";
 import { AppearanceSettings } from "./AppearanceSettings";
+import { NarratorSettings } from "./NarratorSettings";
 import { MicrophoneMeter } from "./MicrophoneMeter";
 import { NoiseControls, useAudioPlugins } from "./NoiseControls";
 import { pluginSelection } from "@haunt/browser/audio-plugins/preferences";
@@ -45,6 +46,7 @@ import {
 } from "@haunt/browser/sounds";
 import { enablePopups, popupPermission } from "@haunt/browser/notifications";
 import { ErrorNotice, Modal } from "./App";
+import type { Call } from "@haunt/browser/media/call";
 const ruleOptions = (
   <>
     <option value="inherit">Use defaults</option>
@@ -240,6 +242,7 @@ export const clientSettingsTabs = [
   ["notifications", "Notification Settings"],
   ["devices", "Devices"],
   ["audio-plugins", "Server audio plugins"],
+  ["narrator", "Text to speech"],
   ["backups", "Backup & restore"],
   ["sync", "Encrypted sync"],
   ["updates", "Client updates"],
@@ -287,11 +290,13 @@ function ServerNotificationRules({
 
 export function ClientSettings({
   instances,
+  call,
   onClose,
   initialTab = "notifications",
   onTabChange,
 }: {
   instances: InstanceClient[];
+  call?: Call;
   onClose: () => void;
   initialTab?: string;
   onTabChange?: (tab: string) => void;
@@ -321,7 +326,12 @@ export function ClientSettings({
             </button>
           ))}
       </div>
-      <ClientSettingsContent key={tab} instances={instances} tab={tab} />
+      <ClientSettingsContent
+        key={tab}
+        instances={instances}
+        tab={tab}
+        call={call}
+      />
     </Modal>
   );
 }
@@ -329,9 +339,11 @@ export function ClientSettingsContent({
   instances,
   tab,
   instance,
+  call,
 }: {
   instances: InstanceClient[];
   instance?: InstanceClient;
+  call?: Call;
   tab: string;
 }) {
   const [audioServer, setAudioServer] = useState(
@@ -476,6 +488,7 @@ export function ClientSettingsContent({
         </section>
       )}
       {tab === "appearance" && <AppearanceSettings />}
+      {tab === "narrator" && <NarratorSettings instance={instance ?? instances[0]} />}
       {tab === "backups" && <Backups />}
       {tab === "sync" && <SyncPanel />}
       {(tab === "notifications" || tab === "servers") && (
@@ -737,6 +750,9 @@ export function ClientSettingsContent({
                   <>
                     <MicrophoneMeter
                       onAccessGranted={microphoneGranted}
+                      onListeningChange={(listening) =>
+                        call?.setMicrophoneMonitoring(listening)
+                      }
                       device={prefs.microphone}
                       noiseSuppression={
                         audioPlugins.length > 0 && prefs.noiseSuppression

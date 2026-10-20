@@ -174,6 +174,12 @@ export function friendlyError(error: unknown): string {
       "Check the repository, full commit ID and checksum, or use a compatible plugin package under 50 MiB.",
     audio_plugin_busy:
       "Another plugin installation is in progress. Try again shortly.",
+    server_extension_unavailable: "This server's speech extension is unavailable or disabled.",
+    server_extension_conflict: "The extension configuration changed. Refresh it before saving.",
+    invalid_server_extension: "Check the extension settings, session token, text and voice ID.",
+    tts_credentials_rejected: "TikTok rejected the server's session token. The owner needs to update it.",
+    tts_provider_failed: "The server's speech provider failed. Check the session token, API host and voice ID.",
+    tts_provider_busy: "The speech provider is busy. Try again shortly.",
     dm_storage_full:
       "DM image storage is full for your account or this server. Purge older uploads or ask the administrator to increase the limit.",
     dm_message_storage_full:

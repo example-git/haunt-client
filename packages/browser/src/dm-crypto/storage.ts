@@ -19,6 +19,7 @@ export interface PlainPayload {
   device: string;
   request: string;
   edit?: string;
+  reply?: string;
   body: string;
   images: SecretImage[];
 }

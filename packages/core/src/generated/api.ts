@@ -244,6 +244,38 @@ export interface APIContract {
       patch?: never;
       trace?: never;
     };
+    "/api/v1/admin/server-extensions/{id}": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationGetServerExtension;
+      put: OperationSaveServerExtension;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/admin/server-extensions/{id}/test": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get?: never;
+      put?: never;
+      post: OperationTestServerExtension;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
     "/api/v1/admin/stats": {
       parameters: {
         query?: never;
@@ -1284,6 +1316,38 @@ export interface APIContract {
       patch?: never;
       trace?: never;
     };
+    "/api/v1/server-extensions": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationListServerExtensions;
+      put?: never;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/server-extensions/{id}/speech": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get?: never;
+      put?: never;
+      post: OperationServerExtensionSpeech;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
     "/api/v1/sessions": {
       parameters: {
         query?: never;
@@ -1529,6 +1593,7 @@ export interface APIContract {
       HttpapiEmojisResponse: HttpapiEmojisResponse;
       HttpapiErrorResponse: HttpapiErrorResponse;
       HttpapiEventCommand: HttpapiEventCommand;
+      HttpapiExtensionSpeechRequest: HttpapiExtensionSpeechRequest;
       HttpapiIceResponse: HttpapiIceResponse;
       HttpapiInstanceResponse: HttpapiInstanceResponse;
       HttpapiInvitesResponse: HttpapiInvitesResponse;
@@ -1556,6 +1621,7 @@ export interface APIContract {
       HttpapiSaveCommunityRequest: HttpapiSaveCommunityRequest;
       HttpapiSaveConfigurationRequest: HttpapiSaveConfigurationRequest;
       HttpapiSaveRoleRequest: HttpapiSaveRoleRequest;
+      HttpapiServerExtensionsResponse: HttpapiServerExtensionsResponse;
       HttpapiSessionsResponse: HttpapiSessionsResponse;
       HttpapiSetPermissionsRequest: HttpapiSetPermissionsRequest;
       HttpapiStatsResponse: HttpapiStatsResponse;
@@ -1585,6 +1651,10 @@ export interface APIContract {
       IdentitySession: IdentitySession;
       IdentityTemporaryPassword: IdentityTemporaryPassword;
       IdentityUser: IdentityUser;
+      ServerextensionConfiguration: ServerextensionConfiguration;
+      ServerextensionExtension: ServerextensionExtension;
+      ServerextensionSaveRequest: ServerextensionSaveRequest;
+      ServerextensionSpeechRequest: ServerextensionSpeechRequest;
       V4ICECandidateInit: V4ICECandidateInit;
       V4RTPCodecCapability: V4RTPCodecCapability;
       V4SDPType: V4SDPType;
@@ -1614,6 +1684,9 @@ export interface APIContract {
     moderateMember: OperationModerateMember;
     resetMemberPassword: OperationResetMemberPassword;
     issueTemporaryPassword: OperationIssueTemporaryPassword;
+    getServerExtension: OperationGetServerExtension;
+    saveServerExtension: OperationSaveServerExtension;
+    testServerExtension: OperationTestServerExtension;
     getStats: OperationGetStats;
     listStorage: OperationListStorage;
     registerStorage: OperationRegisterStorage;
@@ -1700,6 +1773,8 @@ export interface APIContract {
     createRole: OperationCreateRole;
     updateRole: OperationUpdateRole;
     deleteRole: OperationDeleteRole;
+    listServerExtensions: OperationListServerExtensions;
+    serverExtensionSpeech: OperationServerExtensionSpeech;
     listSessions: OperationListSessions;
     restoreSession: OperationRestoreSession;
     revokeSession: OperationRevokeSession;
@@ -2353,6 +2428,138 @@ export interface IdentityTemporaryPassword {
    * Shown once. Share privately; the member must replace it before server access.
    */
   temporary_password: string;
+}
+export interface OperationGetServerExtension {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": ServerextensionConfiguration;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface ServerextensionConfiguration {
+  category: "tts";
+  configured: boolean;
+  enabled: boolean;
+  endpoint: string;
+  id: string;
+  name: string;
+  revision: number;
+}
+export interface OperationSaveServerExtension {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/json": ServerextensionSaveRequest;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": ServerextensionConfiguration;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface ServerextensionSaveRequest {
+  clear_token?: boolean;
+  enabled: boolean;
+  endpoint: string;
+  revision: number;
+  /**
+   * Write-only TikTok sessionid. Omit or leave blank to keep the saved token.
+   */
+  session_token?: string;
+}
+export interface OperationTestServerExtension {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/json": ServerextensionSpeechRequest;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    "206": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    "416": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content?: never;
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface ServerextensionSpeechRequest {
+  text: string;
+  voice: string;
 }
 export interface OperationGetStats {
   parameters: {
@@ -4005,6 +4212,7 @@ export interface ChatMessage {
   edited_at?: null | string;
   id: string;
   mention_user_ids?: string[];
+  reply_to_id?: null | string;
   request_id: string;
   seq: number;
 }
@@ -4050,6 +4258,10 @@ export interface HttpapiCreateMessageRequest {
    * Nonblank body or at least one attachment. UTF-8 bytes are bounded by installation policy (at most 64 KiB).
    */
   body?: string;
+  /**
+   * Message in the same conversation to reference as a reply.
+   */
+  reply_to_id?: string;
   request_id: string;
 }
 export interface OperationEditMessage {
@@ -4153,12 +4365,15 @@ export interface HttpapiEmbedsResponse {
   embeds: EmbedsPreview[] | null;
 }
 export interface EmbedsPreview {
+  author_name?: string;
   description?: string;
   image: boolean;
   image_alt?: string;
   index: number;
   kind: string;
+  published_at?: string;
   site_name?: string;
+  theme_color?: string;
   title?: string;
   url: string;
   youtube_id?: string;
@@ -5625,6 +5840,95 @@ export interface OperationDeleteRole {
       };
     };
   };
+}
+export interface OperationListServerExtensions {
+  parameters: {
+    query?: never;
+    header?: never;
+    path?: never;
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiServerExtensionsResponse;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface HttpapiServerExtensionsResponse {
+  extensions: ServerextensionExtension[] | null;
+}
+export interface ServerextensionExtension {
+  category: "tts";
+  configured: boolean;
+  enabled: boolean;
+  id: string;
+  name: string;
+}
+export interface OperationServerExtensionSpeech {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/json": HttpapiExtensionSpeechRequest;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    "206": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    "416": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content?: never;
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface HttpapiExtensionSpeechRequest {
+  room_id?: string;
+  text: string;
+  voice: string;
 }
 export interface OperationListSessions {
   parameters: {

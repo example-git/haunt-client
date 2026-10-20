@@ -1,4 +1,5 @@
 import { AudioPluginsAdmin } from "./AudioPluginsAdmin";
+import { ServerExtensionsAdmin } from "./ServerExtensionsAdmin";
 import { useServerMenu, MenuLoadStatus, ServerMenuPage } from "./ServerMenus";
 import { ServerConfiguration, StorageSettings } from "./ServerConfiguration";
 import {
@@ -664,6 +665,8 @@ export function ServerSettings({
 }) {
   useSyncExternalStore(instance.subscribe, instance.getSnapshot);
   const fallbackTabs = [
+    ...(instance.account.login.user.is_owner && instance.account.instance.capabilities?.includes("server.extensions.v1")
+      ? [["server-extensions", "Server extensions"]] : []),
     ...(can(instance, 16384) &&
     instance.account.instance.capabilities?.includes("instance.configuration")
       ? [
@@ -731,6 +734,7 @@ export function ServerSettings({
           )}
           {tab === "storage" && <StorageSettings instance={instance} />}
           {tab === "audio-plugins" && <AudioPluginsAdmin instance={instance} />}
+          {tab === "server-extensions" && <ServerExtensionsAdmin key={instance.scope} instance={instance} />}
           {tab === "bans" && <BanManager instance={instance} />}
           {tab === "audit" && <AuditLog instance={instance} />}
           {tab === "emojis" && <EmojiSettings instance={instance} />}

@@ -18,6 +18,7 @@ export * from "./backup.js";
 export * from "./presence.js";
 
 export * from "./menus.js";
+export * from "./server-extensions.js";
 
 export * from "./dm.js";
 export * from "./message-content.js";

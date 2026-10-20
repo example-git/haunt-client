@@ -20,6 +20,7 @@ export function MicrophoneMeter({
   automaticGain,
   noiseOptions,
   onAccessGranted,
+  onListeningChange,
   showDiagnostics = false,
 }: {
   device: string;
@@ -28,6 +29,7 @@ export function MicrophoneMeter({
   automaticGain: boolean;
   noiseOptions?: PluginSelection;
   onAccessGranted: () => void;
+  onListeningChange?: (listening: boolean) => void | Promise<void>;
   showDiagnostics?: boolean;
 }) {
   const meter = useRef<HTMLDivElement>(null);
@@ -42,6 +44,7 @@ export function MicrophoneMeter({
     playbackGeneration.current++;
     playback.current?.pause();
     setListening(false);
+    onListeningChange?.(false);
   };
   useEffect(() => {
     let output = getPreferences().audioOutput;
@@ -235,8 +238,7 @@ export function MicrophoneMeter({
     });
     return () => {
       closed = true;
-      playbackGeneration.current++;
-      audio.pause();
+      stopListening();
       audio.srcObject = null;
       abort.abort();
       if (microphone.current === processing) microphone.current = undefined;
@@ -303,13 +305,19 @@ export function MicrophoneMeter({
             const version = ++playbackGeneration.current;
             setPlaybackError("");
             setListening(true);
-            void playback.current!.play().catch(() => {
-              if (version !== playbackGeneration.current) return;
-              setListening(false);
-              setPlaybackError(
-                "Could not play your microphone. Check the output device and try again.",
-              );
-            });
+            void Promise.resolve(onListeningChange?.(true))
+              .then(() => {
+                if (version !== playbackGeneration.current) return;
+                return playback.current!.play();
+              })
+              .catch(() => {
+                if (version !== playbackGeneration.current) return;
+                setListening(false);
+                onListeningChange?.(false);
+                setPlaybackError(
+                  "Could not play your microphone. Check the output device and try again.",
+                );
+              });
           }}
         >
           {listening ? "Stop listening" : "Listen to microphone"}

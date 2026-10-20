@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { followAudioOutput } from "@haunt/browser/audio-output";
 import {
   ExternalLink as LinkIcon,
@@ -7,6 +13,8 @@ import {
   Play,
   X,
   Download,
+  EyeOff,
+  RefreshCw,
 } from "lucide-react";
 import {
   messageLinks,
@@ -161,10 +169,19 @@ function PreviewCard({
   } catch {
     return null;
   }
+  const published = embed.published_at ? Date.parse(embed.published_at) : NaN;
+  const theme = /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(embed.theme_color ?? "")
+    ? embed.theme_color
+    : undefined;
   return (
     <section
       className={`embed-card embed-${embed.kind}`}
       aria-label={`Link preview from ${host}`}
+      style={
+        {
+          "--embed-accent": theme || "var(--accent)",
+        } as CSSProperties
+      }
     >
       <div className="embed-copy">
         <span className="embed-site">
@@ -178,6 +195,21 @@ function PreviewCard({
         )}
         {embed.description && (
           <p className="embed-description">{embed.description}</p>
+        )}
+        {(embed.author_name || Number.isFinite(published)) && (
+          <span className="embed-byline">
+            {embed.author_name && <span>{embed.author_name}</span>}
+            {embed.author_name && Number.isFinite(published) && " · "}
+            {Number.isFinite(published) && (
+              <time dateTime={embed.published_at}>
+                {new Date(published).toLocaleDateString(undefined, {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                })}
+              </time>
+            )}
+          </span>
         )}
       </div>
       {player && playing ? (
@@ -253,20 +285,59 @@ export function MessageEmbeds({
   const eligible =
     !!supported && messageLinks(message.body).some((link) => link.preview);
   const { ref, visible } = useVisible(eligible),
-    [embeds, setEmbeds] = useState<Embed[]>([]);
+    [embeds, setEmbeds] = useState<Embed[]>([]),
+    [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">(
+      "idle",
+    ),
+    [attempt, setAttempt] = useState(0),
+    [hidden, setHidden] = useState(false);
   useEffect(() => {
     if (!visible || !eligible) return;
     const controller = new AbortController();
+    setStatus("loading");
     void messageEmbeds(instance, message, controller.signal)
       .then((value) => {
-        if (!controller.signal.aborted) setEmbeds(value.slice(0, 3));
+        if (!controller.signal.aborted) {
+          setEmbeds(value.slice(0, 3));
+          setStatus("ready");
+        }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!controller.signal.aborted) setStatus("error");
+      });
     return () => controller.abort();
-  }, [visible, eligible, instance, message.id, message.edited_at]);
+  }, [visible, eligible, instance, message.id, message.edited_at, attempt]);
   if (!eligible) return null;
+  if (hidden)
+    return (
+      <button
+        type="button"
+        className="embed-show text-button"
+        onClick={() => setHidden(false)}
+      >
+        Show link previews
+      </button>
+    );
   return (
     <div className="message-embeds" ref={ref}>
+      {status === "loading" && (
+        <div className="embed-loading" role="status">
+          <i />
+          <span>Loading link preview…</span>
+        </div>
+      )}
+      {status === "error" && (
+        <div className="embed-error" role="status">
+          <span>Link preview unavailable.</span>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setAttempt((value) => value + 1)}
+          >
+            <RefreshCw size={12} /> Retry
+          </button>
+        </div>
+      )}
       {embeds.map((embed) => (
         <PreviewCard
           key={embed.url}
@@ -275,6 +346,15 @@ export function MessageEmbeds({
           embed={embed}
         />
       ))}
+      {status === "ready" && embeds.length > 0 && (
+        <button
+          type="button"
+          className="embed-hide text-button"
+          onClick={() => setHidden(true)}
+        >
+          <EyeOff size={12} /> Hide previews
+        </button>
+      )}
     </div>
   );
 }

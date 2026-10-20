@@ -14,6 +14,7 @@ import {
 import { ErrorNotice, Modal } from "./App";
 import { ProfileEditor } from "./Customization";
 import { Avatar, displayName } from "./People";
+import type { Call } from "@haunt/browser/media/call";
 export function AccountSettings({
   instance,
   logout,
@@ -21,6 +22,7 @@ export function AccountSettings({
   initialTab = "profile",
   onTabChange,
   instances = [instance],
+  call,
 }: {
   instance: InstanceClient;
   logout: () => Promise<void>;
@@ -28,6 +30,7 @@ export function AccountSettings({
   initialTab?: string;
   onTabChange?: (tab: string) => void;
   instances?: InstanceClient[];
+  call?: Call;
 }) {
   const audioPlugins = useAudioPlugins(instance);
   const [selectedTab, setTab] = useState(initialTab),
@@ -102,12 +105,18 @@ export function AccountSettings({
               Server audio plugins
             </button>
           )}
+          <button
+            className={tab === "narrator" ? "active" : ""}
+            onClick={() => { setTab("narrator"); onTabChange?.("narrator"); }}
+          >
+            Text to speech
+          </button>
           <strong className="settings-group">This device</strong>
           {clientSettingsTabs
             .filter(
               ([id]) => id !== "updates" || !!window.hauntDesktop?.updates,
             )
-            .filter(([id]) => id !== "audio-plugins")
+            .filter(([id]) => id !== "audio-plugins" && id !== "narrator")
             .map(([id, label]) => (
               <button
                 key={id}
@@ -129,6 +138,7 @@ export function AccountSettings({
             "appearance",
             "notifications",
             "devices",
+            "narrator",
             "servers",
             "backups",
             "sync",
@@ -139,6 +149,7 @@ export function AccountSettings({
               instances={instances}
               instance={instance}
               tab={tab}
+              call={call}
             />
           )}
           <ErrorNotice error={error} />

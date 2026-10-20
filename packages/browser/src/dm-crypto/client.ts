@@ -380,6 +380,7 @@ export class MLSClient implements DMEncryption {
         device: a.device,
         request: message.request_id,
         edit,
+        reply: message.reply_to_id,
         body: message.body,
         images,
       };
@@ -531,6 +532,7 @@ export class MLSClient implements DMEncryption {
       p.instance !== this.instance.account.instance.instance_id ||
       p.conversation !== m.conversation_id ||
       p.author !== m.author_id ||
+      p.reply !== (m.reply_to_id ?? undefined) ||
       typeof p.body !== "string" ||
       p.body.length > 24000 ||
       !Array.isArray(p.images) ||

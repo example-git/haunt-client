@@ -63,7 +63,14 @@ export class Call {
   private microphone?: MicrophoneCapture;
   private microphoneStream?: MediaStream;
   private offPreferences?: () => void;
-  private microphoneAbort = new AbortController();
+  private microphoneAbort?: AbortController;
+  private microphoneDevice = "";
+  private microphoneGeneration = 0;
+  private microphoneReplacement: Promise<void> = Promise.resolve();
+  private offDeviceChange?: () => void;
+  private speakingTrack?: MediaStreamTrack;
+  private monitoringState?: MediaState;
+  private monitoringTask: Promise<void> = Promise.resolve();
   constructor(
     readonly client: InstanceClient,
     readonly room: string,
@@ -102,14 +109,18 @@ export class Call {
   private change(patch: Partial<CallSnapshot> = {}) {
     this.snapshot = { ...this.snapshot, ...patch };
     const id = this.snapshot.participantId;
-    if (id !== this.speakingParticipant) {
+    const speakingTrack = this.tracks.get("audio");
+    if (
+      id !== this.speakingParticipant ||
+      speakingTrack !== this.speakingTrack
+    ) {
       this.offSpeaking?.();
       this.speakingParticipant = id;
-      const track = this.tracks.get("audio");
-      if (id && track)
+      this.speakingTrack = speakingTrack;
+      if (id && speakingTrack)
         this.offSpeaking = this.speaking.observe(
           id,
-          new MediaStream([track]),
+          new MediaStream([speakingTrack]),
           () =>
             this.snapshot.status === "connected" && !this.snapshot.state.muted
               ? 1
@@ -153,16 +164,15 @@ export class Call {
         throw Error(
           "Voice and video need the desktop app or a browser page served over HTTPS (or localhost).",
         );
+      const prefs = getPreferences();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          deviceId: getPreferences().microphone
-            ? { ideal: getPreferences().microphone }
-            : undefined,
+          deviceId: prefs.microphone ? { ideal: prefs.microphone } : undefined,
           echoCancellation: false,
           noiseSuppression: false,
           sampleRate: { ideal: 48000 },
           channelCount: { ideal: 1 },
-          autoGainControl: getPreferences().automaticGainControl,
+          autoGainControl: prefs.automaticGainControl,
         },
         video: false,
       });
@@ -170,6 +180,8 @@ export class Call {
         stream.getTracks().forEach((t) => t.stop());
         return;
       }
+      const abort = new AbortController();
+      this.microphoneAbort = abort;
       this.microphoneStream = stream;
       const microphone = await MicrophoneCapture.open(
         stream,
@@ -177,10 +189,10 @@ export class Call {
         (noiseSuppression) => {
           if (!this.ended) this.change({ noiseSuppression });
         },
-        this.microphoneAbort.signal,
+        abort.signal,
         {
-          level: getPreferences().microphoneGain,
-          automatic: getPreferences().automaticGainControl,
+          level: prefs.microphoneGain,
+          automatic: prefs.automaticGainControl,
         },
         pluginSelection(this.client),
       );
@@ -189,7 +201,14 @@ export class Call {
         return;
       }
       this.microphone = microphone;
+      this.microphoneDevice = prefs.microphone;
       const refreshProcessing = () => {
+        const device = getPreferences().microphone;
+        if (device !== this.microphoneDevice) {
+          if (this.snapshot.status === "connected")
+            void this.replaceMicrophone();
+          return;
+        }
         void this.refreshProcessing();
       };
       const offPrefs = subscribePreferences(refreshProcessing),
@@ -226,11 +245,131 @@ export class Call {
       this.tracks.set("audio", microphone.track);
       this.updateLocal();
       await this.join();
+      if (this.ended) return;
+      stream.getAudioTracks()[0].onended = () => {
+        if (!this.ended && this.microphoneStream === stream)
+          void this.replaceMicrophone();
+      };
+      const deviceChanged = () => void this.replaceMicrophone();
+      navigator.mediaDevices.addEventListener("devicechange", deviceChanged);
+      this.offDeviceChange = () =>
+        navigator.mediaDevices.removeEventListener(
+          "devicechange",
+          deviceChanged,
+        );
+      if (
+        stream.getAudioTracks()[0].readyState === "ended" ||
+        getPreferences().microphone !== this.microphoneDevice
+      )
+        void this.replaceMicrophone();
     } catch (error) {
       await this.end(
         error instanceof Error ? error.message : "Could not start the call.",
       );
       throw error;
+    }
+  }
+  private replaceMicrophone() {
+    const generation = ++this.microphoneGeneration;
+    this.microphoneReplacement = this.microphoneReplacement
+      .catch(() => {})
+      .then(() => this.performMicrophoneReplacement(generation));
+    return this.microphoneReplacement;
+  }
+  private async performMicrophoneReplacement(generation: number) {
+    if (
+      this.ended ||
+      generation !== this.microphoneGeneration ||
+      !navigator.mediaDevices?.getUserMedia
+    )
+      return;
+    const prefs = getPreferences();
+    let stream: MediaStream | undefined;
+    let microphone: MicrophoneCapture | undefined;
+    const abort = new AbortController();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: prefs.microphone ? { ideal: prefs.microphone } : undefined,
+          echoCancellation: false,
+          noiseSuppression: false,
+          sampleRate: { ideal: 48000 },
+          channelCount: { ideal: 1 },
+          autoGainControl: prefs.automaticGainControl,
+        },
+        video: false,
+      });
+      if (this.ended || generation !== this.microphoneGeneration) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      microphone = await MicrophoneCapture.open(
+        stream,
+        prefs.noiseSuppression,
+        (noiseSuppression) => {
+          if (!this.ended && generation === this.microphoneGeneration)
+            this.change({ noiseSuppression });
+        },
+        abort.signal,
+        {
+          level: prefs.microphoneGain,
+          automatic: prefs.automaticGainControl,
+        },
+        pluginSelection(this.client),
+      );
+      if (this.ended || generation !== this.microphoneGeneration) {
+        microphone.close();
+        return;
+      }
+      microphone.setMuted(this.snapshot.state.muted);
+      const previousMicrophone = this.microphone,
+        previousStream = this.microphoneStream,
+        previousAbort = this.microphoneAbort,
+        previousTrack = this.tracks.get("audio");
+      this.tracks.set("audio", microphone.track);
+      this.updateLocal();
+      try {
+        await this.transport?.publish(this.tracks);
+      } catch (error) {
+        if (previousTrack) this.tracks.set("audio", previousTrack);
+        this.updateLocal();
+        this.reconnect(
+          error instanceof Error
+            ? `Could not switch microphones: ${error.message}`
+            : "Could not switch microphones.",
+        );
+        throw error;
+      }
+      if (this.ended) {
+        microphone.close();
+        return;
+      }
+      this.microphone = microphone;
+      this.microphoneStream = stream;
+      this.microphoneAbort = abort;
+      this.microphoneDevice = prefs.microphone;
+      stream.getAudioTracks()[0].onended = () => {
+        if (!this.ended && this.microphoneStream === stream)
+          void this.replaceMicrophone();
+      };
+      previousStream?.getAudioTracks().forEach((track) => {
+        track.onended = null;
+      });
+      previousAbort?.abort();
+      previousMicrophone?.close();
+      previousStream?.getTracks().forEach((track) => track.stop());
+      this.change({ error: undefined });
+    } catch (error) {
+      abort.abort();
+      microphone?.close();
+      stream?.getTracks().forEach((track) => track.stop());
+      if (!this.ended && generation === this.microphoneGeneration)
+        this.change({
+          error:
+            error instanceof Error
+              ? `Could not switch microphones: ${error.message}`
+              : "Could not switch microphones.",
+        });
     }
   }
   private preparing?: Promise<void>;
@@ -459,6 +598,23 @@ export class Call {
     this.transport?.state(state);
     this.change({ state });
   }
+  setMicrophoneMonitoring(listening: boolean) {
+    this.monitoringTask = this.monitoringTask
+      .catch(() => {})
+      .then(async () => {
+        if (this.ended || this.snapshot.status !== "connected") return;
+        if (listening) {
+          if (this.monitoringState) return;
+          this.monitoringState = { ...this.snapshot.state };
+          await this.setState({ muted: true, deafened: true });
+        } else if (this.monitoringState) {
+          const state = this.monitoringState;
+          this.monitoringState = undefined;
+          await this.setState({ muted: state.muted, deafened: state.deafened });
+        }
+      });
+    return this.monitoringTask;
+  }
   async toggleVideo(purpose: "camera" | "screen") {
     if (this.snapshot.busy || this.snapshot.status !== "connected") return;
     this.change({ busy: true });
@@ -571,7 +727,12 @@ export class Call {
     this.speaking.close();
     this.sourceMeters.clear();
     this.offSpeaking = undefined;
-    this.microphoneAbort.abort();
+    this.microphoneGeneration++;
+    this.microphoneAbort?.abort();
+    this.offDeviceChange?.();
+    this.microphoneStream?.getAudioTracks().forEach((track) => {
+      track.onended = null;
+    });
     this.microphone?.close();
     this.microphone = undefined;
     this.microphoneStream?.getTracks().forEach((track) => track.stop());

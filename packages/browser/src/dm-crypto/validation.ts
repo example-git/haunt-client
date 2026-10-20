@@ -36,6 +36,7 @@ export function validatePlain(p: PlainPayload) {
     !uuid(p.device) ||
     !uuid(p.request) ||
     (p.edit !== undefined && !uuid(p.edit)) ||
+    (p.reply !== undefined && !uuid(p.reply)) ||
     typeof p.body !== "string" ||
     p.body.length > 24000 ||
     !Array.isArray(p.images) ||

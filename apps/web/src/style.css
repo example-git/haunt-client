@@ -493,6 +493,10 @@ input[type="checkbox"] {
 .message:hover {
   background: var(--haunt-raised);
 }
+.message.highlighted {
+  background: color-mix(in srgb, var(--accent) 14%, var(--haunt-raised));
+  box-shadow: inset 3px 0 var(--accent);
+}
 .message.grouped {
   margin-top: 1px;
 }
@@ -540,6 +544,40 @@ input[type="checkbox"] {
   color: var(--muted);
   margin-left: 5px;
 }
+.message-reply-reference {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  max-width: min(100%, 620px);
+  margin: 1px 0 5px;
+  padding: 3px 8px;
+  border: 0;
+  border-left: 2px solid var(--accent);
+  border-radius: 0 5px 5px 0;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--haunt-hover) 55%, transparent);
+  font-size: 10px;
+  text-align: left;
+}
+.message-reply-reference:not(:disabled):hover {
+  background: var(--haunt-hover);
+  color: var(--text);
+}
+.message-reply-reference:disabled {
+  opacity: 0.75;
+}
+.message-reply-reference strong {
+  flex: none;
+  color: var(--text);
+  font-size: 11px;
+}
+.message-reply-reference q {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  quotes: none;
+}
 .message-actions {
   display: none;
   position: absolute;
@@ -569,6 +607,38 @@ input[type="checkbox"] {
 .composer-wrap {
   padding: 15px 28px 19px;
   background: var(--haunt-raised);
+}
+.composer-reply {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 3px 8px;
+  padding: 7px 8px 7px 11px;
+  border-left: 2px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+  background: var(--haunt-hover);
+}
+.composer-reply > div {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+.composer-reply span,
+.composer-reply small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.composer-reply strong {
+  flex: none;
+  font-size: 11px;
+}
+.composer-reply small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .composer {
   display: flex;
@@ -2069,7 +2139,7 @@ summary {
   overflow: hidden;
   min-width: 0;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--embed-accent, var(--accent));
   border-radius: 8px;
   background: var(--haunt-surface);
 }
@@ -2101,6 +2171,56 @@ summary {
   line-height: 1.55;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+.embed-byline {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.embed-loading,
+.embed-error {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--haunt-surface);
+  font-size: 11px;
+}
+.embed-loading i {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: embed-spin 0.8s linear infinite;
+}
+@keyframes embed-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.embed-error {
+  justify-content: space-between;
+}
+.embed-error button,
+.embed-hide,
+.embed-show {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+}
+.embed-hide {
+  justify-self: start;
+  color: var(--muted);
+}
+.embed-show {
+  margin-top: 5px;
+  color: var(--muted);
 }
 .embed-picture,
 .embed-play,

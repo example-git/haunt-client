@@ -36,6 +36,7 @@ import {
   subscribePreferences,
 } from "@haunt/browser/preferences";
 import { syncAudioPlugins } from "@haunt/browser/audio-plugins/cache";
+import { attachNarrator } from "@haunt/browser/narrator";
 import { ServerMenuEntries } from "./ServerMenus";
 import {
   ATTACHMENT_TYPES,
@@ -341,6 +342,7 @@ export function App() {
     return () => window.removeEventListener("haunt:reconnect", reconnect);
   }, []);
   const [call, setCall] = useState<Call>();
+  useEffect(() => (call ? attachNarrator(call) : undefined), [call]);
   useEffect(() => {
     const update = () => {
       document.body.dataset.activeCall = String(
@@ -770,6 +772,7 @@ export function App() {
           <AccountSettings
             instance={(settingsInstance ?? instance)!}
             instances={[...client.instances.values()]}
+            call={call}
             initialTab={settingsTab}
             onTabChange={setSettingsTab}
             logout={() => logout((settingsInstance ?? instance)!)}
@@ -778,6 +781,7 @@ export function App() {
         ) : (
           <ClientSettings
             instances={[]}
+            call={call}
             initialTab={settingsTab}
             onTabChange={setSettingsTab}
             onClose={() => setClientSettings(false)}
@@ -1553,6 +1557,7 @@ function Workspace({
         <AccountSettings
           instances={[...client.instances.values()]}
           instance={instance}
+          call={activeCall}
           logout={logout}
           onClose={() => setModal(undefined)}
         />
@@ -1636,7 +1641,9 @@ export function ConversationView({
     [messages, setMessages] = useState<Message[]>([]),
     [pending, setPending] = useState<PendingMessage[]>([]),
     [error, setError] = useState(""),
-    [limit, setLimit] = useState(100);
+    [limit, setLimit] = useState(100),
+    [replyingTo, setReplyingTo] = useState<Message>(),
+    [highlighted, setHighlighted] = useState("");
   const dropTarget = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null),
     list = useRef<HTMLDivElement>(null),
@@ -1699,6 +1706,24 @@ export function ConversationView({
       document.removeEventListener("visibilitychange", acknowledge);
     };
   }, [messages, conversation, state.status, visible]);
+  const navigateReply = (id: string) => {
+    const reveal = () => {
+      const owner = list.current?.ownerDocument;
+      if (!owner) return false;
+      const target = owner.getElementById(`message-${id}`);
+      if (!target) return false;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlighted(id);
+      owner.defaultView?.setTimeout(
+        () => setHighlighted((current) => (current === id ? "" : current)),
+        1600,
+      );
+      return true;
+    };
+    if (reveal() || !messages.some((message) => message.id === id)) return;
+    setLimit((current) => current + 100);
+    requestAnimationFrame(() => requestAnimationFrame(reveal));
+  };
   return (
     <div className="conversation-view" ref={dropTarget}>
       <div
@@ -1736,8 +1761,19 @@ export function ConversationView({
             key={message.id}
             instance={instance}
             message={message}
+            reply={messages.find((item) => item.id === message.reply_to_id)}
+            highlighted={highlighted === message.id}
+            canReply={
+              writable &&
+              !!instance.account.instance.capabilities?.includes(
+                "messages.replies",
+              )
+            }
+            onReply={setReplyingTo}
+            onNavigateReply={navigateReply}
             grouped={
               index > 0 &&
+              !message.reply_to_id &&
               items[index - 1].author_id === message.author_id &&
               items[index - 1].security === message.security &&
               items[index - 1].securityError === message.securityError &&
@@ -1787,6 +1823,8 @@ export function ConversationView({
           conversation={conversation}
           title={title}
           dropTarget={dropTarget}
+          replyTo={replyingTo}
+          onCancelReply={() => setReplyingTo(undefined)}
         />
       ) : (
         <p className="readonly">
@@ -1807,11 +1845,21 @@ export function ConversationView({
 function MessageRow({
   instance,
   message,
+  reply,
   grouped,
+  highlighted,
+  canReply,
+  onReply,
+  onNavigateReply,
 }: {
   instance: InstanceClient;
   message: Message;
+  reply?: Message;
   grouped: boolean;
+  highlighted: boolean;
+  canReply: boolean;
+  onReply: (message: Message) => void;
+  onNavigateReply: (id: string) => void;
 }) {
   const user = instance.snapshot.users.find((u) => u.id === message.author_id),
     own = message.author_id === instance.account.login.user.id;
@@ -1827,15 +1875,20 @@ function MessageRow({
     "Message options",
     <>
       {!message.deleted && (
-        <MenuAction
-          onClick={() => {
-            void copyText(message.body).catch((e) =>
-              setError(friendlyError(e)),
-            );
-          }}
-        >
-          Copy text
-        </MenuAction>
+        <>
+          {canReply && (
+            <MenuAction onClick={() => onReply(message)}>Reply</MenuAction>
+          )}
+          <MenuAction
+            onClick={() => {
+              void copyText(message.body).catch((e) =>
+                setError(friendlyError(e)),
+              );
+            }}
+          >
+            Copy text
+          </MenuAction>
+        </>
       )}
       {canRemove && !message.deleted && (
         <>
@@ -1851,7 +1904,8 @@ function MessageRow({
   );
   return (
     <article
-      className={`message ${grouped ? "grouped" : ""}`}
+      id={`message-${message.id}`}
+      className={`message ${grouped ? "grouped" : ""} ${highlighted ? "highlighted" : ""}`}
       tabIndex={0}
       onKeyDown={actions.onKeyDown}
       onContextMenu={(e) => {
@@ -1891,6 +1945,34 @@ function MessageRow({
               })}
             </time>
           </div>
+        )}
+        {!message.deleted && message.reply_to_id && (
+          <button
+            type="button"
+            className="message-reply-reference"
+            disabled={!reply}
+            onClick={() => onNavigateReply(message.reply_to_id!)}
+          >
+            <span>
+              {reply ? "Replying to" : "Original message unavailable"}
+            </span>
+            {reply && (
+              <>
+                <strong>
+                  {displayName(
+                    instance.snapshot.users.find(
+                      (user) => user.id === reply.author_id,
+                    ),
+                  )}
+                </strong>
+                <q>
+                  {reply.deleted
+                    ? "Message deleted"
+                    : reply.body || "Attachment message"}
+                </q>
+              </>
+            )}
+          </button>
         )}
         {message.deleted ? (
           <p className="deleted">Message deleted</p>
@@ -1937,10 +2019,11 @@ function MessageRow({
         )}
         <ErrorNotice error={error} />
       </div>
-      {canRemove && !message.deleted && !edit && (
+      {(canReply || canRemove) && !message.deleted && !edit && (
         <div className="message-actions">
+          {canReply && <button onClick={() => onReply(message)}>Reply</button>}
           {own && <button onClick={() => setEdit(true)}>Edit</button>}
-          <button onClick={() => setRemove(true)}>Delete</button>
+          {canRemove && <button onClick={() => setRemove(true)}>Delete</button>}
         </div>
       )}
       {remove && (
@@ -1975,11 +2058,15 @@ function Composer({
   conversation,
   title,
   dropTarget,
+  replyTo,
+  onCancelReply,
 }: {
   instance: InstanceClient;
   conversation: string;
   title: string;
   dropTarget: RefObject<HTMLDivElement | null>;
+  replyTo?: Message;
+  onCancelReply: () => void;
 }) {
   const direct = instance.isDM(conversation);
   const uploadsAllowed =
@@ -2001,6 +2088,9 @@ function Composer({
   useEffect(() => () => uploads.dispose(), [uploads]);
   useAttachmentDrop(dropTarget, uploads, busy);
   const input = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (replyTo) input.current?.focus();
+  }, [replyTo?.id]);
   const [emojiOpen, setEmojiOpen] = useState(false),
     [emojiIndex, setEmojiIndex] = useState(0),
     [emojiDismissed, dismissEmoji] = useState(false);
@@ -2072,9 +2162,11 @@ function Composer({
         conversation,
         body,
         attachments.map((a) => a.id),
+        replyTo?.id,
       );
       draft("");
       uploads.clear();
+      onCancelReply();
     } catch (e) {
       setError(friendlyError(e));
       const pending = await instance.pending();
@@ -2085,6 +2177,7 @@ function Composer({
       ) {
         draft("");
         uploads.clear();
+        onCancelReply();
       }
     } finally {
       uploads.unlock();
@@ -2166,6 +2259,29 @@ function Composer({
         </div>
       )}
       <ErrorNotice error={error || uploadState.error} />
+      {replyTo && (
+        <div className="composer-reply" role="status">
+          <div>
+            <span>Replying to</span>
+            <strong>
+              {displayName(
+                instance.snapshot.users.find(
+                  (user) => user.id === replyTo.author_id,
+                ),
+              )}
+            </strong>
+            <small>{replyTo.body || "Attachment message"}</small>
+          </div>
+          <button
+            type="button"
+            className="icon"
+            aria-label="Cancel reply"
+            onClick={onCancelReply}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
       {uploadState.entries.length > 0 && (
         <div className="attachment-chips" aria-live="polite">
           {uploadState.entries.map((entry) => (
@@ -2341,6 +2457,11 @@ function Composer({
                 dismissMention(true);
                 return;
               }
+            }
+            if (e.key === "Escape" && replyTo) {
+              e.preventDefault();
+              onCancelReply();
+              return;
             }
             if (
               e.key === "Enter" &&

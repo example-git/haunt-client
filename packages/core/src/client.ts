@@ -6,6 +6,7 @@ import {
   mlsMessagePrefix,
 } from "./message-content.js";
 import { requestMenuJSON, requestBoundedJSON } from "./menus.js";
+import { requestExtensionSpeech } from "./server-extensions.js";
 import { parseInviteLink } from "./invites.js";
 import { UserPresence } from "./presence.js";
 import { PasswordChangeRequired } from "./password-reset.js";
@@ -152,6 +153,17 @@ export class InstanceClient {
       method,
       body,
       signal,
+    );
+  }
+  extensionSpeech(
+    extension: string,
+    prompt: { text: string; voice: string; room_id?: string },
+    signal?: AbortSignal,
+    test = false,
+  ) {
+    return requestExtensionSpeech(
+      (request) => this.runtime.fetch(request), this.origin,
+      this.account.login.token, extension, prompt, signal, test,
     );
   }
   dmRequest(path: string, method = "GET", body?: unknown) {
@@ -948,7 +960,12 @@ export class InstanceClient {
   pending() {
     return this.store.pending(this.scope);
   }
-  async send(conversation: string, body: string, attachments: string[] = []) {
+  async send(
+    conversation: string,
+    body: string,
+    attachments: string[] = [],
+    replyTo?: string,
+  ) {
     const maxBytes = Math.min(
       65_536,
       Math.floor((this.account.instance.limits.text_max_bytes - 2048) / 4),
@@ -964,6 +981,7 @@ export class InstanceClient {
       conversation_id: conversation,
       body,
       attachment_ids: attachments,
+      reply_to_id: replyTo,
       created_at: new Date().toISOString(),
     };
     await this.store.putPending(this.scope, message);
@@ -999,6 +1017,7 @@ export class InstanceClient {
               request_id: message.request_id,
               body,
               attachment_ids: message.attachment_ids,
+              reply_to_id: message.reply_to_id,
             },
           }),
         );
@@ -1048,6 +1067,7 @@ export class InstanceClient {
       conversation_id: message.conversation_id,
       body,
       attachment_ids: message.attachment_ids ?? [],
+      reply_to_id: message.reply_to_id ?? undefined,
       created_at: new Date().toISOString(),
     };
     const put = (body: string) =>

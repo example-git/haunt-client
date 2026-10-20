@@ -13,7 +13,14 @@ import {
 import { openDB } from "idb";
 import { defaultAccent, normalizeAccent } from "./palette";
 import type { NotificationPolicy, NotificationRule } from "@haunt/core";
+import {
+  normalizeNarratorSettings,
+  normalizeNarratorServers,
+  type NarratorSettings,
+} from "./narrator/settings";
 export interface ClientPreferences extends NotificationPolicy {
+  narrator: NarratorSettings;
+  narratorServers: Record<string, NarratorSettings>;
   audioPlugins: Record<string, ServerPluginPreferences>;
   accentColor: string;
   theme: ThemePreferences;
@@ -44,6 +51,8 @@ export interface ClientPreferences extends NotificationPolicy {
   channels: Record<string, NotificationRule>;
 }
 const defaults: ClientPreferences = {
+  narrator: normalizeNarratorSettings(undefined),
+  narratorServers: {},
   audioPlugins: {},
   accentColor: defaultAccent,
   theme: defaultTheme,
@@ -112,6 +121,8 @@ function read(): ClientPreferences {
   try {
     const raw = JSON.parse(localStorage.getItem(key) ?? "{}");
     const next = { ...defaults };
+    next.narrator = normalizeNarratorSettings(raw.narrator);
+    next.narratorServers = normalizeNarratorServers(raw.narratorServers);
     next.audioPlugins = parsePluginPreferences(raw.audioPlugins);
     next.accentColor = normalizeAccent(raw.accentColor);
     next.theme = normalizeTheme(raw.theme);
@@ -173,6 +184,8 @@ export function setPreferences(patch: Partial<ClientPreferences>) {
   const enablingSuppression =
     patch.noiseSuppression === true && !current.noiseSuppression;
   current = { ...current, ...patch };
+  current.narrator = normalizeNarratorSettings(current.narrator);
+  current.narratorServers = normalizeNarratorServers(current.narratorServers);
   if (enablingSuppression) current.noiseSuppressionNoticeShown = false;
   current.audioPlugins = parsePluginPreferences(current.audioPlugins);
   current.memberListsCollapsed = collapsedLists(current.memberListsCollapsed);

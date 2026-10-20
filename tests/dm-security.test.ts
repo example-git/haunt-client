@@ -120,6 +120,19 @@ describe("DM image and export boundaries", () => {
         images: [{} as any],
       }),
     ).toThrow();
+    expect(() =>
+      validatePlain({
+        version: 1,
+        instance: "server",
+        author: randomUUID(),
+        conversation: randomUUID(),
+        device: randomUUID(),
+        request: randomUUID(),
+        reply: "not-a-message-id",
+        body: "test",
+        images: [],
+      }),
+    ).toThrow();
   });
   it("exports escaped HTML and inert CSV spreadsheet cells", () => {
     expect(escapeHTML("<script>\"&'</script>")).toBe(

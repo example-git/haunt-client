@@ -54,6 +54,7 @@ export interface PendingMessage {
   conversation_id: string;
   body: string;
   attachment_ids: string[];
+  reply_to_id?: string;
   created_at: string;
   error?: string;
 }

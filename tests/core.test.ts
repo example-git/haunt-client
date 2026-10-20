@@ -120,7 +120,8 @@ const response = (body: unknown, status = 200) =>
   });
 function fixture(empty = false, accountFeed = false) {
   const sockets: Socket[] = [],
-    requests: Request[] = [];
+    requests: Request[] = [],
+    sentMessages: Record<string, unknown>[] = [];
   let changedIdentity = false,
     revoked = false,
     failSend = false,
@@ -232,8 +233,13 @@ function fixture(empty = false, accountFeed = false) {
       if (path.endsWith("/messages") && request.method === "POST") {
         if (failSend) throw new TypeError("offline");
         const body = await request.json();
+        sentMessages.push(body);
         return response(
-          { ...message("new", 206, body.body), request_id: body.request_id },
+          {
+            ...message("new", 206, body.body),
+            request_id: body.request_id,
+            reply_to_id: body.reply_to_id,
+          },
           201,
         );
       }
@@ -246,6 +252,7 @@ function fixture(empty = false, accountFeed = false) {
     runtime,
     sockets,
     requests,
+    sentMessages,
     revoke: () => {
       revoked = true;
     },
@@ -629,12 +636,19 @@ describe("durable messaging", () => {
       client = new Client(f.runtime, new MemoryStore(), new MemoryVault());
     const a = await client.login("https://one.test", credentials);
     f.failSend(true);
-    await expect(a.send("conversation", "a draft")).rejects.toThrow();
+    await expect(
+      a.send("conversation", "a draft", [], "original-message"),
+    ).rejects.toThrow();
     const [pending] = await a.pending();
     expect(pending.body).toBe("a draft");
+    expect(pending.reply_to_id).toBe("original-message");
     f.failSend(false);
     const result = await a.retry(pending);
     expect(result?.request_id).toBe(pending.request_id);
+    expect(result?.reply_to_id).toBe("original-message");
+    expect(f.sentMessages.at(-1)).toMatchObject({
+      reply_to_id: "original-message",
+    });
     expect(await a.pending()).toHaveLength(0);
     await expect(
       a.retry({ ...pending, created_at: "2000-01-01T00:00:00Z" }),
