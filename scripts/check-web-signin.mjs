@@ -114,13 +114,11 @@ export async function checkWebSignin(browser, fixtures) {
         .getByRole("button", { name: "Add server", exact: true })
         .click();
       const saved = page.getByLabel("Saved sign-ins");
-      const option = await saved
+      const savedAccount = saved
         .locator("option")
-        .evaluateAll(
-          (entries) =>
-            entries.find((entry) => entry.textContent.includes("alice@"))
-              ?.value,
-        );
+        .filter({ hasText: `alice@${new URL(server.url).host}` });
+      await expect(savedAccount).toHaveCount(1);
+      const option = await savedAccount.getAttribute("value");
       assert(option, "Saved account address remains available after logout");
       await saved.selectOption(option);
       await page
