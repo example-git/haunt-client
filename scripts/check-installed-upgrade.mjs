@@ -165,12 +165,15 @@ async function launch(executablePath, version, restore) {
       (value) => localStorage.setItem("haunt-upgrade-rehearsal", value),
       marker,
     );
-  if (restore)
-    report.notifications = await checkNativeNotifications(
+  if (restore) {
+    report.notifications = {};
+    await checkNativeNotifications(
       app,
       page,
       notificationFixture,
+      report.notifications,
     );
+  }
   assert.deepEqual(errors, []);
   await app.close();
   app = undefined;
@@ -228,6 +231,10 @@ try {
   report.error = error.message;
   throw error;
 } finally {
+  if (notificationFixture?.records) {
+    report.notifications ??= {};
+    report.notifications.systemBusTraffic = await notificationFixture.records();
+  }
   await fs.mkdir("test-results", { recursive: true });
   await fs.writeFile(
     `test-results/installed-upgrade-${target}.json`,

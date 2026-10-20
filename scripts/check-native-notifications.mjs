@@ -50,12 +50,17 @@ export async function prepareNativeNotifications(scratch, executable) {
   return { records, stop: () => child.kill(), desktop };
 }
 
-export async function checkNativeNotifications(app, page, fixture) {
-  const report = {
+export async function checkNativeNotifications(
+  app,
+  page,
+  fixture,
+  report = {},
+) {
+  Object.assign(report, {
     platform: process.platform,
     nativeBadges: [],
     notificationDisplay: "not visually verified",
-  };
+  });
   for (const [count, unread] of [
     [7, true],
     [0, true],
@@ -131,17 +136,30 @@ export async function checkNativeNotifications(app, page, fixture) {
       (r) => r.title === `Native message ${second}`,
     );
     assert(clicked, "The second conversation was delivered independently");
+    assert(
+      clicked.actions.includes("default"),
+      "Electron registered the default notification click action",
+    );
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].hide(),
     );
     await promisify(execFile)("dbus-send", [
       "--session",
       "--type=method_call",
+      "--print-reply",
+      "--reply-timeout=5000",
       "--dest=org.freedesktop.Notifications",
       "/org/freedesktop/Notifications",
       "vg.xo.haunt.Test.Activate",
       `uint32:${clicked.id}`,
     ]);
+    await expect
+      .poll(async () =>
+        (await fixture.records()).some(
+          (r) => r.kind === "activate" && r.id === clicked.id,
+        ),
+      )
+      .toBe(true);
     await expect
       .poll(() => page.evaluate(() => window.nativeNotificationClicks.length))
       .toBe(1);

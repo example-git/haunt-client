@@ -54,6 +54,7 @@ class Notifications(dbus.service.Object):
 
     @dbus.service.method("vg.xo.haunt.Test", in_signature="u", out_signature="")
     def Activate(self, identifier):
+        record({"kind": "activate", "id": int(identifier), "action": "default"})
         self.ActionInvoked(identifier, "default")
 
 

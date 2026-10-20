@@ -3,6 +3,11 @@ on:
   push:
     tags: ["client-v*"]
   workflow_dispatch:
+    inputs:
+      verify_only:
+        description: Build and verify installers without publishing
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -69,6 +74,7 @@ jobs:
           path: release/updates/*
           if-no-files-found: error
   publish:
+    if: inputs.verify_only != true
     needs: build
     runs-on: ubuntu-24.04
     permissions:
