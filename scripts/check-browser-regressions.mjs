@@ -10,6 +10,7 @@ for (const mode of [
   "narrator",
   "ui-refresh",
   "notifications",
+  "public-downloads",
   "web-updates",
 ]) {
   console.log(`Browser regression: ${mode}`);

@@ -4786,7 +4786,13 @@ button.mention {
   font-size: 11px;
   margin-inline-end: 8px;
   padding: 5px 8px;
-  color: var(--accent);
+  color: var(--layer-text, var(--accent));
+  text-decoration: none;
+}
+.desktop-download-error {
+  max-width: 200px;
+  margin-inline-end: 8px;
+  font-size: 11px;
 }
 .update-release-notes {
   white-space: pre-wrap;

@@ -57,9 +57,9 @@ import {DesktopDownload} from '../../apps/web/src/DesktopDownload';
 import {ToastStack} from '../../apps/web/src/ToastStack';
 const listeners=new Set();let state={phase:'idle',current:'0.1.0'};
 const update=(value)=>{state={...state,...value};listeners.forEach(f=>f(state));return state}; window.testUpdate=update;
-if(location.search!=='?browser')window.hauntDesktop={platform:'linux',updates:{state:async()=>state,subscribe:(f)=>{listeners.add(f);return()=>listeners.delete(f)},check:async()=>update({phase:'available',available:'0.2.0'}),download:async()=>{update({phase:'downloading',progress:.5});setTimeout(()=>update({phase:state.kind==='installer'?'installer-ready':'ready'}),500)},apply:()=>window.applyUpdate()}};
-const snapshot={status:'online'};const instance={subscribe:()=>()=>{},getSnapshot:()=>snapshot,scope:'test',account:{origin:'https://mirror.example.test',login:{token:'test-session'},instance:{client_updates:{installers:true}}}};
-createRoot(document.getElementById('root')).render(location.search==='?browser'?<DesktopDownload instance={instance}/>:<><DesktopUpdateNotice onOpen={()=>{}}/><dialog open><DesktopUpdates/></dialog><ToastStack><DesktopRuntimeNotice/></ToastStack></>);
+if(!location.search.startsWith('?browser'))window.hauntDesktop={platform:'linux',updates:{state:async()=>state,subscribe:(f)=>{listeners.add(f);return()=>listeners.delete(f)},check:async()=>update({phase:'available',available:'0.2.0'}),download:async()=>{update({phase:'downloading',progress:.5});setTimeout(()=>update({phase:state.kind==='installer'?'installer-ready':'ready'}),500)},apply:()=>window.applyUpdate()}};
+const snapshot={status:'online'};const instance={subscribe:()=>()=>{},getSnapshot:()=>snapshot,scope:'test',account:{origin:'https://mirror.example.test',login:{token:'test-session'},instance:{client_updates:{installers:true,authenticated:location.search!=='?browser-public',manifest_url:'https://mirror.example.test/api/v1/client-updates/haunt-updates.json'}}}};
+createRoot(document.getElementById('root')).render(location.search.startsWith('?browser')?<DesktopDownload instance={instance}/>:<><DesktopUpdateNotice onOpen={()=>{}}/><dialog open><DesktopUpdates/></dialog><ToastStack><DesktopRuntimeNotice/></ToastStack></>);
 `,
 );
 await build({
@@ -247,16 +247,35 @@ try {
   await expect(
     full.getByRole("button", { name: "Install and restart" }),
   ).toBeVisible();
+  let publicMode = false,
+    publicFileRequests = 0,
+    invalidAddress = false;
+  const publicURL =
+    "https://github.com/example-git/haunt-client/releases/download/client-v0.2.0/Haunt.AppImage";
   await page.route("https://mirror.example.test/**", async (route) => {
-    if (route.request().headers().authorization !== "Bearer test-session")
-      throw Error("Missing authenticated download");
+    const isMetadata = route.request().url().endsWith("installers");
+    if (
+      route.request().headers().authorization !==
+      (publicMode ? undefined : "Bearer test-session")
+    )
+      throw Error("Wrong download authentication mode");
+    if (publicMode && !isMetadata)
+      throw Error("Public artifact was proxied through the server");
     await route.fulfill({
       status: 200,
       contentType: route.request().url().endsWith("installers")
         ? "application/json"
         : "application/octet-stream",
       body: route.request().url().endsWith("installers")
-        ? JSON.stringify({ manifest, available: [target] })
+        ? JSON.stringify({
+            manifest,
+            available: [target],
+            downloads: {
+              [target]: invalidAddress
+                ? "https://wrong.example/Haunt.AppImage"
+                : publicURL,
+            },
+          })
         : bytes,
       headers: {
         "Access-Control-Allow-Origin": "*",
@@ -273,8 +292,39 @@ try {
     throw Error("Unexpected download");
   const saved = await fs.readFile(await result.path());
   if (!saved.equals(bytes)) throw Error("Wrong installer bytes");
+  publicMode = true;
+  await page.route(publicURL, async (route) => {
+    if (route.request().headers().authorization)
+      throw Error("Session leaked to GitHub");
+    publicFileRequests++;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/octet-stream",
+      headers: {
+        "Content-Disposition": 'attachment; filename="Haunt.AppImage"',
+      },
+      body: bytes,
+    });
+  });
+  await page.goto(url + "?browser-public");
+  const publicLink = page.getByRole("link", { name: "Desktop app" });
+  await expect(publicLink).toHaveAttribute("href", publicURL);
+  const directDownload = page.waitForEvent("download");
+  await publicLink.click();
+  const directResult = await directDownload;
+  if (
+    !(await fs.readFile(await directResult.path())).equals(bytes) ||
+    publicFileRequests !== 1
+  )
+    throw Error("Direct public download did not return the installer");
+  invalidAddress = true;
+  await page.reload();
+  await expect(page.getByRole("alert")).toContainText(
+    "Invalid public installer address",
+  );
+  await expect(publicLink).toHaveCount(0);
   console.log(
-    "Browser UI: update availability, progress, restart/cancel, runtime notices on all platforms, and authenticated verified installer download passed.",
+    "Browser UI: update availability, progress, restart/cancel, runtime notices on all platforms, and authenticated verified installer download, anonymous direct public download, credential isolation, and rejected mismatched public link passed.",
   );
 } finally {
   await browser?.close().catch(() => {});

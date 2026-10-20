@@ -157,6 +157,10 @@ export async function checkNotificationDelivery(browser, fixtures) {
       window.testFocused = false;
     });
     await owner
+      .getByRole("button", { name: "Channel menu for general", exact: true })
+      .locator("..")
+      .hover();
+    await owner
       .getByRole("button", { name: "Channel menu for general" })
       .click();
     await owner

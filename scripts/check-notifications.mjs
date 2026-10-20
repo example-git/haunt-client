@@ -176,6 +176,10 @@ export async function checkNotifications(browser, fixtures) {
 
     // Channel overrides are available to members without granting admin actions.
     await owner
+      .getByRole("button", { name: "Channel menu for general", exact: true })
+      .locator("..")
+      .hover();
+    await owner
       .getByRole("button", { name: "Channel menu for general" })
       .click();
     await owner

@@ -3832,15 +3832,15 @@ export interface OperationSetChannelPermissions {
 }
 export interface OperationClientUpdateManifest {
   parameters: {
-    query: {
+    query?: {
       /**
-       * Installed desktop version.
+       * Installed desktop version; required for authenticated local distribution.
        */
-      version: string;
+      version?: string;
       /**
-       * win32-x64, linux-x64, linux-arm64 or darwin-arm64.
+       * win32-x64, linux-x64, linux-arm64 or darwin-arm64; required for authenticated local distribution.
        */
-      target: string;
+      target?: string;
     };
     header?: never;
     path?: never;
@@ -3900,6 +3900,9 @@ export interface OperationClientInstallers {
 }
 export interface HttpapiClientInstallers {
   available: string[] | null;
+  downloads?: {
+    [k: string]: string;
+  };
   manifest: HttpapiClientUpdateEnvelope;
 }
 export interface OperationClientUpdateFile {

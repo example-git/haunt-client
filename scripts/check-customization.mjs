@@ -189,6 +189,13 @@ export async function checkCustomization(browser, fixtures) {
         .locator('[data-channel-icon="gamepad-2"]'),
     ).toHaveCount(1);
     await owner
+      .getByRole("button", {
+        name: "Channel menu for project-room",
+        exact: true,
+      })
+      .locator("..")
+      .hover();
+    await owner
       .getByRole("button", { name: "Channel menu for project-room" })
       .click();
     await owner
@@ -222,6 +229,13 @@ export async function checkCustomization(browser, fixtures) {
       owner.locator('.conversation-head [data-channel-icon="code"]'),
     ).toHaveCount(1);
     await owner
+      .getByRole("button", {
+        name: "Channel menu for project-chat",
+        exact: true,
+      })
+      .locator("..")
+      .hover();
+    await owner
       .getByRole("button", { name: "Channel menu for project-chat" })
       .click();
     await owner
@@ -243,6 +257,13 @@ export async function checkCustomization(browser, fixtures) {
       .getByRole("button", { name: "project-chat", exact: true })
       .click();
     await expect(alice.locator(".readonly")).toBeVisible();
+    await alice
+      .getByRole("button", {
+        name: "Channel menu for project-chat",
+        exact: true,
+      })
+      .locator("..")
+      .hover();
     await alice
       .getByRole("button", { name: "Channel menu for project-chat" })
       .click();
@@ -477,6 +498,7 @@ export async function checkCustomization(browser, fixtures) {
     const voiceMenu = owner.getByRole("button", {
       name: "Channel menu for lounge",
     });
+    await voiceMenu.locator("..").hover();
     await voiceMenu.click();
     await expect(
       owner.getByRole("menu", { name: "lounge options" }),
@@ -561,6 +583,13 @@ export async function checkCustomization(browser, fixtures) {
       10,
       "Sound preference suppresses cues",
     );
+    await owner
+      .getByRole("button", {
+        name: "Channel menu for project-chat",
+        exact: true,
+      })
+      .locator("..")
+      .hover();
     await owner
       .getByRole("button", { name: "Channel menu for project-chat" })
       .click();

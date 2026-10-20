@@ -8,6 +8,7 @@ type Installer = {
   size: number;
   sha256: string;
   version: string;
+  url?: string;
 };
 const decode = (value: string) =>
   Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
@@ -80,15 +81,20 @@ export function DesktopDownload({ instance }: { instance: InstanceClient }) {
   const [progress, setProgress] = useState<number>();
   const [error, setError] = useState("");
   const [controller, setController] = useState<AbortController>();
+  const source = instance.account.instance.client_updates;
+  const publicDownload = source?.authenticated === false;
   const enabled =
     !window.hauntDesktop &&
     instance.account.instance.client_updates?.installers &&
     status === "online";
   const target = installerTarget(navigator.userAgent);
   const base = instance.account.origin + "/api/v1/client-updates/";
-  const headers = { Authorization: `Bearer ${instance.account.login.token}` };
+  const headers = publicDownload
+    ? undefined
+    : { Authorization: `Bearer ${instance.account.login.token}` };
   useEffect(() => {
     setInstaller(undefined);
+    setError("");
     if (!enabled || !target) return;
     const abort = new AbortController();
     void fetch(base + "installers", {
@@ -98,20 +104,65 @@ export function DesktopDownload({ instance }: { instance: InstanceClient }) {
       credentials: "omit",
     })
       .then(async (response) => {
-        if (!response.ok) return;
+        if (!response.ok) throw Error("Desktop downloads are unavailable.");
         const text = await response.text();
         if (text.length > 192 * 1024)
           throw Error("Installer manifest too large");
         const result = JSON.parse(text);
         if (!result.available?.includes(target)) return;
         const verified = await verifyInstaller(result.manifest, target);
+        if (publicDownload) {
+          const address = new URL(result.downloads?.[target]);
+          const releasePath = `client-v${verified.version}/${verified.file}`;
+          const expected = new Set([
+            `https://github.com/${updates.repository}/releases/download/${releasePath}`,
+            new URL(releasePath, new URL(".", source!.manifest_url)).href,
+          ]);
+          if (
+            address.protocol !== "https:" ||
+            address.username ||
+            address.password ||
+            address.port ||
+            address.search ||
+            address.hash ||
+            !expected.has(address.href)
+          )
+            throw Error("Invalid public installer address.");
+          verified.url = address.href;
+        }
         if (!abort.signal.aborted) setInstaller(verified);
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (!abort.signal.aborted)
+          setError(
+            error instanceof Error
+              ? error.message
+              : "Desktop downloads are unavailable.",
+          );
+      });
     return () => abort.abort();
-  }, [instance, enabled, target, base]);
+  }, [instance, enabled, target, base, publicDownload, source?.manifest_url]);
   useEffect(() => () => controller?.abort(), [controller]);
-  if (!installer || !enabled) return null;
+  if (!enabled) return null;
+  if (!installer)
+    return error ? (
+      <span className="desktop-download-error" role="alert">
+        {error}
+      </span>
+    ) : null;
+  if (publicDownload)
+    return installer.url ? (
+      <div className="desktop-download">
+        <a
+          className="desktop-update-notice"
+          href={installer.url}
+          title={`Download Haunt ${installer.version} (${target})`}
+        >
+          <Download size={16} />
+          <span>Desktop app</span>
+        </a>
+      </div>
+    ) : null;
   const download = async () => {
     const abort = new AbortController();
     setController(abort);

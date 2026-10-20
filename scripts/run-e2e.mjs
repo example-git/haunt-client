@@ -1,4 +1,5 @@
 import { checkUIRefresh } from "./check-ui-refresh.mjs";
+import { checkPublicDownloads } from "./check-public-downloads.mjs";
 import { checkNotificationDelivery } from "./check-notification-delivery.mjs";
 import { checkNotificationSearch } from "./check-notification-search.mjs";
 import { captureDemo } from "./capture-demo.mjs";
@@ -180,6 +181,7 @@ try {
       "source-audio",
       "narrator",
       "ui-refresh",
+      "public-downloads",
       "notifications",
     ].includes(process.env.HAUNT_CLIENT_CHECK)
   )
@@ -265,6 +267,8 @@ try {
       await checkScreen(process.env.HAUNT_PACKAGED_EXECUTABLE, (page) =>
         checkPluginDownloads(page, fixtures, "electron"),
       );
+  } else if (process.env.HAUNT_CLIENT_CHECK === "public-downloads") {
+    await checkPublicDownloads(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "secure-dm") {
     const context = await browser.newContext({
       viewport: { width: 1400, height: 960 },

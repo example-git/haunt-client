@@ -98,6 +98,10 @@ export async function checkNotificationSounds(
   // Channel menu overrides the server and offers an inherited fallback.
   await page
     .getByRole("button", { name: "Channel menu for general", exact: true })
+    .locator("..")
+    .hover();
+  await page
+    .getByRole("button", { name: "Channel menu for general", exact: true })
     .click();
   await page
     .getByRole("menuitem", { name: "Notifications", exact: true })
