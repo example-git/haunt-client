@@ -1428,9 +1428,16 @@ function Workspace({
                     </button>
                   )}
                 </div>
-                <div id={`category-${cat.id}`} hidden={collapsed}>
+                <div id={`category-${cat.id}`}>
                   {state.channels
-                    .filter((c) => c.category_id === cat.id)
+                    .filter(
+                      (c) =>
+                        c.category_id === cat.id &&
+                        (!collapsed ||
+                          c.id === conversation ||
+                          (activeCall?.room === c.id &&
+                            callState?.status !== "ended")),
+                    )
                     .map(textChannel)}
                 </div>
               </div>

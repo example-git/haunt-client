@@ -1,6 +1,7 @@
 import { expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { checkChannelMenus } from "./check-sidebar.mjs";
 
 export async function checkCompactChat(page, { appearance, close }) {
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -109,6 +110,7 @@ export async function checkCompactChat(page, { appearance, close }) {
     ).toBeChecked();
     await close(page);
     const slug = name.trim().toLowerCase().replace(/\W+/g, "-");
+    await checkChannelMenus(page, slug);
     await page.locator(".messages").evaluate((el) => {
       el.scrollTop = el.scrollHeight;
     });
@@ -163,5 +165,6 @@ export async function checkCompactChat(page, { appearance, close }) {
     defaultRestored: true,
     mobileNoOverflow: true,
     themes,
+    channelMenusHoverContrastAndPlacement: true,
   };
 }

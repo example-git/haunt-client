@@ -417,6 +417,12 @@ export async function checkUIRefresh(browser, fixtures) {
     report.polish = await checkUIPolish(owner, { appearance, close });
     const { checkCompactChat } = await import("./check-compact-chat.mjs");
     report.compact = await checkCompactChat(owner, { appearance, close });
+    const { checkCollapsedCategories } = await import("./check-sidebar.mjs");
+    report.categories = await checkCollapsedCategories(owner, {
+      general: fixture.general,
+      request: (method, path, body) =>
+        request(method, path, ownerAPI.token, body, 201),
+    });
     assert.deepEqual(errors, []);
     await fs.writeFile(
       "test-results/ui-refresh.json",
