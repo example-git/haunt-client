@@ -176,7 +176,7 @@ export const themePresets: {
     accent: "#f7abc3",
     colors: {
       background: "#1b1c20",
-      sidebar: "#c8b8ee",
+      sidebar: "#323232",
       chrome: "#f7abc3",
       surface: "#242529",
       raised: "#303136",
@@ -267,6 +267,25 @@ export const hexColor = (v: unknown): v is string =>
   typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
 export const minimumSidebarOpacity = (effect: WindowEffect) =>
   effect === "transparent" ? 50 : 30;
+
+/** Refresh an unchanged installed preset; saved/imported themes stay snapshots. */
+export function restoreTheme(raw: unknown): ThemePreferences {
+  const value =
+    raw && typeof raw === "object" ? (raw as Partial<ThemePreferences>) : {};
+  const rose = themePresets.find((preset) => preset.id === "rose-slate")!;
+  const originalRose =
+    value.preset === rose.id &&
+    value.gradient == null &&
+    colorKeys.every(
+      (key) =>
+        hexColor(value.colors?.[key]) &&
+        value.colors![key].toLowerCase() ===
+          (key === "sidebar" ? "#c8b8ee" : rose.colors[key]),
+    );
+  return normalizeTheme(
+    originalRose ? { ...value, colors: rose.colors } : value,
+  );
+}
 
 export function normalizeTheme(raw: unknown): ThemePreferences {
   const value =

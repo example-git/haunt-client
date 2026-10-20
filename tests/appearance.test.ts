@@ -108,6 +108,45 @@ it("restores custom theme colors, bounds transparency and keeps preferences in b
   expect(restored.getPreferences().accentColor).toBe("#123abc");
 });
 
+it.each(["unchanged", "edited", "custom"])(
+  "restores the %s old Rose Slate selection while preserving saved copies",
+  async (kind) => {
+    const { themePresets } = await import("../packages/browser/src/themes");
+    const rose = themePresets.find((preset) => preset.id === "rose-slate")!;
+    const legacy = {
+      preset: kind === "custom" ? "custom" : rose.id,
+      colors: {
+        ...rose.colors,
+        sidebar: "#c8b8ee",
+        ...(kind === "edited" ? { surface: "#202020" } : {}),
+      },
+      gradient: null,
+      windowEffect: "transparent",
+      sidebarOpacity: 75,
+    };
+    const saved = {
+      id: "original-rose",
+      name: "My original rose",
+      theme: legacy,
+      accentColor: rose.accent,
+    };
+    vi.stubGlobal("localStorage", {
+      getItem: () => JSON.stringify({ theme: legacy, savedThemes: [saved] }),
+      setItem: () => {},
+    });
+    const { getPreferences } =
+      await import("../packages/browser/src/preferences");
+    const { theme, savedThemes } = getPreferences();
+    expect(theme).toMatchObject({
+      preset: kind === "unchanged" ? rose.id : "custom",
+      colors: kind === "unchanged" ? rose.colors : legacy.colors,
+      windowEffect: "transparent",
+      sidebarOpacity: 75,
+    });
+    expect(savedThemes[0].theme.colors).toEqual(legacy.colors);
+  },
+);
+
 it("keeps glass content opaque, bounds edge tints and preserves the applied effect during a restart", async () => {
   const properties = new Map<string, string>();
   const dataset: Record<string, string> = {};

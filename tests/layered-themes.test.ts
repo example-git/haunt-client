@@ -32,9 +32,7 @@ for (const id of ids) {
       );
       expect(contrast(layer.button, background)).toBeGreaterThanOrEqual(7);
       expect(layer.button).toBe(
-        background === preset.colors.surface
-          ? preset.accent
-          : preset.colors.background,
+        layer.light ? preset.colors.background : preset.accent,
       );
       if (layer.light) expect(layer.buttonText).toBe(background);
     }

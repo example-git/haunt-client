@@ -232,6 +232,30 @@ export async function checkUIRefresh(browser, fixtures) {
     ]) {
       await appearance(owner);
       await owner.getByRole("button", { name, exact: true }).click();
+      if (name === "Rose Slate") {
+        // Reopen a profile written by the previous release, through the real
+        // preference loader. Its untouched built-in selection must update too.
+        await owner.evaluate(() => {
+          const key = "chatxo-client-preferences-v1";
+          const preferences = JSON.parse(localStorage.getItem(key));
+          preferences.theme.colors.sidebar = "#c8b8ee";
+          localStorage.setItem(key, JSON.stringify(preferences));
+        });
+        await owner.reload();
+        await owner
+          .getByRole("button", { name: "Open The Common Room", exact: true })
+          .click();
+        await expect(owner.locator(".connection")).toHaveText("Connected");
+        await appearance(owner);
+        await expect(
+          owner.getByRole("button", { name, exact: true }),
+        ).toHaveAttribute("aria-pressed", "true");
+        await expect(owner.locator(".settings-nav")).toHaveCSS(
+          "background-color",
+          "rgb(50, 50, 50)",
+        );
+        report.roseSlateUpgrade = true;
+      }
       await expect(owner.locator(".theme-contrast-note")).toHaveCount(0);
       // Theme selection animates button foregrounds for 150 ms. Require the
       // settled rendered colors, not an intermediate transition frame.
@@ -268,6 +292,7 @@ export async function checkUIRefresh(browser, fixtures) {
         return {
           header: inspect(".app-titlebar"),
           sidebar: inspect(".sidebar"),
+          members: inspect(".member-panel"),
           chat: inspect(".conversation-view"),
           button: inspect(".app-titlebar .icon"),
           selected: inspect(".sidebar .channel.active"),
@@ -283,7 +308,16 @@ export async function checkUIRefresh(browser, fixtures) {
         3,
       );
       assert.equal(layers.button.color, layers.header.background);
-      assert.equal(layers.selected.color, layers.sidebar.background);
+      if (name === "Rose Slate") {
+        assert.equal(layers.header.background, "rgb(247, 171, 195)");
+        assert.equal(layers.sidebar.background, "rgb(50, 50, 50)");
+        assert.equal(layers.members.background, "rgb(50, 50, 50)");
+        assert.equal(layers.chat.background, "rgb(36, 37, 41)");
+        assert.equal(layers.selected.background, layers.header.background);
+      } else {
+        assert.equal(layers.selected.color, layers.sidebar.background);
+      }
+      assert(contrast(layers.sidebar.color, layers.sidebar.background) >= 4.5);
       assert.notEqual(layers.button.background, layers.header.background);
       assert(
         contrast(layers.selectedLabel.color, layers.selected.background) >= 4.5,

@@ -1,5 +1,10 @@
 import { normalizeSavedThemes, type SavedTheme } from "./saved-themes";
-import { defaultTheme, normalizeTheme, type ThemePreferences } from "./themes";
+import {
+  defaultTheme,
+  normalizeTheme,
+  restoreTheme,
+  type ThemePreferences,
+} from "./themes";
 import {
   isNotificationSound,
   soundOverrides,
@@ -125,7 +130,7 @@ function read(): ClientPreferences {
     next.narratorServers = normalizeNarratorServers(raw.narratorServers);
     next.audioPlugins = parsePluginPreferences(raw.audioPlugins);
     next.accentColor = normalizeAccent(raw.accentColor);
-    next.theme = normalizeTheme(raw.theme);
+    next.theme = restoreTheme(raw.theme);
     next.savedThemes = normalizeSavedThemes(raw.savedThemes);
     for (const field of [
       "enabled",
