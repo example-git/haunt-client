@@ -255,9 +255,30 @@ try {
   if (replacementPid) {
     try {
       process.kill(replacementPid, "SIGTERM");
-    } catch {}
+    } catch (error) {
+      if (error.code !== "ESRCH") throw error;
+    }
+    await expect
+      .poll(
+        () => {
+          try {
+            process.kill(replacementPid, 0);
+            return false;
+          } catch (error) {
+            if (error.code !== "ESRCH") throw error;
+            return true;
+          }
+        },
+        { timeout: 30000 },
+      )
+      .toBe(true);
   }
   if (app && initialProcess?.exitCode === null) await app.close();
   if (mounted) await run("hdiutil", ["detach", mount]);
-  await fs.rm(scratch, { recursive: true, force: true });
+  await fs.rm(scratch, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
 }
