@@ -253,6 +253,7 @@ export interface DesktopUpdateState {
     | "downloading"
     | "ready"
     | "installer-ready"
+    | "installing"
     | "error";
   current: string;
   available?: string;
@@ -260,6 +261,7 @@ export interface DesktopUpdateState {
   message?: string;
   notes?: string;
   progress?: number;
+  localSigning?: boolean;
 }
 export interface DesktopBridge extends NativeBridge {
   appearance?: {
@@ -330,8 +332,7 @@ export interface DesktopBridge extends NativeBridge {
     unread: boolean;
     icon?: string;
     overlay?: string;
-  }): Promise<void>;
-  testNotification?(): Promise<"shown" | "submitted">;
+  }): Promise<{ status: "accepted" | "unconfirmed"; message: string } | void>;
   onNotificationError?(callback: (message: string) => void): () => void;
   notificationAvailable(): Promise<boolean>;
   showNotification(value: {

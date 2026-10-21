@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import type { DesktopUpdateState } from "@haunt/browser/storage";
 import { Download, X } from "lucide-react";
 
-function runtimeInstructions() {
+function runtimeInstructions(localSigning = false) {
   switch (window.hauntDesktop?.platform) {
     case "darwin":
+      if (localSigning)
+        return "Update app prepares and signs the new version with your local key, then replaces Haunt and relaunches. macOS may ask for installation permission.";
       return "Open the downloaded DMG, quit Haunt, and replace your installed app with the latest copy. Apply your usual local signing step if needed.";
     case "win32":
       return "Run the downloaded installer to update your existing installation.";
@@ -42,11 +44,14 @@ export function DesktopRuntimeNotice() {
       state.phase === "runtime-required" ||
       ready ||
       (state.kind === "installer" &&
-        ["checking", "downloading", "error"].includes(state.phase))
+        ["checking", "downloading", "installing", "error"].includes(
+          state.phase,
+        ))
     )
   )
     return null;
   const downloading = state.phase === "downloading";
+  const installing = state.phase === "installing";
   const failure = error || (state.phase === "error" ? state.message : "");
   const run = async () => {
     setError("");
@@ -86,26 +91,33 @@ export function DesktopRuntimeNotice() {
         cannot install this release. Your saved accounts and settings stay on
         this device.
       </p>
-      <p>{runtimeInstructions()}</p>
-      {downloading && (
+      <p>{runtimeInstructions(state?.localSigning)}</p>
+      {installing && <p role="status">{state.message}</p>}
+      {(downloading || installing) && (
         <progress
-          aria-label="Installer download"
-          value={state.progress ?? 0}
+          aria-label={installing ? "Update installation" : "Installer download"}
+          value={state.progress}
           max={1}
         />
       )}
       <button
         className="secondary"
-        disabled={working || downloading || state.phase === "checking"}
+        disabled={
+          working || downloading || installing || state.phase === "checking"
+        }
         onClick={() => void run()}
       >
-        {downloading
-          ? "Downloading installer…"
-          : ready
-            ? window.hauntDesktop?.platform === "linux"
-              ? "Install and restart"
-              : "Open installer"
-            : "Download full app"}
+        {installing
+          ? "Installing…"
+          : downloading
+            ? "Downloading installer…"
+            : ready
+              ? state.localSigning
+                ? "Update app"
+                : window.hauntDesktop?.platform === "linux"
+                  ? "Install and restart"
+                  : "Open installer"
+              : "Download full app"}
       </button>
       {failure && (
         <p role="alert" className="error">
@@ -134,6 +146,7 @@ export function DesktopUpdateNotice({ onOpen }: { onOpen: () => void }) {
       "available",
       "runtime-required",
       "downloading",
+      "installing",
       "ready",
       "installer-ready",
     ].includes(state.phase)
@@ -148,11 +161,13 @@ export function DesktopUpdateNotice({ onOpen }: { onOpen: () => void }) {
     >
       <Download size={16} />
       <span>
-        {state.phase === "downloading"
-          ? `${Math.round((state.progress ?? 0) * 100)}%`
-          : state.phase === "ready" || state.phase === "installer-ready"
-            ? "Update ready"
-            : "Update available"}
+        {state.phase === "installing"
+          ? "Installing…"
+          : state.phase === "downloading"
+            ? `${Math.round((state.progress ?? 0) * 100)}%`
+            : state.phase === "ready" || state.phase === "installer-ready"
+              ? "Update ready"
+              : "Update available"}
       </span>
     </button>
   );
@@ -182,7 +197,10 @@ export function DesktopUpdates() {
       ),
     );
   };
-  const busy = state?.phase === "checking" || state?.phase === "downloading";
+  const busy =
+    state?.phase === "checking" ||
+    state?.phase === "downloading" ||
+    state?.phase === "installing";
   return (
     <section className="form desktop-updates" aria-label="Client updates">
       <h3>Client updates</h3>
@@ -206,19 +224,25 @@ export function DesktopUpdates() {
             : state?.phase === "ready"
               ? "Update ready. It will load the next time you start Haunt."
               : state?.phase === "installer-ready"
-                ? "Desktop runtime downloaded."
+                ? state.message || "Desktop runtime downloaded."
                 : state?.message}
       </p>
-      {state?.phase === "downloading" && (
+      {(state?.phase === "downloading" || state?.phase === "installing") && (
         <progress
-          aria-label="Update download"
-          value={state.progress ?? 0}
+          aria-label={
+            state.phase === "installing"
+              ? "Update installation"
+              : "Update download"
+          }
+          value={state.progress}
           max={1}
         />
       )}
       {state?.notes && <p className="update-release-notes">{state.notes}</p>}
       {(state?.phase === "runtime-required" ||
-        state?.phase === "installer-ready") && <p>{runtimeInstructions()}</p>}
+        state?.phase === "installer-ready") && (
+        <p>{runtimeInstructions(state?.localSigning)}</p>
+      )}
       <div className="actions">
         <button
           disabled={
@@ -238,10 +262,12 @@ export function DesktopUpdates() {
         )}
         {(state?.phase === "ready" || state?.phase === "installer-ready") && (
           <button onClick={() => run(bridge.apply)}>
-            {state.phase === "ready" ||
-            window.hauntDesktop?.platform === "linux"
-              ? "Restart to update"
-              : "Open installer"}
+            {state.localSigning && state.phase === "installer-ready"
+              ? "Update app"
+              : state.phase === "ready" ||
+                  window.hauntDesktop?.platform === "linux"
+                ? "Restart to update"
+                : "Open installer"}
           </button>
         )}
       </div>

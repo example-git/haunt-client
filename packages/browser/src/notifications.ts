@@ -8,6 +8,12 @@ import {
 } from "@haunt/core";
 import { channelPreferenceKey, getPreferences } from "./preferences";
 import { playPing } from "./sounds";
+import { reportNotificationError } from "./notification-health";
+export {
+  reportNotificationError,
+  notificationError,
+  subscribeNotificationHealth,
+} from "./notification-health";
 export interface Ping {
   direct?: boolean;
   author?: string;
@@ -218,47 +224,13 @@ export async function enablePopups() {
       "Allow notifications for this site in your browser settings to enable desktop popups.",
     );
 }
-let deliveryError = "";
-const healthListeners = new Set<() => void>();
-export const notificationError = () => deliveryError;
-export const subscribeNotificationHealth = (listener: () => void) => {
-  healthListeners.add(listener);
-  return () => {
-    healthListeners.delete(listener);
-  };
-};
-export function reportNotificationError(message: string) {
-  deliveryError = message;
-  healthListeners.forEach((listener) => listener());
-}
-export async function testNotification() {
-  reportNotificationError("");
-  if (window.hauntDesktop) {
-    if (!window.hauntDesktop.testNotification)
-      throw Error("Update the desktop client to use the notification test.");
-    const result = await window.hauntDesktop.testNotification();
-    return result === "shown"
-      ? "The system acknowledged the test. Check your notifications for Haunt."
-      : "Test sent to the system. Check your notifications and system notification settings.";
-  }
-  await enablePopups();
-  const popup = new Notification("Haunt notification test", {
-    body: "Notifications can appear here while Haunt is in the background.",
-    silent: true,
-  });
-  popup.onerror = () =>
-    reportNotificationError(
-      "The browser could not display the test notification.",
-    );
-  return "Test sent to your browser. Check for a Haunt notification.";
-}
 const livePopups = new Set<Notification>();
-export function deliverPing(
+export async function deliverPing(
   ping: Ping,
   open: (ping: Pick<Ping, "instance" | "conversation">) => void,
 ) {
   const prefs = getPreferences();
-  void playPing(
+  const sound = playPing(
     false,
     resolveNotificationSound(
       prefs,
@@ -266,12 +238,22 @@ export function deliverPing(
       ping.conversation,
       ping.direct ? ping.author : undefined,
     ),
-  ).catch(() => {});
-  if (
-    !prefs.desktopPopups ||
-    (document.visibilityState === "visible" && document.hasFocus())
-  )
-    return;
+  ).catch((error) => {
+    const message = `Notification sound failed: ${error instanceof Error ? error.message : String(error)}`;
+    reportNotificationError(message);
+    return message;
+  });
+  const popup = showPopup(ping, open);
+  return `${await popup} ${await sound}`;
+}
+async function showPopup(
+  ping: Ping,
+  open: (ping: Pick<Ping, "instance" | "conversation">) => void,
+) {
+  const prefs = getPreferences();
+  if (!prefs.desktopPopups) return "Desktop popups are disabled in Haunt.";
+  if (document.visibilityState === "visible" && document.hasFocus())
+    return "Popup suppressed because Haunt still has focus.";
   const payload = {
     title: ping.title,
     body: prefs.previewMessages ? ping.body : "New message",
@@ -279,14 +261,19 @@ export function deliverPing(
     conversation: ping.conversation,
   };
   if (window.hauntDesktop) {
-    void window.hauntDesktop.showNotification(payload).catch((error) => {
-      reportNotificationError(
-        error instanceof Error ? error.message : String(error),
-      );
-    });
-    return;
+    try {
+      const result = await window.hauntDesktop.showNotification(payload);
+      return result === "shown"
+        ? "The system acknowledged the popup. Visibility still depends on system notification settings."
+        : "Popup delivery is unconfirmed: the system did not acknowledge it.";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      reportNotificationError(message);
+      return `Popup failed: ${message}`;
+    }
   }
-  if (popupPermission() !== "granted") return;
+  if (popupPermission() !== "granted")
+    return "Popup blocked: this browser has not granted notification permission.";
   try {
     const popup = new Notification(payload.title, {
       body: payload.body,
@@ -306,13 +293,30 @@ export function deliverPing(
       popup.close();
       livePopups.delete(popup);
     };
-    popup.onerror = () =>
-      reportNotificationError(
-        "The browser could not display a notification. Check site permissions.",
-      );
+    return await new Promise<string>((resolve) => {
+      const timeout = setTimeout(() => {
+        const message =
+          "Popup delivery is unconfirmed: the browser did not acknowledge it.";
+        reportNotificationError(message);
+        resolve(message);
+      }, 8000);
+      popup.onshow = () => {
+        clearTimeout(timeout);
+        resolve(
+          "The browser acknowledged the popup. Visibility still depends on system notification settings.",
+        );
+      };
+      popup.onerror = () => {
+        clearTimeout(timeout);
+        const message =
+          "The browser could not display a notification. Check site permissions.";
+        reportNotificationError(message);
+        resolve(`Popup failed: ${message}`);
+      };
+    });
   } catch (error) {
-    reportNotificationError(
-      error instanceof Error ? error.message : String(error),
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    reportNotificationError(message);
+    return `Popup failed: ${message}`;
   }
 }

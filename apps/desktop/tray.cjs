@@ -3,17 +3,48 @@ function updateAppBadge({ app, window, platform = process.platform }, value) {
   const { count, unread, overlay } = value;
   const active = count > 0 || unread;
   if (platform === "darwin") {
-    app.dock?.setBadge(
-      count ? (count > 99 ? "99+" : String(count)) : unread ? "•" : "",
-    );
+    if (!app.dock) throw Error("The macOS Dock badge API is unavailable.");
+    const expected = count
+      ? count > 99
+        ? "99+"
+        : String(count)
+      : unread
+        ? "•"
+        : "";
+    app.dock.setBadge(expected);
+    const actual = app.dock.getBadge();
+    if (actual !== expected)
+      throw Error(
+        `macOS did not retain the Dock badge (expected ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}).`,
+      );
+    return {
+      status: "accepted",
+      message: `macOS returned the requested Dock badge ${JSON.stringify(actual)}. On-screen visibility is not confirmed by this API.`,
+    };
   } else if (platform === "win32") {
+    if (active && !overlay)
+      throw Error("The Windows taskbar badge image could not be loaded.");
     window.setOverlayIcon(
       active && overlay ? overlay : null,
       active ? "Unread notifications" : "No unread messages",
     );
+    return {
+      status: "unconfirmed",
+      message:
+        "Windows received the taskbar badge request; its API does not confirm whether the badge is visible.",
+    };
   } else {
-    app.setBadgeCount(count);
+    const accepted = app.setBadgeCount(count);
+    if (!accepted && active)
+      throw Error(
+        "The Linux desktop did not accept the launcher badge. Check desktop badge support and Haunt's launcher entry.",
+      );
     // Keep the window icon stable: docks can cache it after the native count clears.
+    return {
+      status: "unconfirmed",
+      message:
+        "Linux received the launcher badge request; dock visibility still depends on the desktop's badge settings.",
+    };
   }
 }
 

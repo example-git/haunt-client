@@ -5,6 +5,7 @@ export const desktopFiles = [
   "bootstrap.cjs",
   "profile.cjs",
   "updates.cjs",
+  "mac-install.cjs",
   "preload.cjs",
   "network.cjs",
   "media-cache.cjs",

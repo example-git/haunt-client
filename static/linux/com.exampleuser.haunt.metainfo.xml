@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.exampleuser.haunt</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>BSD-3-Clause</project_license>
+  <name>Haunt</name>
+  <summary>Community messaging and calls</summary>
+  <description>
+    <p>Connect to self-hosted communities with text channels, direct messages,
+    voice calls and screen sharing.</p>
+  </description>
+  <launchable type="desktop-id">com.exampleuser.haunt.desktop</launchable>
+  <url type="homepage">https://github.com/example-git/haunt</url>
+  <url type="bugtracker">https://github.com/example-git/haunt-client/issues</url>
+  <developer id="com.exampleuser.haunt"><name>Haunt</name></developer>
+  <provides><binary>haunt</binary></provides>
+</component>

@@ -70,6 +70,10 @@ import { useContextMenu, MenuAction } from "./ContextMenu";
 import { Attachment, MessageEmbeds } from "./RichContent";
 import { unreadSummary } from "@haunt/core";
 import { installBadges } from "@haunt/browser/badges";
+import {
+  clearNotificationTest,
+  notificationTestConversation,
+} from "@haunt/browser/notification-test-state";
 import { BRAND_NAME, brandAsset } from "@haunt/browser/brand";
 import {
   useEffect,
@@ -447,6 +451,10 @@ export function App() {
       ),
   );
   const openPing = (ping: Pick<Ping, "instance" | "conversation">) => {
+    if (ping.conversation === notificationTestConversation) {
+      clearNotificationTest();
+      return;
+    }
     const target = client.instances.get(ping.instance);
     if (!target) return;
     if (

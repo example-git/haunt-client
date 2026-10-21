@@ -19,6 +19,8 @@ const config = JSON.parse(
 await validateConfiguration(config, new DebugLogger(false));
 assert.equal(config.directories.app, "electron-app");
 assert.equal(config.mac.hardenedRuntime, true);
+assert.equal(config.mac.identity, null);
+assert.equal(config.dmg.sign, false);
 assert.equal(config.mac.notarize, false);
 for (const target of config.mac.target)
   assert.deepEqual(target.arch, ["arm64"]);

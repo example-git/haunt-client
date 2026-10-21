@@ -2,6 +2,7 @@ import {
   isClipSound,
   type NotificationSound,
 } from "./notification-sound-options";
+import { reportNotificationError } from "./notification-health";
 import type { CallSnapshot } from "./media/call";
 import { followAudioOutput, supportsAudioOutput } from "./audio-output";
 import {
@@ -72,8 +73,18 @@ function unlock() {
       };
     } else stopOutput = followAudioOutput(context);
   }
-  if (outputElement?.paused) void outputElement.play().catch(() => {});
-  if (context.state === "suspended") void context.resume().catch(() => {});
+  if (outputElement?.paused)
+    void outputElement
+      .play()
+      .catch((error) =>
+        reportNotificationError(`Notification audio failed: ${error.message}`),
+      );
+  if (context.state === "suspended")
+    void context
+      .resume()
+      .catch((error) =>
+        reportNotificationError(`Notification audio failed: ${error.message}`),
+      );
 }
 export function installSounds() {
   const activate = () => unlock();
@@ -264,16 +275,16 @@ export async function playPing(preview = false, selected?: NotificationSound) {
   if (preview) unlock();
   const prefs = getPreferences();
   const sound = selected ?? prefs.sound;
-  if (
-    !context ||
-    context.state !== "running" ||
-    sound === "none" ||
-    !prefs.volume
-  )
-    return;
+  if (sound === "none" || !prefs.volume)
+    return "Sound is disabled or its volume is zero.";
+  if (!context || context.state !== "running")
+    throw Error(
+      "Notification audio is not running. Interact with Haunt and check the selected audio output.",
+    );
   const ctx = context,
     now = ctx.currentTime;
-  if (!preview && now - lastPing < 1) return;
+  if (!preview && now - lastPing < 1)
+    return "Sound was rate-limited after a recent notification.";
   lastPing = now;
   stopPing();
   const generation = pingGeneration;
@@ -289,7 +300,8 @@ export async function playPing(preview = false, selected?: NotificationSound) {
         const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
         if (decoded.duration > 15)
           throw Error("Choose a shorter notification sound.");
-        if (version !== customVersion) return;
+        if (version !== customVersion)
+          return "Sound was cancelled because its selection changed.";
         buffer = decoded;
         if (sound === "custom") customBuffer = decoded;
         else {
@@ -298,7 +310,8 @@ export async function playPing(preview = false, selected?: NotificationSound) {
             clipBuffers.delete(clipBuffers.keys().next().value!);
         }
       }
-      if (ctx.state !== "running" || generation !== pingGeneration) return;
+      if (ctx.state !== "running" || generation !== pingGeneration)
+        return "Sound was interrupted before playback.";
       const source = ctx.createBufferSource(),
         gain = ctx.createGain();
       source.buffer = buffer;
@@ -312,9 +325,9 @@ export async function playPing(preview = false, selected?: NotificationSound) {
         gain.disconnect();
       };
       source.start();
-      return;
+      return "Sound playback started; speaker output is not confirmed by the audio API.";
     } catch (error) {
-      if (preview) throw error;
+      throw error;
     }
   }
   const notes =
@@ -342,4 +355,5 @@ export async function playPing(preview = false, selected?: NotificationSound) {
     tone.start(start);
     tone.stop(start + 0.24);
   });
+  return "Sound playback started; speaker output is not confirmed by the audio API.";
 }

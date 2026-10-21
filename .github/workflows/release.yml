@@ -60,13 +60,24 @@ jobs:
         run: docker run --rm --cap-add=SYS_ADMIN -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash scripts/ci/check-fedora-rpm.sh
       - name: Install native Linux test dependencies
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi plank openbox imagemagick desktop-file-utils x11-utils
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi plank openbox imagemagick desktop-file-utils x11-utils dunst tesseract-ocr xdotool
+      - name: Install macOS native UI inspection tools
+        if: matrix.platform == 'mac'
+        run: brew install tesseract imagemagick cliclick
+      - name: Install Windows native UI inspection tools
+        if: matrix.platform == 'win'
+        run: |
+          choco install -y tesseract imagemagick --no-progress
+          powershell -NoProfile -Command '[Environment]::GetEnvironmentVariable("Path", "Machine").Split(";") | Out-File -Append -Encoding utf8 $env:GITHUB_PATH'
+      - name: Verify local macOS signing and in-app bundle replacement
+        if: matrix.platform == 'mac'
+        run: node scripts/check-mac-local-update.mjs
       - name: Rehearse a full installer upgrade on the native runner
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${{ matrix.platform }}" = linux ]; then
-            dbus-run-session -- xvfb-run -a node scripts/check-installed-upgrade.mjs
+            dbus-run-session -- xvfb-run -a -s "-screen 0 1920x1080x24" node scripts/check-installed-upgrade.mjs
           else
             node scripts/check-installed-upgrade.mjs
           fi
@@ -78,6 +89,9 @@ jobs:
             test-results/installed-upgrade-*.json
             test-results/message-badge*
             test-results/fedora-rpm-*.json
+            test-results/fedora-notifications-*.json
+            test-results/notification-*
+            test-results/mac-local-update.json
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}

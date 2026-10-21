@@ -48,10 +48,15 @@ import {
 import {
   enablePopups,
   popupPermission,
-  testNotification,
   notificationError,
   subscribeNotificationHealth,
 } from "@haunt/browser/notifications";
+import { testNotification } from "@haunt/browser/notification-test";
+import {
+  clearNotificationTest,
+  notificationTestActive,
+  subscribeNotificationTest,
+} from "@haunt/browser/notification-test-state";
 import { ErrorNotice, Modal } from "./App";
 import type { Call } from "@haunt/browser/media/call";
 const ruleOptions = (
@@ -359,6 +364,10 @@ export function ClientSettingsContent({
     notificationError,
   );
   const [notificationTest, setNotificationTest] = useState("");
+  const notificationTestPending = useSyncExternalStore(
+    subscribeNotificationTest,
+    notificationTestActive,
+  );
   const [audioServer, setAudioServer] = useState(
     instance?.scope ?? instances[0]?.scope,
   );
@@ -654,13 +663,24 @@ export function ClientSettingsContent({
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  setNotificationTest("");
-                  setNotificationTest(await testNotification());
+                  setNotificationTest(
+                    "Sending a test message in five seconds. Switch to another app to check background popups.",
+                  );
+                  setNotificationTest(await testNotification(instance));
                 })
               }
             >
               Send test notification
             </button>
+            {notificationTestPending && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={clearNotificationTest}
+              >
+                Clear test badge
+              </button>
+            )}
           </div>
           {notificationTest && (
             <p className="muted small" role="status">

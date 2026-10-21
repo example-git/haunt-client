@@ -348,7 +348,8 @@ async function startMain() {
     validateSender(event);
     const value = validateBadge(raw);
     const key = `${value.count}:${value.unread}:${value.icon}:${value.overlay}`;
-    if (key === badgeKey) return;
+    if (key === badgeKey && latestBadge)
+      return updateAppBadge({ app, window, base: badgeBase }, latestBadge);
     const artwork = (data) => {
       if (!data) return;
       const image = nativeImage.createFromDataURL(data);
@@ -364,9 +365,13 @@ async function startMain() {
       linuxDesktopError = undefined;
     }
     latestBadge = { ...value, icon, overlay };
-    updateAppBadge({ app, window, base: badgeBase }, latestBadge);
     statusTray?.update(latestBadge);
+    const result = updateAppBadge(
+      { app, window, base: badgeBase },
+      latestBadge,
+    );
     badgeKey = key;
+    return result;
   });
   const nativeNotifications = createNotificationService({
     Notification,
@@ -384,16 +389,17 @@ async function startMain() {
   app.on("browser-window-focus", () => {
     // Permission may have been granted in the system prompt or Settings since
     // the last unread event. Reapply the retained native badge on return.
-    if (latestBadge)
-      updateAppBadge({ app, window, base: badgeBase }, latestBadge);
+    if (latestBadge) {
+      try {
+        updateAppBadge({ app, window, base: badgeBase }, latestBadge);
+      } catch (error) {
+        window.webContents.send("notification:error", error.message);
+      }
+    }
   });
   ipcMain.handle("notification:show", (event, raw) => {
     validateSender(event);
     return nativeNotifications.show(validateNotification(raw));
-  });
-  ipcMain.handle("notification:test", (event) => {
-    validateSender(event);
-    return nativeNotifications.test();
   });
   app.on("before-quit", nativeNotifications.dispose);
   const serversPath = path.join(app.getPath("userData"), "known-servers.json");

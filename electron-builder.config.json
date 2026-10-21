@@ -26,6 +26,15 @@
   "mac": {
     "extraResources": [
       {
+        "from": "static/mac",
+        "to": "local-install",
+        "filter": [
+          "Install Haunt.command",
+          "finish-update.sh",
+          "commit-install.sh"
+        ]
+      },
+      {
         "from": "static/native/mac",
         "to": "native/mac",
         "filter": [
@@ -64,7 +73,24 @@
     }
   },
   "dmg": {
-    "sign": false
+    "sign": false,
+    "contents": [
+      { "x": 140, "y": 170 },
+      { "x": 400, "y": 170, "type": "link", "path": "/Applications" },
+      {
+        "x": 140,
+        "y": 320,
+        "type": "file",
+        "path": "static/mac/Install Haunt.command"
+      },
+      {
+        "x": 400,
+        "y": 320,
+        "type": "file",
+        "path": "static/mac/Installation.txt"
+      }
+    ],
+    "window": { "width": 540, "height": 440 }
   },
   "win": {
     "target": [
@@ -108,6 +134,7 @@
     "maintainer": "Haunt",
     "vendor": "Haunt",
     "synopsis": "Community messaging and calls",
+    "afterInstall": "static/linux/rpm-after-install.sh",
     "afterRemove": "static/linux/rpm-after-remove.sh",
     "depends": [
       "gtk3",
@@ -122,6 +149,14 @@
       "alsa-lib",
       "mesa-libgbm"
     ],
-    "fpm": ["static/linux/package-type=/opt/Haunt/resources/package-type"]
+    "fpm": [
+      "--before-install",
+      "static/linux/rpm-before-install.sh",
+      "--rpm-posttrans",
+      "static/linux/rpm-after-transaction.sh",
+      "static/linux/package-type=/opt/Haunt/resources/package-type",
+      "static/linux/haunt=/usr/bin/haunt",
+      "static/linux/com.exampleuser.haunt.metainfo.xml=/usr/share/metainfo/com.exampleuser.haunt.metainfo.xml"
+    ]
   }
 }

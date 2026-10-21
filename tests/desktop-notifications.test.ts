@@ -88,7 +88,7 @@ it("surfaces native failure and distinguishes unacknowledged submission from dis
   vi.useFakeTimers();
   const f = fixture();
   vi.spyOn(f.Notification, "isSupported").mockReturnValue(false);
-  await expect(f.service.test()).rejects.toThrow("unavailable");
+  await expect(f.service.show(message)).rejects.toThrow("unavailable");
   vi.spyOn(f.Notification, "isSupported").mockReturnValue(true);
   // Class fields are replaced before delivery through a constructor wrapper.
   const Native = class extends f.Notification {
@@ -104,11 +104,14 @@ it("surfaces native failure and distinguishes unacknowledged submission from dis
   f.popups.at(-1)!.emit("failed", {}, "Permission denied");
   await rejected;
   expect(f.onError).toHaveBeenCalledWith("Permission denied");
-  const pending = service.test();
+  const pending = service.show(message);
   await vi.advanceTimersByTimeAsync(8000);
   await expect(pending).resolves.toBe("submitted");
   expect(f.popups.at(-1)!.close).not.toHaveBeenCalled();
   f.popups.at(-1)!.emit("click");
-  expect(f.window.webContents.send).not.toHaveBeenCalled();
+  expect(f.window.webContents.send).toHaveBeenCalledWith("notification:click", {
+    instance: message.instance,
+    conversation: message.conversation,
+  });
   service.dispose();
 });

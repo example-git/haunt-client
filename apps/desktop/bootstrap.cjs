@@ -16,6 +16,7 @@ const {
 } = require("./updates.cjs");
 const config = require("../../update-runtime.json");
 const { initializeProfile, runKeyMigrationHelper } = require("./profile.cjs");
+const { createMacInstaller } = require("./mac-install.cjs");
 if (runKeyMigrationHelper(app, safeStorage)) return;
 let profile;
 try {
@@ -50,6 +51,8 @@ async function start() {
     runtime: config.runtime,
     version: config.version,
   });
+  const macInstaller = createMacInstaller(app);
+  updater.set({ localSigning: await macInstaller.configured() });
   let archive;
   try {
     archive = await updater.boot();
@@ -102,6 +105,7 @@ async function start() {
         updater,
         app,
         shell,
+        macInstaller,
         readActivity: () =>
           window.webContents.executeJavaScript(updateActivityScript),
         confirm: async (detail) =>

@@ -57,14 +57,12 @@ function createNotificationService({
   onError = () => {},
 }) {
   const popups = new Map();
-  const show = (value, test = false) => {
+  const show = (value) => {
     if (!Notification.isSupported())
       return Promise.reject(
         Error("Desktop notifications are unavailable on this system."),
       );
-    const key = test
-      ? "test"
-      : JSON.stringify([value.instance, value.conversation]);
+    const key = JSON.stringify([value.instance, value.conversation]);
     popups.get(key)?.close();
     const popup = new Notification({
       title: value.title,
@@ -87,11 +85,10 @@ function createNotificationService({
       if (window.isMinimized()) window.restore();
       window.show();
       window.focus();
-      if (!test)
-        window.webContents.send("notification:click", {
-          instance: value.instance,
-          conversation: value.conversation,
-        });
+      window.webContents.send("notification:click", {
+        instance: value.instance,
+        conversation: value.conversation,
+      });
       popup.close();
       remove();
     });
@@ -99,7 +96,12 @@ function createNotificationService({
     return new Promise((resolve, reject) => {
       // Some Linux daemons do not acknowledge display. Report submission honestly
       // without dismissing the notification or blocking the message pipeline.
-      const timeout = setTimeout(() => resolve("submitted"), 8000);
+      const timeout = setTimeout(() => {
+        onError(
+          "Notification delivery is unconfirmed: the system did not acknowledge it within eight seconds.",
+        );
+        resolve("submitted");
+      }, 8000);
       timeout.unref?.();
       popup.once("show", () => {
         clearTimeout(timeout);
@@ -126,14 +128,6 @@ function createNotificationService({
   };
   return {
     show,
-    test: () =>
-      show(
-        {
-          title: "Haunt notification test",
-          body: "Notifications can appear here while Haunt is in the background.",
-        },
-        true,
-      ),
     dispose: () => {
       for (const popup of popups.values()) popup.close();
       popups.clear();

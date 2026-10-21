@@ -506,7 +506,8 @@ class Updater extends EventEmitter {
     if (
       !this.config.publicKey ||
       this.status.phase === "ready" ||
-      this.status.phase === "installer-ready"
+      this.status.phase === "installer-ready" ||
+      this.status.phase === "installing"
     )
       return Promise.resolve(this.snapshot());
     return this.operation(async () => {
@@ -678,14 +679,20 @@ function createUpdateInstaller({
   platform = process.platform,
   appImage = process.env.APPIMAGE,
   replaceImage = replaceAppImage,
+  macInstaller,
 }) {
   let applying = false;
   return async () => {
     if (applying) return;
     applying = true;
+    let localMacInstall = false;
     try {
       let release = await updater.verifyReady();
-      if (release.kind === "asar" || platform !== "darwin") {
+      localMacInstall =
+        platform === "darwin" &&
+        release.kind === "installer" &&
+        (await macInstaller?.configured());
+      if (release.kind === "asar" || platform !== "darwin" || localMacInstall) {
         const activity = await readActivity();
         if (activity.call || activity.upload || activity.draft) {
           const detail = [
@@ -704,6 +711,27 @@ function createUpdateInstaller({
       if (release.kind === "asar") {
         app.relaunch();
         app.quit();
+      } else if (localMacInstall) {
+        updater.set({
+          phase: "installing",
+          progress: undefined,
+          message: "Opening the downloaded update…",
+        });
+        const prepared = await macInstaller.prepare(
+          release.filename,
+          (progress) => updater.set(progress),
+        );
+        updater.set({
+          progress: undefined,
+          message:
+            "Preparing the replacement. Approve the macOS permission prompt if shown…",
+        });
+        await macInstaller.finish(prepared);
+        updater.set({
+          progress: 1,
+          message: "Update verified. Restarting Haunt…",
+        });
+        app.quit();
       } else if (platform === "linux" && appImage) {
         await replaceImage(appImage, release.filename, release.info.installer);
         app.relaunch({ execPath: appImage, args: [] });
@@ -714,7 +742,12 @@ function createUpdateInstaller({
         if (platform === "win32") app.quit();
       }
     } catch (error) {
-      updater.set({ message: error.message });
+      updater.set({
+        message: error.message,
+        ...(localMacInstall
+          ? { phase: "installer-ready", progress: undefined }
+          : {}),
+      });
       throw error;
     } finally {
       applying = false;

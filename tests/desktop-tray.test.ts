@@ -33,8 +33,11 @@ for (const platform of ["darwin", "win32", "linux"]) {
       setIcon: vi.fn(),
     });
     const app = Object.assign(new EventEmitter(), {
-      dock: { setBadge: vi.fn() },
-      setBadgeCount: vi.fn(),
+      dock: {
+        setBadge: vi.fn(),
+        getBadge: vi.fn(() => app.dock.setBadge.mock.lastCall?.[0] ?? ""),
+      },
+      setBadgeCount: vi.fn(() => true),
       quit: vi.fn(),
     });
     const control = installTray({

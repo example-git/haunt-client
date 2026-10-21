@@ -185,7 +185,8 @@ export async function checkNotificationDelivery(browser, fixtures) {
     await expect(home(owner)).not.toHaveClass(/has-notifications/);
     await popupCount(owner, 1);
 
-    // An explicit test works while focused and with automatic popups disabled.
+    // Policy integration only: native desktop checks separately require actual
+    // OS delivery and clicking the rendered notification.
     await settings(owner);
     await owner.getByLabel("Enable message notifications").check();
     await owner
@@ -194,21 +195,34 @@ export async function checkNotificationDelivery(browser, fixtures) {
     await owner.evaluate(() => {
       window.testFocused = true;
     });
+    const before = await owner.title();
     await owner
       .getByRole("button", { name: "Send test notification", exact: true })
       .click();
-    await popupCount(owner, 2);
-    assert.equal(
-      await owner.evaluate(() => window.popupCalls[1].title),
-      "Haunt notification test",
-    );
     await expect(owner.getByRole("dialog")).toContainText(
-      "Test sent to your browser",
+      "Desktop popups are disabled in Haunt",
     );
-    await expect(
-      owner.getByLabel("Desktop popups when the app is in the background"),
-    ).not.toBeChecked();
+    await popupCount(owner, 1);
+    await expect(owner).not.toHaveTitle(before);
+    await owner
+      .getByRole("button", { name: "Clear test badge", exact: true })
+      .click();
+    await expect(owner).toHaveTitle(before);
+    await owner
+      .getByLabel("Desktop popups when the app is in the background")
+      .check();
+    await owner
+      .getByRole("button", { name: "Send test notification", exact: true })
+      .click();
+    await expect(owner.getByRole("dialog")).toContainText(
+      "Popup suppressed because Haunt still has focus",
+    );
+    await popupCount(owner, 1);
+    await owner
+      .getByRole("button", { name: "Clear test badge", exact: true })
+      .click();
     await owner.evaluate(() => {
+      window.testFocused = false;
       window.popupFailure = "OS notification fixture rejected delivery";
     });
     await owner
@@ -225,16 +239,19 @@ export async function checkNotificationDelivery(browser, fixtures) {
       .getByRole("button", { name: "Send test notification", exact: true })
       .click();
     await expect(owner.getByRole("dialog")).toContainText(
-      "Allow notifications for this site",
+      "this browser has not granted notification permission",
     );
-    await popupCount(owner, 2);
+    await popupCount(owner, 1);
     await owner.evaluate(() => {
       Notification.permission = "granted";
     });
     await owner
       .getByRole("button", { name: "Send test notification", exact: true })
       .click();
-    await popupCount(owner, 3);
+    await popupCount(owner, 2);
+    await expect(owner.getByRole("dialog")).toContainText(
+      "Popup delivery is unconfirmed",
+    );
     await owner.screenshot({ path: "test-results/notification-settings.png" });
     await owner.setViewportSize({ width: 390, height: 844 });
     assert(
@@ -256,7 +273,7 @@ export async function checkNotificationDelivery(browser, fixtures) {
           privatePopup: true,
           popupClickNavigationAndRead: true,
           muteAndDisableRespected: true,
-          explicitTestWhileFocused: true,
+          explicitTestRespectsPolicyAndUpdatesReadBadge: true,
           failedAndDeniedDeliveryVisible: true,
           nativePopupBoundary:
             "controlled; packaged native checks run separately",

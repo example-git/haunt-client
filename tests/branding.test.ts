@@ -12,7 +12,10 @@ function setup() {
   });
   const drawImage = vi.fn(),
     fillText = vi.fn(),
-    setBadge = vi.fn(async () => {});
+    setBadge = vi.fn(async () => ({
+      status: "accepted",
+      message: "Native API acknowledged the request.",
+    }));
   const icon = { href: "/brand/favicon-32.png", sizes: { value: "32x32" } };
   const document = {
     title: "Haunt",
@@ -80,7 +83,7 @@ it("keeps the owl through pending decode, unread, count, 99+, clear and logout; 
     count: 0,
     unread: true,
     icon: undefined,
-    overlay: undefined,
+    overlay: "data:image/png;base64,owl",
   });
   f.ready();
   await vi.waitFor(() =>

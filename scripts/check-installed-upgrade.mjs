@@ -2,6 +2,7 @@ import {
   prepareNativeNotifications,
   checkNativeNotifications,
 } from "./check-native-notifications.mjs";
+import { captureDesktop } from "./native-notification-ui.mjs";
 // Native CI only. Install two real releases into a private directory/profile.
 // This tests full-installer replacement; the automatic ASAR restart is a separate
 // qualification case and is never inferred from this result.
@@ -130,14 +131,44 @@ async function install(filename) {
       filename,
     ]);
     try {
-      await fs.rm(path.join(installed, "Haunt.app"), {
-        recursive: true,
-        force: true,
-      });
-      await run("ditto", [
-        path.join(mount, "Haunt.app"),
+      await run(
+        "/bin/bash",
+        [
+          path.resolve("static/mac/Install Haunt.command"),
+          "--accept-local-signing",
+          "--no-open",
+          "--destination",
+          path.join(installed, "Haunt.app"),
+          path.join(mount, "Haunt.app"),
+        ],
+        { timeout: 300000, maxBuffer: 2 * 1024 * 1024 },
+      );
+      await run("codesign", [
+        "--verify",
+        "--deep",
+        "--strict",
         path.join(installed, "Haunt.app"),
       ]);
+      const signature = await run("codesign", [
+        "-d",
+        "-r-",
+        path.join(installed, "Haunt.app"),
+      ]);
+      const requirement = `${signature.stdout}\n${signature.stderr}`
+        .split("\n")
+        .find((line) => line.startsWith("designated =>"));
+      assert(
+        requirement?.includes("certificate leaf"),
+        "Read the actual designated requirement",
+      );
+      report.localSigning ??= { designatedRequirements: [] };
+      report.localSigning.designatedRequirements.push(requirement);
+      if (report.localSigning.designatedRequirements.length > 1)
+        assert.equal(
+          requirement,
+          report.localSigning.designatedRequirements[0],
+          "Initial install and update reuse the same signing identity and requirement",
+        );
     } finally {
       await run("hdiutil", ["detach", mount]);
     }
@@ -418,6 +449,9 @@ try {
   );
 } catch (error) {
   report.error = error.message;
+  await captureDesktop(`test-results/notification-${target}-failure.png`).catch(
+    () => {},
+  );
   throw error;
 } finally {
   if (notificationFixture?.records) {

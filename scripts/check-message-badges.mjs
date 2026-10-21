@@ -75,6 +75,13 @@ export async function checkMessageBadges(
         state.screenshot = screenshot;
       }
     }
+    if (process.platform === "win32") {
+      const screenshot = `test-results/message-badge-${target}-${label}.png`;
+      await native.capture(screenshot);
+      state.screenshot = screenshot;
+      state.nativeVisibility =
+        "Requires inspection of the actual Windows taskbar capture; Windows has no badge readback API.";
+    }
     states.push(state);
   };
   try {

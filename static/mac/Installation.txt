@@ -1,0 +1,28 @@
+Haunt for Apple Silicon
+
+Open Terminal, type bash followed by a space, drag “Install Haunt.command”
+from this disk image into Terminal, and press Return. Review the installer’s
+explanation before agreeing. Quit any running copy of Haunt first.
+
+The installer creates a local code-signing identity in your user keychain,
+installs Haunt in ~/Applications, and reuses that identity for later updates.
+It removes the quarantine attribute from the installed copy only. The public
+download remains unsigned and is not notarized by Apple.
+
+For an existing installation elsewhere, add --destination followed by the
+absolute path to Haunt.app. An existing /Applications/Haunt.app is selected
+automatically. macOS asks for administrator permission when the destination
+requires it. Signing takes place as your user before that installation step.
+
+Updates are staged in ~/Library/Application Support/Haunt Local Signing/staging
+and verified before replacing the installed app. Canceling a permission prompt
+leaves the existing installation intact.
+
+Keep the Haunt Local Signing key in Keychain Access and the identity record
+in ~/Library/Application Support/Haunt Local Signing. Removing either prevents
+automatic signing of future installer updates. Your signing key is never sent
+to Haunt’s servers. Keychain may ask permission for /usr/bin/codesign to use it.
+
+In-app updates verify Haunt’s release signature before installation. Updates
+that replace the native app reuse your local identity and retain one previous
+app bundle for recovery. UI-only updates keep the existing signed bundle.

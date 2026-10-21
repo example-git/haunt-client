@@ -35,15 +35,25 @@ export async function runtimeConfig(
     "apps/desktop/bootstrap.cjs",
     "apps/desktop/profile.cjs",
     "apps/desktop/updates.cjs",
+    "apps/desktop/mac-install.cjs",
     "electron-app/main.cjs",
     "electron-builder.config.json",
   ];
   if (platform === "linux")
-    names.push("static/linux/package-type", "static/linux/rpm-after-remove.sh");
+    names.push(
+      "static/linux/package-type",
+      "static/linux/rpm-after-remove.sh",
+      "static/linux/rpm-after-install.sh",
+      "static/linux/rpm-before-install.sh",
+      "static/linux/rpm-after-transaction.sh",
+    );
   if (platform === "darwin")
     names.push(
       "electron-app/entitlements.mac.plist",
       "electron-app/entitlements.mac.inherit.plist",
+      "static/mac/Install Haunt.command",
+      "static/mac/finish-update.sh",
+      "static/mac/commit-install.sh",
       "static/native/mac/SwiftCaptureWorker",
       "static/native/mac/HauntMediaWorker",
     );

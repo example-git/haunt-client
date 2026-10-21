@@ -143,7 +143,9 @@ export async function badgeServerFixture() {
         return respond({ messages: messages.get(id), event_cursor: cursor });
       if (req.method === "PUT") {
         state.read_seq = Math.max(state.read_seq, input.seq);
-        const unread = messages.get(id).filter((m) => m.seq > state.read_seq);
+        const unread = messages
+          .get(id)
+          .filter((m) => m.seq > state.read_seq && m.author_id !== owner.id);
         state.unread_count = unread.length;
         state.mention_count = unread.filter(
           (m) => m.mention_user_ids.length,
@@ -189,16 +191,17 @@ export async function badgeServerFixture() {
     dm,
     requests,
     unexpected,
-    send(id, mention = false) {
+    send(id, mention = false, { body, own = false } = {}) {
       const rows = messages.get(id),
         state = states.get(id);
       const message = {
         id: randomUUID(),
         conversation_id: id,
-        author_id: alice.id,
+        author_id: own ? owner.id : alice.id,
         request_id: randomUUID(),
         seq: rows.length + 1,
-        body: mention ? "@owner native badge check" : "Incoming message",
+        body:
+          body ?? (mention ? "@owner native badge check" : "Incoming message"),
         created_at: new Date().toISOString(),
         mention_user_ids: mention ? [owner.id] : [],
         attachment_ids: [],
@@ -206,8 +209,8 @@ export async function badgeServerFixture() {
       };
       rows.push(message);
       state.last_seq = message.seq;
-      state.unread_count++;
-      if (mention) state.mention_count++;
+      if (!own) state.unread_count++;
+      if (mention && !own) state.mention_count++;
       state.event_cursor = ++cursor;
       broadcast({
         type: "message.created",
