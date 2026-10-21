@@ -90,7 +90,7 @@ export async function checkNotificationMessages(app, page, native, report) {
   };
   const hide = async () => {
     // Exercise the same IPC and native command as the titlebar's Minimize
-    // button. BrowserWindow.hide() is not a Haunt user action on macOS.
+    // button, including the native minimized state and focus transition.
     await page.evaluate(() =>
       window.hauntDesktop.windowControl("minimize", "main"),
     );
@@ -508,60 +508,6 @@ export async function checkNotificationMessages(app, page, native, report) {
     report.messageNotifications.nativeErrors = await page
       .evaluate(() => window.nativeNotificationErrors)
       .catch(() => []);
-    if (process.platform === "darwin") {
-      // Failure-only controls isolate native attachment handling. They import
-      // the installed service and use Electron's real OS delivery; they cannot
-      // satisfy any end-to-end assertion or change the original failure.
-      report.messageNotifications.attachmentComparison = [];
-      for (const attachment of [false, true]) {
-        const body = `Haunt native attachment ${attachment ? "present" : "absent"}`;
-        const result = { attachment, body };
-        try {
-          result.submission = await app.evaluate(
-            async (
-              { app, BrowserWindow, Notification },
-              { attachment, body },
-            ) => {
-              const { createNotificationService } = process.mainModule.require(
-                `${app.getAppPath()}/apps/desktop/notifications.cjs`,
-              );
-              const service = createNotificationService({
-                Notification,
-                getWindow: () => BrowserWindow.getAllWindows()[0],
-                icon: attachment
-                  ? `${app.getAppPath()}/dist/brand/logo-128.png`
-                  : undefined,
-              });
-              global[Symbol.for("haunt.notification-attachment-control")] =
-                service;
-              return service.show({
-                title: "Haunt native delivery comparison",
-                body,
-                instance: "native-comparison",
-                conversation: "5d8dac74-87f9-4e34-a11d-cd630de9d69a",
-              });
-            },
-            { attachment, body },
-          );
-          await native.expectPopup(body);
-          result.nativePopup = "visible";
-        } catch (failure) {
-          result.error = failure.message;
-        } finally {
-          await app
-            .evaluate(() => {
-              global[
-                Symbol.for("haunt.notification-attachment-control")
-              ]?.dispose();
-              delete global[
-                Symbol.for("haunt.notification-attachment-control")
-              ];
-            })
-            .catch(() => {});
-        }
-        report.messageNotifications.attachmentComparison.push(result);
-      }
-    }
     report.messageNotifications.nativeState = await app
       .evaluate(async ({ BrowserWindow, Notification }) => {
         const window = BrowserWindow.getAllWindows()[0];

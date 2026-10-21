@@ -382,7 +382,13 @@ async function startMain() {
   const nativeNotifications = createNotificationService({
     Notification,
     getWindow: () => window,
-    icon: path.join(app.getAppPath(), "dist/brand/logo-128.png"),
+    // macOS supplies the signed bundle's app icon. An explicit icon becomes
+    // a duplicate image attachment; on macOS 14 its relocation suppresses
+    // banners while Haunt remains the active application after minimizing.
+    icon:
+      process.platform === "darwin"
+        ? undefined
+        : path.join(app.getAppPath(), "dist/brand/logo-128.png"),
     onError: (message) => {
       if (!window.isDestroyed())
         window.webContents.send("notification:error", message);
