@@ -22,7 +22,12 @@ export async function useNativeWindowFocus(page) {
   // Playwright enables focus emulation by default. Remove that automation
   // override so minimization, hiding and OS popup clicks control real focus.
   if (!nativeFocusPages.has(page)) {
-    const session = await page.context().newCDPSession(page);
+    // Emulation belongs to its CDP session: a second session cannot clear it.
+    // Use the owning session from the pinned Playwright version and fail if
+    // its internals change, rather than silently retaining simulated focus.
+    const session =
+      page._connection.toImpl(page)?.delegate?._mainFrameSession?._client;
+    if (!session) throw Error("Cannot disable Playwright's focus emulation");
     await session.send("Emulation.setFocusEmulationEnabled", {
       enabled: false,
     });
