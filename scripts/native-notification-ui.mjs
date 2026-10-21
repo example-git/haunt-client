@@ -54,6 +54,26 @@ $expectedX = if ($${click}) { 10 } else { ${x} }
 $expectedY = if ($${click}) { 10 } else { ${y} }
 if ($after.X -ne $expectedX -or $after.Y -ne $expectedY) { throw "Native pointer did not reach its target" }
 [pscustomobject]@{method='SendInput';at=[DateTime]::UtcNow.ToString('o');click=$${click};before=$before;after=$after;messageDuration=(Get-ItemProperty 'HKCU:\Control Panel\Accessibility' -ErrorAction SilentlyContinue).MessageDuration} | ConvertTo-Json -Compress`);
+const linuxMouse = async (x, y) => {
+  // Released xdotool versions wait 15 seconds for --sync even when the
+  // pointer is already there. Check the actual destination instead.
+  await run("xdotool", ["mousemove", String(x), String(y)]);
+  await expect
+    .poll(
+      async () => {
+        const { stdout } = await run("xdotool", [
+          "getmouselocation",
+          "--shell",
+        ]);
+        return {
+          x: Number(stdout.match(/^X=(\d+)$/m)?.[1]),
+          y: Number(stdout.match(/^Y=(\d+)$/m)?.[1]),
+        };
+      },
+      { timeout: 2000 },
+    )
+    .toEqual({ x, y });
+};
 const literal = (value) => `'${value.replaceAll("'", "''")}'`;
 const nativeFocusPages = new WeakMap();
 
@@ -275,8 +295,7 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
           `test-results/notification-${target}-pointer.jsonl`,
           result.stdout,
         );
-      } else if (process.platform === "linux")
-        await run("xdotool", ["mousemove", "--sync", "10", "10"]);
+      } else if (process.platform === "linux") await linuxMouse(10, 10);
       else await run("cliclick", ["m:10,10"]);
     },
     async diagnose() {
@@ -290,6 +309,8 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
                   "show",
                   "--last",
                   "3m",
+                  "--info",
+                  "--debug",
                   "--style",
                   "compact",
                   "--predicate",
@@ -324,6 +345,15 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
             stderr: error.stderr,
           });
         }
+      }
+      if (process.platform === "darwin") {
+        await run("open", [
+          "x-apple.systempreferences:com.apple.preference.notifications?id=com.exampleuser.haunt",
+        ]);
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+        await captureDesktop(
+          `test-results/notification-${target}-system-settings.png`,
+        );
       }
       await fs.writeFile(
         `test-results/notification-${target}-system.json`,
@@ -396,8 +426,7 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
         const scale = process.platform === "darwin" ? scaleFactor : 1;
         const x = Math.round((word.x + word.width / 2) / scale);
         const y = Math.round((word.y + word.height / 2) / scale);
-        if (process.platform === "linux")
-          await run("xdotool", ["mousemove", "--sync", String(x), String(y)]);
+        if (process.platform === "linux") await linuxMouse(x, y);
         else if (process.platform === "darwin")
           await run("cliclick", [`m:${x},${y}`]);
         else await windowsMouse(x, y);
@@ -438,23 +467,18 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
         JSON.stringify({ text, x, y, word, scaleFactor }, null, 2),
       );
       await retain(state, "click");
-      if (process.platform === "linux")
+      if (process.platform === "linux") {
+        await linuxMouse(x, y);
         await run("xdotool", [
-          "mousemove",
-          "--sync",
-          String(x),
-          String(y),
           "sleep",
           "0.15",
           "click",
           String(clickButton),
           "sleep",
           "0.15",
-          "mousemove",
-          "10",
-          "10",
         ]);
-      else if (process.platform === "darwin")
+        await linuxMouse(10, 10);
+      } else if (process.platform === "darwin")
         await run("cliclick", [`c:${x},${y}`, "m:10,10"]);
       else await windowsMouse(x, y, true);
     },
