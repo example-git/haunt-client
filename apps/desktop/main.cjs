@@ -162,6 +162,7 @@ async function startMain() {
     target,
     maximized: win.isMaximized(),
     fullscreen: win.isFullScreen(),
+    focused: win.isVisible() && !win.isMinimized() && win.isFocused(),
   });
   const trackWindow = (win, target) => {
     const changed = () => {
@@ -174,6 +175,11 @@ async function startMain() {
       "enter-full-screen",
       "leave-full-screen",
       "restore",
+      "minimize",
+      "show",
+      "hide",
+      "focus",
+      "blur",
     ])
       win.on(event, changed);
   };

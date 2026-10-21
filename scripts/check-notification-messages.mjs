@@ -73,7 +73,11 @@ export async function checkNotificationMessages(app, page, native, report) {
       window.focus();
     });
     await expect
-      .poll(() => page.evaluate(() => document.hasFocus()))
+      .poll(() =>
+        page.evaluate(
+          async () => (await window.hauntDesktop.windowState("main")).focused,
+        ),
+      )
       .toBe(true);
   };
   const hide = async () => {
@@ -83,7 +87,11 @@ export async function checkNotificationMessages(app, page, native, report) {
       else window.minimize();
     });
     await expect
-      .poll(() => page.evaluate(() => document.hasFocus()))
+      .poll(() =>
+        page.evaluate(
+          async () => (await window.hauntDesktop.windowState("main")).focused,
+        ),
+      )
       .toBe(false);
   };
   const settings = async () => {
@@ -216,6 +224,15 @@ export async function checkNotificationMessages(app, page, native, report) {
         .filter({ hasText: "Haunt focused message" }),
     ).toBeVisible();
     await absent("Haunt focused message");
+    await hide();
+    server.send(server.general, true, {
+      body: "@owner Haunt minimized channel message",
+    });
+    await delivered("Haunt minimized channel message");
+    await expect(page).toHaveTitle("(1) Haunt");
+    await badge(1, "minimized-current-channel");
+    await show();
+    await expect(page).toHaveTitle("Haunt");
     await select("quiet");
     await hide();
     server.send(server.general, false, { body: "Haunt ordinary message" });

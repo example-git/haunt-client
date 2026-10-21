@@ -35,6 +35,7 @@ const report = {
 };
 let mounted = false,
   app,
+  initialProcess,
   browser,
   replacementPid;
 await fs.mkdir("test-results", { recursive: true });
@@ -68,15 +69,17 @@ try {
   await run("hdiutil", ["detach", mount]);
   mounted = false;
   report.beforeRequirement = await requirement();
+  const installedPath = await fs.realpath(destination);
   const beforeInode = (await fs.stat(destination)).ino;
   app = await electron.launch({
     executablePath: path.join(destination, "Contents/MacOS/Haunt"),
     args: [`--user-data-dir=${profile}`],
     timeout: 60000,
   });
+  initialProcess = app.process();
   const page = await app.firstWindow();
   await expect(page.locator(".app-titlebar")).toBeVisible({ timeout: 60000 });
-  const originalPid = app.process().pid;
+  const originalPid = initialProcess.pid;
   await page.evaluate(
     (value) => localStorage.setItem("haunt-local-update-check", value),
     marker,
@@ -142,7 +145,7 @@ try {
     path: "test-results/notification-mac-installer-progress.png",
   });
   await expect
-    .poll(() => app.process().exitCode, { timeout: 300000 })
+    .poll(() => initialProcess.exitCode, { timeout: 300000 })
     .not.toBeNull();
   report.progress = (await fs.readFile(progressLog, "utf8"))
     .trim()
@@ -163,7 +166,9 @@ try {
       .split("\n")
       .filter(
         (line) =>
-          line.includes(`${destination}/Contents/MacOS/Haunt`) &&
+          [destination, installedPath].some((bundle) =>
+            line.includes(`${bundle}/Contents/MacOS/Haunt`),
+          ) &&
           line.includes(`--user-data-dir=${profile}`) &&
           !line.includes("--type="),
       );
@@ -252,7 +257,7 @@ try {
       process.kill(replacementPid, "SIGTERM");
     } catch {}
   }
-  if (app && app.process().exitCode === null) await app.close();
+  if (app && initialProcess?.exitCode === null) await app.close();
   if (mounted) await run("hdiutil", ["detach", mount]);
   await fs.rm(scratch, { recursive: true, force: true });
 }

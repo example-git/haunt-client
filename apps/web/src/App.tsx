@@ -71,6 +71,10 @@ import { Attachment, MessageEmbeds } from "./RichContent";
 import { unreadSummary } from "@haunt/core";
 import { installBadges } from "@haunt/browser/badges";
 import {
+  windowIsActive,
+  subscribeWindowActivity,
+} from "@haunt/browser/window-activity";
+import {
   clearNotificationTest,
   notificationTestConversation,
 } from "@haunt/browser/notification-test-state";
@@ -492,8 +496,7 @@ export function App() {
   };
   useEffect(() => {
     notifications.viewing = (scope, conversation) =>
-      document.visibilityState === "visible" &&
-      document.hasFocus() &&
+      windowIsActive() &&
       client.instances.get(routing.current.selected)?.scope === scope &&
       routing.current.conversation === conversation &&
       !(
@@ -515,14 +518,12 @@ export function App() {
       )
         notifications.clear(target.scope, routing.current.conversation);
     };
-    window.addEventListener("focus", read);
-    document.addEventListener("visibilitychange", read);
+    const offActivity = subscribeWindowActivity(read);
     const off = window.hauntDesktop?.onNotificationClick((value) =>
       routing.current.open(value),
     );
     return () => {
-      window.removeEventListener("focus", read);
-      document.removeEventListener("visibilitychange", read);
+      offActivity();
       off?.();
       notifications.deliver = () => {};
     };
@@ -1874,8 +1875,7 @@ export function ConversationView({
       visible &&
       stick.current &&
       list.current?.getClientRects().length &&
-      list.current?.ownerDocument.visibilityState === "visible" &&
-      list.current.ownerDocument.hasFocus() &&
+      windowIsActive(list.current.ownerDocument) &&
       messages.length
     ) {
       const last = messages[messages.length - 1];
@@ -1888,12 +1888,7 @@ export function ConversationView({
     const window = document?.defaultView;
     if (!document || !window) return;
     acknowledge();
-    window.addEventListener("focus", acknowledge);
-    document.addEventListener("visibilitychange", acknowledge);
-    return () => {
-      window.removeEventListener("focus", acknowledge);
-      document.removeEventListener("visibilitychange", acknowledge);
-    };
+    return subscribeWindowActivity(acknowledge, document);
   }, [messages, conversation, state.status, visible]);
   function revealReply(id: string) {
     const owner = list.current?.ownerDocument;

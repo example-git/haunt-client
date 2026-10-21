@@ -9,6 +9,7 @@ import {
 import { channelPreferenceKey, getPreferences } from "./preferences";
 import { playPing } from "./sounds";
 import { reportNotificationError } from "./notification-health";
+import { refreshWindowActivity } from "./window-activity";
 export {
   reportNotificationError,
   notificationError,
@@ -252,8 +253,14 @@ async function showPopup(
 ) {
   const prefs = getPreferences();
   if (!prefs.desktopPopups) return "Desktop popups are disabled in Haunt.";
-  if (document.visibilityState === "visible" && document.hasFocus())
-    return "Popup suppressed because Haunt still has focus.";
+  try {
+    if (await refreshWindowActivity())
+      return "Popup suppressed because Haunt still has focus.";
+  } catch (error) {
+    const message = `Window focus check failed: ${error instanceof Error ? error.message : String(error)}`;
+    reportNotificationError(message);
+    return `Popup failed: ${message}`;
+  }
   const payload = {
     title: ping.title,
     body: prefs.previewMessages ? ping.body : "New message",

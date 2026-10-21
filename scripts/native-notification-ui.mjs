@@ -4,6 +4,10 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const run = promisify(execFile);
+const tesseract =
+  process.platform === "win32"
+    ? path.join(process.env.ProgramFiles, "Tesseract-OCR", "tesseract.exe")
+    : "tesseract";
 const powershell = (script) =>
   run("powershell.exe", [
     "-NoProfile",
@@ -45,7 +49,7 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
     const convert = process.platform === "linux" ? "convert" : "magick";
     const offset = Math.round(600 * scaleFactor);
     await run(convert, [screen, "-crop", `+${offset}+0`, "+repage", crop]);
-    const { stdout } = await run("tesseract", [crop, "stdout", "tsv"], {
+    const { stdout } = await run(tesseract, [crop, "stdout", "tsv"], {
       maxBuffer: 2 * 1024 * 1024,
     });
     const words = stdout
@@ -80,6 +84,25 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
       .poll(
         async () => {
           state = await read();
+          if (
+            process.platform === "darwin" &&
+            state.text.includes("haunt") &&
+            (state.text.includes("would like to send you notifications") ||
+              state.text.includes("notifications may include alerts"))
+          ) {
+            const allow = state.words
+              .filter((word) => normalize(word.text) === "allow")
+              .at(-1);
+            if (!allow)
+              throw Error(
+                "The macOS notification permission dialog has no Allow button",
+              );
+            await retain(state, "permission");
+            await run("cliclick", [
+              `c:${Math.round((allow.x + allow.width / 2) / scaleFactor)},${Math.round((allow.y + allow.height / 2) / scaleFactor)}`,
+            ]);
+            return false;
+          }
           return state.text.includes(normalize(text));
         },
         { timeout: 30000, intervals: [150, 250, 500] },

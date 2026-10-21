@@ -308,6 +308,7 @@ export interface DesktopBridge extends NativeBridge {
     target: "main" | "call";
     maximized: boolean;
     fullscreen: boolean;
+    focused?: boolean;
   }>;
   windowControl(
     action: "minimize" | "maximize" | "close" | "focus",
@@ -318,6 +319,7 @@ export interface DesktopBridge extends NativeBridge {
       target: "main" | "call";
       maximized: boolean;
       fullscreen: boolean;
+      focused?: boolean;
     }) => void,
   ): () => void;
   backupSave(data: string): Promise<boolean>;
