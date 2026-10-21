@@ -156,8 +156,8 @@ export async function checkNotificationMessages(app, page, native, report) {
       .first()
       .click();
   };
-  const delivered = async (body) => {
-    await native.expectPopup(body);
+  const delivered = async (body, options) => {
+    await native.expectPopup(body, options);
     checks.push({ body, nativePopup: "visible" });
   };
   const badge = async (count, label) => {
@@ -226,6 +226,18 @@ export async function checkNotificationMessages(app, page, native, report) {
     await page.getByLabel("Ping sound", { exact: true }).selectOption("ping");
     await closeSettings();
     await select("general");
+    if (process.platform === "darwin") {
+      await hide();
+      server.send(server.general, true, {
+        body: "@owner Haunt permission setup",
+      });
+      await native.allowNotifications();
+      checks.push({
+        permission: "Allowed through the macOS notification prompt",
+      });
+      await show();
+      await expect(page).toHaveTitle("Haunt");
+    }
     server.send(server.general, true, { body: "@owner Haunt focused message" });
     await expect(
       page
@@ -255,7 +267,7 @@ export async function checkNotificationMessages(app, page, native, report) {
     await waitForQuiet();
     soundStart = Date.now();
     server.send(server.dm, false, { body: "Haunt direct message" });
-    await delivered("Haunt direct message");
+    await delivered("Haunt direct message", { hover: true });
     await sound(soundStart, true);
     await expect(page).toHaveTitle("(2) Haunt");
     await badge(2, "incoming");

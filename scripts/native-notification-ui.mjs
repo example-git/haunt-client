@@ -126,6 +126,15 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
           height: box.HEIGHT,
           zoom: 3,
         });
+        for (const width of [box.WIDTH, column])
+          regions.push({
+            x: box.X,
+            y: box.Y,
+            width,
+            height: box.HEIGHT,
+            zoom: 3,
+            psm: 11,
+          });
       }
     } else regions.push({ x: offset, y: 0, zoom: 1 });
     const readings = [];
@@ -141,10 +150,19 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
           : []),
         crop,
       ]);
-      const { stdout } = await run(tesseract, [crop, "stdout", "tsv"], {
-        maxBuffer: 2 * 1024 * 1024,
-        env: { ...process.env, OMP_THREAD_LIMIT: "1" },
-      });
+      const { stdout } = await run(
+        tesseract,
+        [
+          crop,
+          "stdout",
+          ...(region.psm ? ["--psm", String(region.psm)] : []),
+          "tsv",
+        ],
+        {
+          maxBuffer: 2 * 1024 * 1024,
+          env: { ...process.env, OMP_THREAD_LIMIT: "1" },
+        },
+      );
       const words = stdout
         .trim()
         .split("\n")
@@ -187,24 +205,15 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
         async () => {
           state = await read(text);
           if (++attempts <= 2) await retain(state, "search");
-          if (
-            process.platform === "darwin" &&
-            state.text.includes("haunt") &&
-            (state.text.includes("would like to send you notifications") ||
-              state.text.includes("notifications may include alerts"))
-          ) {
-            const allow = state.words
-              .filter((word) => normalize(word.text) === "allow")
-              .at(-1);
-            if (!allow)
-              throw Error(
-                "The macOS notification permission dialog has no Allow button",
-              );
-            await retain(state, "permission");
-            await run("cliclick", [
-              `c:${Math.round((allow.x + allow.width / 2) / scaleFactor)},${Math.round((allow.y + allow.height / 2) / scaleFactor)}`,
-            ]);
-            return false;
+          if (state.words.length && !state.text.includes(normalize(text))) {
+            await fs.copyFile(
+              state.screen,
+              `test-results/notification-${target}-unmatched.png`,
+            );
+            await fs.copyFile(
+              `test-results/notification-${target}-ocr.json`,
+              `test-results/notification-${target}-unmatched.json`,
+            );
           }
           return state.text.includes(normalize(text));
         },
@@ -289,9 +298,67 @@ if ($after.X -ne 10 -or $after.Y -ne 10) { throw "Native pointer did not move" }
       );
       return `test-results/notification-${target}-system.json`;
     },
-    async expectPopup(text) {
+    async allowNotifications() {
+      if (process.platform !== "darwin") return;
+      let optionsOpened = false;
+      await expect
+        .poll(
+          async () => {
+            const state = await read();
+            const permissionNotice =
+              state.text.includes("haunt") &&
+              (state.text.includes("would like to send you notifications") ||
+                state.text.includes("notifications may include alerts"));
+            if (!permissionNotice && !optionsOpened) return false;
+            const allow = state.words.find(
+              (word, index) =>
+                normalize(word.text) === "allow" &&
+                !["don t", "dont"].includes(
+                  normalize(state.words[index - 1]?.text ?? ""),
+                ),
+            );
+            const options = state.words.find(
+              (word) => normalize(word.text) === "options",
+            );
+            const title = state.words.find(
+              (word) => normalize(word.text) === "haunt",
+            );
+            const button = allow || (!optionsOpened && options);
+            const word = button || title;
+            if (!word) return false;
+            await retain(state, allow ? "permission-allow" : "permission");
+            await run("cliclick", [
+              `${button ? "c" : "m"}:${Math.round((word.x + word.width / 2) / scaleFactor)},${Math.round((word.y + word.height / 2) / scaleFactor)}`,
+            ]);
+            if (options && button === options) optionsOpened = true;
+            return Boolean(allow);
+          },
+          { timeout: 30000, intervals: [250, 500] },
+        )
+        .toBe(true);
+    },
+    async expectPopup(text, { hover = false } = {}) {
       const state = await find(text);
       await retain(state, "visible");
+      if (hover) {
+        // Hold the real popup under the pointer while badge/audio evidence is
+        // collected, just as a user does before clicking a transient banner.
+        const word = state.words.find(
+          (word) => normalize(word.text) === normalize(text).split(" ")[0],
+        );
+        if (!word) throw Error(`Cannot hover the native popup: ${text}`);
+        const scale = process.platform === "darwin" ? scaleFactor : 1;
+        const x = Math.round((word.x + word.width / 2) / scale);
+        const y = Math.round((word.y + word.height / 2) / scale);
+        if (process.platform === "linux")
+          await run("xdotool", ["mousemove", "--sync", String(x), String(y)]);
+        else if (process.platform === "darwin")
+          await run("cliclick", [`m:${x},${y}`]);
+        else
+          await powershell(
+            `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x},${y})`,
+          );
+      }
     },
     async expectNoPopup(text) {
       let state;
