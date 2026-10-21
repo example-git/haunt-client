@@ -56,8 +56,13 @@ function createNotificationService({
   icon,
   onError = () => {},
   replaceNotification,
+  cancelReplacement,
 }) {
   const popups = new Map();
+  const close = (popup) => {
+    cancelReplacement?.(popup);
+    popup.close();
+  };
   const show = (value) => {
     if (!Notification.isSupported())
       return Promise.reject(
@@ -66,7 +71,7 @@ function createNotificationService({
     const key = JSON.stringify([value.instance, value.conversation]);
     const previous = popups.get(key);
     const replacing = Boolean(previous && replaceNotification);
-    if (!replacing) previous?.close();
+    if (!replacing && previous) close(previous);
     const popup = replacing
       ? previous
       : new Notification({
@@ -79,7 +84,7 @@ function createNotificationService({
     while (popups.size > 50) {
       const [oldKey, oldest] = popups.entries().next().value;
       popups.delete(oldKey);
-      oldest.close();
+      close(oldest);
     }
     const remove = () => {
       if (popups.get(key) === popup) popups.delete(key);
@@ -95,10 +100,13 @@ function createNotificationService({
           instance: value.instance,
           conversation: value.conversation,
         });
-        popup.close();
+        close(popup);
         remove();
       });
-      popup.on("close", remove);
+      popup.on("close", () => {
+        cancelReplacement?.(popup);
+        remove();
+      });
     }
     return new Promise((resolve, reject) => {
       // Some Linux daemons do not acknowledge display. Report submission honestly
@@ -127,11 +135,19 @@ function createNotificationService({
         if (replacing) {
           // Preserve the native identifier and Electron click handler. Closing
           // first races macOS's notification-list refresh against presentation.
-          Promise.resolve(replaceNotification(popup, value)).then(() => {
-            popup.title = value.title;
-            popup.body = value.body;
-            shown();
-          }, failed);
+          Promise.resolve(replaceNotification(popup, value)).then(
+            (submitted) => {
+              if (submitted === false) {
+                clearTimeout(timeout);
+                resolve("superseded");
+                return;
+              }
+              popup.title = value.title;
+              popup.body = value.body;
+              shown();
+            },
+            failed,
+          );
         } else {
           popup.once("show", shown);
           popup.once("failed", (_event, error) => failed(error));
@@ -145,7 +161,7 @@ function createNotificationService({
   return {
     show,
     dispose: () => {
-      for (const popup of popups.values()) popup.close();
+      for (const popup of popups.values()) close(popup);
       popups.clear();
     },
   };

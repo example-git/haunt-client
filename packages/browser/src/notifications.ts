@@ -270,6 +270,8 @@ async function showPopup(
   if (window.hauntDesktop) {
     try {
       const result = await window.hauntDesktop.showNotification(payload);
+      if (result === "superseded")
+        return "Popup replaced or cleared before delivery.";
       return result === "shown"
         ? "The system acknowledged the popup. Visibility still depends on system notification settings."
         : "Popup delivery is unconfirmed: the system did not acknowledge it.";

@@ -342,7 +342,7 @@ export interface DesktopBridge extends NativeBridge {
     body: string;
     instance: string;
     conversation: string;
-  }): Promise<"shown" | "submitted" | void>;
+  }): Promise<"shown" | "submitted" | "superseded" | void>;
   onNotificationClick(
     callback: (value: { instance: string; conversation: string }) => void,
   ): () => void;

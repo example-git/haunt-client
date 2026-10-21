@@ -1,13 +1,19 @@
 #import <Foundation/Foundation.h>
 #import <UserNotifications/UserNotifications.h>
+#import <dispatch/dispatch.h>
 #include <node_api.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
 typedef struct {
   napi_deferred deferred;
   char *error;
+  bool submitted;
 } ReplacementResult;
+
+static NSMutableDictionary<NSString *, NSNumber *> *pending;
+static unsigned long long generation;
 
 static void Complete(napi_env env, napi_value callback, void *context, void *data) {
   ReplacementResult *result = data;
@@ -19,7 +25,7 @@ static void Complete(napi_env env, napi_value callback, void *context, void *dat
       napi_create_error(env, NULL, message, &value);
       napi_reject_deferred(env, result->deferred, value);
     } else {
-      napi_get_undefined(env, &value);
+      napi_get_boolean(env, result->submitted, &value);
       napi_resolve_deferred(env, result->deferred, value);
     }
   }
@@ -45,10 +51,18 @@ static NSString *ReadString(napi_env env, napi_value value, size_t limit) {
   return text;
 }
 
-// Replace through UNUserNotificationCenter using the existing Electron object's
-// identifier. Do not close and recreate it: a concurrent removal refreshes the
-// notification list before foreground presentation, losing the new banner.
-// Electron retains ownership, permission handling and response/click dispatch.
+static void Reply(napi_threadsafe_function reply, ReplacementResult *result) {
+  if (napi_call_threadsafe_function(reply, result, napi_tsfn_nonblocking) != napi_ok) {
+    free(result->error);
+    free(result);
+  }
+  napi_release_threadsafe_function(reply, napi_tsfn_release);
+}
+
+// Keep Electron's identifier and click dispatch. Both immediate replacement and
+// close-then-show race Notification Center's list refresh on macOS 14. Separate
+// removal and delivery on the native queue. A newer request or explicit close
+// cancels the pending delivery rather than resurrecting an obsolete popup.
 static napi_value Replace(napi_env env, napi_callback_info info) {
   @autoreleasepool {
     size_t count = 3;
@@ -87,21 +101,50 @@ static napi_value Replace(napi_env env, napi_callback_info info) {
     content.body = body;
     content.sound = nil;
     UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:identifier content:content trigger:nil];
-    [[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:request withCompletionHandler:^(NSError *error) {
-      if (error) result->error = strdup(error.localizedDescription.UTF8String);
-      if (napi_call_threadsafe_function(reply, result, napi_tsfn_nonblocking) != napi_ok) {
-        free(result->error);
-        free(result);
+    if (!pending) pending = [NSMutableDictionary new];
+    NSNumber *token = @(++generation);
+    pending[identifier] = token;
+    UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
+    [center removeDeliveredNotificationsWithIdentifiers:@[identifier]];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+      if (![pending[identifier] isEqual:token]) {
+        Reply(reply, result);
+        return;
       }
-      napi_release_threadsafe_function(reply, napi_tsfn_release);
-    }];
+      [pending removeObjectForKey:identifier];
+      [center addNotificationRequest:request withCompletionHandler:^(NSError *error) {
+        if (error) result->error = strdup(error.localizedDescription.UTF8String);
+        result->submitted = error == nil;
+        Reply(reply, result);
+      }];
+    });
     return promise;
   }
 }
 
+static napi_value Cancel(napi_env env, napi_callback_info info) {
+  @autoreleasepool {
+    size_t count = 1;
+    napi_value arg, result;
+    napi_get_cb_info(env, info, &count, &arg, NULL, NULL);
+    if (count != 1) {
+      napi_throw_type_error(env, NULL, "Notification cancellation requires an identifier");
+      return NULL;
+    }
+    NSString *identifier = ReadString(env, arg, 1024);
+    if (!identifier) return NULL;
+    [pending removeObjectForKey:identifier];
+    napi_get_undefined(env, &result);
+    return result;
+  }
+}
+
 static napi_value Init(napi_env env, napi_value exports) {
-  napi_property_descriptor method = {"replace", NULL, Replace, NULL, NULL, NULL, napi_default, NULL};
-  napi_define_properties(env, exports, 1, &method);
+  napi_property_descriptor methods[] = {
+    {"replace", NULL, Replace, NULL, NULL, NULL, napi_default, NULL},
+    {"cancel", NULL, Cancel, NULL, NULL, NULL, napi_default, NULL},
+  };
+  napi_define_properties(env, exports, 2, methods);
   return exports;
 }
 NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)

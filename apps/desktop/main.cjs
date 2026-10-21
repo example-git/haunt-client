@@ -379,23 +379,29 @@ async function startMain() {
     badgeKey = key;
     return result;
   });
+  const notificationReplacement = () =>
+    require(
+      app.isPackaged
+        ? path.join(
+            process.resourcesPath,
+            "native/mac/notification-replacement.node",
+          )
+        : path.resolve(
+            __dirname,
+            "../../release/native/mac/notification-replacement.node",
+          ),
+    );
   const nativeNotifications = createNotificationService({
     Notification,
     getWindow: () => window,
     replaceNotification:
       process.platform === "darwin"
         ? (popup, value) =>
-            require(
-              app.isPackaged
-                ? path.join(
-                    process.resourcesPath,
-                    "native/mac/notification-replacement.node",
-                  )
-                : path.resolve(
-                    __dirname,
-                    "../../release/native/mac/notification-replacement.node",
-                  ),
-            ).replace(popup.id, value.title, value.body)
+            notificationReplacement().replace(popup.id, value.title, value.body)
+        : undefined,
+    cancelReplacement:
+      process.platform === "darwin"
+        ? (popup) => notificationReplacement().cancel(popup.id)
         : undefined,
     // macOS supplies the signed bundle's app icon. An explicit icon becomes
     // a duplicate image attachment rather than changing that app identity.

@@ -147,3 +147,53 @@ it("surfaces native failure and distinguishes unacknowledged submission from dis
   });
   service.dispose();
 });
+
+it("cancels pending native replacement on close without reporting it as shown", async () => {
+  vi.useFakeTimers();
+  const f = fixture();
+  let complete: (submitted: boolean) => void = () => {};
+  const replaceNotification = vi.fn(
+    () =>
+      new Promise<boolean>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const cancelReplacement = vi.fn(() => complete(false));
+  const service = createNotificationService({
+    Notification: f.Notification,
+    getWindow: () => f.window,
+    onError: f.onError,
+    replaceNotification,
+    cancelReplacement,
+  });
+  await service.show(message);
+  const pending = service.show({ ...message, body: "Pending reply" });
+  service.dispose();
+  expect(cancelReplacement).toHaveBeenCalledWith(f.popups[0]);
+  expect(f.popups[0].close).toHaveBeenCalledOnce();
+  await expect(pending).resolves.toBe("superseded");
+  await vi.advanceTimersByTimeAsync(8000);
+  expect(f.onError).not.toHaveBeenCalled();
+});
+
+it("keeps the latest replacement when an earlier delivery is superseded", async () => {
+  const f = fixture();
+  const completions: ((submitted: boolean) => void)[] = [];
+  const service = createNotificationService({
+    Notification: f.Notification,
+    getWindow: () => f.window,
+    replaceNotification: () =>
+      new Promise<boolean>((resolve) => completions.push(resolve)),
+  });
+  await service.show(message);
+  const older = service.show({ ...message, body: "Older reply" });
+  const newer = service.show({ ...message, body: "Newest reply" });
+  completions[1](true);
+  await expect(newer).resolves.toBe("shown");
+  completions[0](false);
+  await expect(older).resolves.toBe("superseded");
+  expect(f.popups[0]).toHaveProperty("body", "Newest reply");
+  f.popups[0].emit("click");
+  expect(f.window.webContents.send).toHaveBeenCalledOnce();
+  service.dispose();
+});
