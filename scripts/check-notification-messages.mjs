@@ -2,11 +2,13 @@ import { expect } from "@playwright/test";
 import assert from "node:assert/strict";
 import { badgeServerFixture } from "./badge-server-fixture.mjs";
 import { fillSignin } from "./signin-fields.mjs";
+import { useNativeWindowFocus } from "./native-notification-ui.mjs";
 
 // The installed app owns policy, focus detection, sound, unread state, IPC,
 // native notifications and badges. This harness supplies only server input
 // and ordinary UI actions; it never replaces any notification implementation.
 export async function checkNotificationMessages(app, page, native, report) {
+  await useNativeWindowFocus(page);
   const server = await badgeServerFixture();
   const checks = [];
   report.messageNotifications = { checks, passed: false };

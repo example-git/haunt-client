@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { badgeServerFixture } from "./badge-server-fixture.mjs";
 import { fillSignin } from "./signin-fields.mjs";
+import { useNativeWindowFocus } from "./native-notification-ui.mjs";
 const run = promisify(execFile);
 
 export async function checkMessageBadges(
@@ -15,6 +16,7 @@ export async function checkMessageBadges(
   report,
   { withoutArtwork = false } = {},
 ) {
+  await useNativeWindowFocus(page);
   await fs.mkdir("test-results", { recursive: true });
   page.setDefaultTimeout(20000);
   const server = await badgeServerFixture();

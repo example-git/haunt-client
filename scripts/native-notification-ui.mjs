@@ -16,6 +16,19 @@ const powershell = (script) =>
     Buffer.from(script, "utf16le").toString("base64"),
   ]);
 const literal = (value) => `'${value.replaceAll("'", "''")}'`;
+const nativeFocusPages = new WeakMap();
+
+export async function useNativeWindowFocus(page) {
+  // Playwright enables focus emulation by default. Remove that automation
+  // override so minimization, hiding and OS popup clicks control real focus.
+  if (!nativeFocusPages.has(page)) {
+    const session = await page.context().newCDPSession(page);
+    await session.send("Emulation.setFocusEmulationEnabled", {
+      enabled: false,
+    });
+    nativeFocusPages.set(page, session);
+  }
+}
 
 export async function captureDesktop(filename) {
   if (process.platform === "darwin")
