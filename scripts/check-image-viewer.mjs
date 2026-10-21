@@ -236,10 +236,72 @@ export async function checkImageViewer(browser, fixtures) {
     await page.screenshot({ path: "test-results/viewer-mobile-landscape.png" });
     await dialog.getByRole("button", { name: "Close image preview" }).click();
     await expect(dialog).toHaveCount(0);
+    await page.getByLabel("Message", { exact: true }).fill("Text after image");
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .click();
+    await expect(page.locator(".message-body").last()).toHaveText(
+      "Text after image",
+    );
+    // Reopen real saved messages two days later to exercise dated grouped rows.
+    await page.clock.setFixedTime(Date.now() + 48 * 60 * 60 * 1000);
+    await page.setViewportSize({ width: 1964, height: 1000 });
+    await page.reload();
+    await page
+      .getByRole("button", { name: "Open The Common Room", exact: true })
+      .click();
+    await expect(page.locator(".connection")).toHaveText("Connected");
+    for (const width of [1964, 900, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      for (const label of ["Hide member list", "Hide channels"]) {
+        const button = page.getByRole("button", { name: label, exact: true });
+        if (width <= 720 && (await button.isVisible())) await button.click();
+      }
+      for (const text of [
+        "Viewer picture 2",
+        "Viewer picture 3",
+        "Text after image",
+      ]) {
+        const row = page
+          .locator("article.message")
+          .filter({ has: page.locator(".message-body", { hasText: text }) });
+        await expect(row).toHaveClass(/grouped/);
+        const time = row.locator(".message-group-date");
+        await expect(time).toContainText(String(new Date().getFullYear()));
+        const bounds = await row.evaluate((el) => {
+          const rect = (selector) =>
+            el.querySelector(selector).getBoundingClientRect().toJSON();
+          return {
+            time: rect(".message-group-date"),
+            body: rect(".message-body"),
+            content: rect(".message-content"),
+          };
+        });
+        assert(
+          Math.abs(bounds.time.left - bounds.content.left) < 1,
+          JSON.stringify(bounds),
+        );
+        assert(bounds.time.bottom <= bounds.body.top, JSON.stringify(bounds));
+        assert(
+          bounds.time.right <= bounds.content.right + 1,
+          JSON.stringify(bounds),
+        );
+        await expect(time).toHaveCSS("font-size", "10px");
+      }
+      await page.locator(".messages").evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+      });
+      await page.screenshot({
+        path: `test-results/grouped-message-dates-${width}.png`,
+      });
+    }
     assert.deepEqual(errors, []);
     console.log(
-      "PASS actual attachment viewer: desktop/mobile full overlay, gallery boundaries, keyboard, zoom/pan, pinch/swipe, download bytes, Escape/backdrop close, focus restoration",
+      "PASS actual attachment viewer: desktop/mobile full overlay, gallery boundaries, keyboard, zoom/pan, pinch/swipe, download bytes, Escape/backdrop close, focus restoration; dated grouped image/text message alignment at 1964/900/390px",
     );
+  } catch (error) {
+    await page.screenshot({ path: "test-results/image-viewer-failure.png" });
+    throw error;
   } finally {
     await context.close();
   }

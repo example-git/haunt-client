@@ -657,7 +657,7 @@ input[type="checkbox"] {
   display: block;
   margin: 2px 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 18px;
 }
 .message-actions {
@@ -5693,31 +5693,9 @@ button:disabled:hover {
   }
 }
 
-/* Wide chat keeps dated metadata beside the body; narrow panes stack it. */
 .conversation-view {
   container-type: inline-size;
   container-name: chat;
-}
-@container chat (min-width: 600px) {
-  .message-content:has(> .message-group-date) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) max-content;
-    column-gap: 18px;
-    align-items: start;
-  }
-  .message-content > .message-group-date {
-    grid-column: 2;
-    grid-row: 1;
-    margin-top: 2px;
-  }
-  .message-content:has(> .message-group-date) > .message-body {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .message-content:has(> .message-group-date)
-    > :not(.message-group-date, .message-body) {
-    grid-column: 1 / -1;
-  }
 }
 
 .messages.chat-display-compact {
