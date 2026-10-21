@@ -15,6 +15,45 @@ const powershell = (script) =>
     "-EncodedCommand",
     Buffer.from(script, "utf16le").toString("base64"),
   ]);
+// Send actual OS input, including motion events, so the notification shell
+// receives pointer enter/leave events instead of only a cursor-position change.
+const windowsMouse = (x, y, click = false) =>
+  powershell(String.raw`Add-Type -AssemblyName System.Windows.Forms
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.ComponentModel;
+public static class HauntNativeInput {
+  [StructLayout(LayoutKind.Sequential)] public struct Mouse { public int x, y; public uint data, flags, time; public UIntPtr extra; }
+  [StructLayout(LayoutKind.Sequential)] public struct Input { public uint type; public Mouse mouse; }
+  [DllImport("user32.dll", SetLastError=true)] static extern uint SendInput(uint count, Input[] inputs, int size);
+  public static void Send(int x, int y, uint flags) {
+    var input = new Input { mouse = new Mouse { x=x, y=y, flags=flags } };
+    if (SendInput(1, new[] { input }, Marshal.SizeOf(typeof(Input))) != 1)
+      throw new Win32Exception(Marshal.GetLastWin32Error());
+  }
+}
+'@
+$before = [System.Windows.Forms.Cursor]::Position
+$bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+function Move-HauntPointer([int]$x, [int]$y) {
+  $nx = [int][Math]::Floor(($x - $bounds.Left + 0.5) * 65536 / $bounds.Width)
+  $ny = [int][Math]::Floor(($y - $bounds.Top + 0.5) * 65536 / $bounds.Height)
+  [HauntNativeInput]::Send($nx, $ny, 0xE001)
+  Start-Sleep -Milliseconds 100
+}
+Move-HauntPointer ${x} ${y}
+if ($${click}) {
+  [HauntNativeInput]::Send(0, 0, 2)
+  Start-Sleep -Milliseconds 100
+  [HauntNativeInput]::Send(0, 0, 4)
+  Move-HauntPointer 10 10
+}
+$after = [System.Windows.Forms.Cursor]::Position
+$expectedX = if ($${click}) { 10 } else { ${x} }
+$expectedY = if ($${click}) { 10 } else { ${y} }
+if ($after.X -ne $expectedX -or $after.Y -ne $expectedY) { throw "Native pointer did not reach its target" }
+[pscustomobject]@{method='SendInput';at=[DateTime]::UtcNow.ToString('o');click=$${click};before=$before;after=$after;messageDuration=(Get-ItemProperty 'HKCU:\Control Panel\Accessibility' -ErrorAction SilentlyContinue).MessageDuration} | ConvertTo-Json -Compress`);
 const literal = (value) => `'${value.replaceAll("'", "''")}'`;
 const nativeFocusPages = new WeakMap();
 
@@ -57,7 +96,7 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, " ")
       .trim();
-  const read = async (wanted) => {
+  const read = async (wanted, additionalRegions = []) => {
     await fs.mkdir("test-results", { recursive: true });
     const screen = `test-results/notification-${target}-current.png`;
     const crop = `test-results/notification-${target}-popup.png`;
@@ -136,7 +175,7 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
             psm: 11,
           });
       }
-    } else regions.push({ x: offset, y: 0, zoom: 1 });
+    } else regions.push({ x: offset, y: 0, zoom: 1 }, ...additionalRegions);
     const readings = [];
     for (const region of regions) {
       const geometry = `${region.width ? `${region.width}x${region.height}` : ""}+${region.x}+${region.y}`;
@@ -231,13 +270,7 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
     capture: captureDesktop,
     async movePointerAway() {
       if (process.platform === "win32") {
-        const result =
-          await powershell(String.raw`Add-Type -AssemblyName System.Windows.Forms
-$before = [System.Windows.Forms.Cursor]::Position
-[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(10,10)
-$after = [System.Windows.Forms.Cursor]::Position
-if ($after.X -ne 10 -or $after.Y -ne 10) { throw "Native pointer did not move" }
-[pscustomobject]@{before=$before;after=$after;messageDuration=(Get-ItemProperty 'HKCU:\Control Panel\Accessibility' -ErrorAction SilentlyContinue).MessageDuration} | ConvertTo-Json -Compress`);
+        const result = await windowsMouse(10, 10);
         await fs.appendFile(
           `test-results/notification-${target}-pointer.jsonl`,
           result.stdout,
@@ -301,10 +334,11 @@ if ($after.X -ne 10 -or $after.Y -ne 10) { throw "Native pointer did not move" }
     async allowNotifications() {
       if (process.platform !== "darwin") return;
       let optionsOpened = false;
+      let menuRegion;
       await expect
         .poll(
           async () => {
-            const state = await read();
+            const state = await read(undefined, menuRegion ? [menuRegion] : []);
             const permissionNotice =
               state.text.includes("haunt") &&
               (state.text.includes("would like to send you notifications") ||
@@ -330,7 +364,19 @@ if ($after.X -ne 10 -or $after.Y -ne 10) { throw "Native pointer did not move" }
             await run("cliclick", [
               `${button ? "c" : "m"}:${Math.round((word.x + word.width / 2) / scaleFactor)},${Math.round((word.y + word.height / 2) / scaleFactor)}`,
             ]);
-            if (options && button === options) optionsOpened = true;
+            if (options && button === options) {
+              optionsOpened = true;
+              // Read the menu separately: the system's small Allow/Don't Allow
+              // labels overlap other notifications in a full-screen OCR pass.
+              menuRegion = {
+                x: Math.max(0, Math.round(options.x - 16 * scaleFactor)),
+                y: Math.round(options.y + options.height),
+                width: Math.round(120 * scaleFactor),
+                height: Math.round(80 * scaleFactor),
+                zoom: 3,
+                psm: 6,
+              };
+            }
             return Boolean(allow);
           },
           { timeout: 30000, intervals: [250, 500] },
@@ -354,10 +400,7 @@ if ($after.X -ne 10 -or $after.Y -ne 10) { throw "Native pointer did not move" }
           await run("xdotool", ["mousemove", "--sync", String(x), String(y)]);
         else if (process.platform === "darwin")
           await run("cliclick", [`m:${x},${y}`]);
-        else
-          await powershell(
-            `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x},${y})`,
-          );
+        else await windowsMouse(x, y);
       }
     },
     async expectNoPopup(text) {
@@ -413,10 +456,7 @@ if ($after.X -ne 10 -or $after.Y -ne 10) { throw "Native pointer did not move" }
         ]);
       else if (process.platform === "darwin")
         await run("cliclick", [`c:${x},${y}`, "m:10,10"]);
-      else
-        await powershell(
-          `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class HauntMouse { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y); [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra); }'; [HauntMouse]::SetCursorPos(${x},${y}); [HauntMouse]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [HauntMouse]::mouse_event(4,0,0,0,[UIntPtr]::Zero); [HauntMouse]::SetCursorPos(10,10)`,
-        );
+      else await windowsMouse(x, y, true);
     },
   };
 }
