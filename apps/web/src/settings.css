@@ -121,6 +121,9 @@ dialog.settings-dialog {
   outline: none;
   box-shadow: none;
 }
+.settings-search input:focus-visible {
+  outline: none;
+}
 .settings-search input::-webkit-search-cancel-button {
   display: none;
 }

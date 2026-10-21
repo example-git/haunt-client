@@ -46,6 +46,7 @@ export async function checkUIRefresh(browser, fixtures) {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
       hasTouch: true,
+      timezoneId: "UTC",
     });
     contexts.push(context);
     const page = await context.newPage();
@@ -66,6 +67,26 @@ export async function checkUIRefresh(browser, fixtures) {
       .click();
   const close = (page) =>
     page.getByRole("button", { name: "Close", exact: true }).click();
+  const searchFocus = async (page) => {
+    const search = page.getByRole("searchbox", { name: "Search settings" });
+    if (!(await search.isVisible()))
+      await page
+        .getByRole("button", { name: "Browse settings", exact: true })
+        .click();
+    await search.click();
+    await expect(search).toHaveCSS("outline-style", "none");
+    await search.press("Tab");
+    const idleBorder = await page
+      .locator(".settings-search")
+      .evaluate((element) => getComputedStyle(element).borderTopColor);
+    await page.keyboard.press("Shift+Tab");
+    await expect(search).toBeFocused();
+    await expect(search).toHaveCSS("outline-style", "none");
+    await expect(page.locator(".settings-search")).not.toHaveCSS(
+      "border-top-color",
+      idleBorder,
+    );
+  };
   const appearance = async (page) => {
     if (
       !(await page
@@ -109,6 +130,7 @@ export async function checkUIRefresh(browser, fixtures) {
     await owner
       .getByRole("button", { name: "Server settings", exact: true })
       .click();
+    await searchFocus(owner);
     await section(owner, "Roles & permissions");
     await owner.getByLabel("Role name", { exact: true }).fill("Administrator");
     await owner.getByLabel("Role rank").fill("50");
@@ -306,6 +328,7 @@ export async function checkUIRefresh(browser, fixtures) {
           );
         })
         .toBeGreaterThanOrEqual(4.5);
+      await searchFocus(owner);
       await owner.screenshot({
         path: `test-results/theme-${name.toLowerCase().replaceAll(" ", "-")}-settings.png`,
       });
@@ -409,6 +432,7 @@ export async function checkUIRefresh(browser, fixtures) {
         .getByRole("dialog")
         .evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
     );
+    await searchFocus(owner);
     await owner.screenshot({
       path: "test-results/theme-pastel-settings-mobile.png",
     });
