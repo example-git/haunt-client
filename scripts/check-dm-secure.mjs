@@ -457,6 +457,16 @@ export async function checkSecureDM(
       });
       extras.push(restoredContext);
       const restored = await restoredContext.newPage();
+      let holdAcknowledgments = false;
+      const acknowledgments = [];
+      await restored.routeWebSocket("**/api/v1/events", (socket) => {
+        const upstream = socket.connectToServer();
+        upstream.onMessage((message) => {
+          if (holdAcknowledgments)
+            acknowledgments.push(() => socket.send(message));
+          else socket.send(message);
+        });
+      });
       restored.on("pageerror", (e) => errors.push(e.message));
       await restored.goto(fixtures.rtc.url);
       await restored
@@ -491,16 +501,23 @@ export async function checkSecureDM(
       console.log("PASS backup recovery and independent sending device");
       // Simultaneous sends and a lost HTTP response must not duplicate ratchets or messages.
       let dropped = false;
+      const attempts = [];
       await restored.route(
         "**/api/v1/conversations/*/messages",
         async (route) => {
-          if (route.request().method() === "POST" && !dropped) {
-            dropped = true;
-            await route.fetch();
-            await route.abort();
-          } else await route.continue();
+          if (route.request().method() === "POST") {
+            attempts.push(route.request().postDataJSON());
+            if (!dropped) {
+              dropped = true;
+              await route.fetch();
+              await route.abort();
+              return;
+            }
+          }
+          await route.continue();
         },
       );
+      holdAcknowledgments = true;
       await restored
         .getByRole("textbox", { name: "Message", exact: true })
         .fill("lost response safe retry");
@@ -511,8 +528,30 @@ export async function checkSecureDM(
       const retry = restored
         .locator(".pending-message")
         .getByRole("button", { name: "Retry", exact: true });
-      if (await retry.isVisible()) await retry.click();
+      await retry.click();
       await show(restored, "lost response safe retry");
+      await expect(restored.locator(".pending-message")).toHaveCount(0);
+      assert.equal(attempts.length, 2);
+      assert.deepEqual(attempts[1], attempts[0]);
+      assert(
+        acknowledgments.length > 0,
+        "The sender acknowledgment was delayed",
+      );
+      holdAcknowledgments = false;
+      for (const deliver of acknowledgments.splice(0)) deliver();
+      await show(restored, "lost response safe retry");
+      await show(peer, "lost response safe retry");
+      const delivered = await api(
+        `/conversations/${dm.id}/messages`,
+        undefined,
+        owner.token,
+      );
+      assert.equal(
+        delivered.messages.filter(
+          (message) => message.request_id === attempts[0].request_id,
+        ).length,
+        1,
+      );
       await Promise.all([
         send(page, "parallel original"),
         send(restored, "parallel restored"),
