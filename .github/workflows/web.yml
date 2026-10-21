@@ -1,0 +1,84 @@
+name: Deploy standalone web
+on:
+  workflow_run:
+    workflows: [Client version]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: standalone-web
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Select versioned source
+        if: github.event_name == 'workflow_run'
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          revision=$(git log origin/main --format=%H --grep="Haunt-Versioned-Push: .*:$SOURCE_SHA" -1)
+          test -n "$revision"
+          git checkout --detach "$revision"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:standalone
+      - name: Verify cached browser startup and updates
+        run: npm run test:standalone
+      - name: Deploy static assets
+        uses: cloudflare/wrangler-action@v4
+        id: cloudflare
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.151.3"
+          command: deploy
+      - name: Verify public deployment
+        env:
+          DEPLOYMENT_URL: ${{ steps.cloudflare.outputs.deployment-url }}
+        run: |
+          test -n "$DEPLOYMENT_URL"
+          node scripts/check-standalone-web.mjs "$DEPLOYMENT_URL"
+          printf '## Standalone web\n\n%s\n\nSource: `%s`\n' "$DEPLOYMENT_URL" "$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Record the hosted client origin
+        env:
+          DEPLOYMENT_URL: ${{ steps.cloudflare.outputs.deployment-url }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          git fetch origin main
+          git merge --ff-only origin/main
+          node --input-type=module - <<'JS'
+          import fs from 'node:fs';
+          const url = new URL(process.env.DEPLOYMENT_URL);
+          if (url.protocol !== 'https:' || url.username || url.password || url.port)
+            throw Error('Expected a public HTTPS deployment URL.');
+          fs.writeFileSync('web-deployment.json', JSON.stringify({ version: 1, origin: url.origin }, null, 2) + '\n');
+          JS
+          git add web-deployment.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Record the hosted web client origin for server builds"
+            git push origin HEAD:main
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: standalone-web-evidence
+          path: test-results/standalone-web/
+          retention-days: 14

@@ -58,6 +58,8 @@ mutagen*
 # Generated bundles and staging output. static/ contains REQUIRED build inputs.
 node_modules/
 dist/
+dist-standalone/
+.wrangler/
 dist-sync-portal/
 release/
 /build/

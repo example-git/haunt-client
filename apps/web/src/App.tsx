@@ -545,7 +545,12 @@ export function App() {
       .then(() => {
         setSelected(client.instances.keys().next().value ?? "");
         setVersion((v) => v + 1);
-        void resumeSync().catch((e) => setError(friendlyError(e)));
+        void resumeSync()
+          .catch((e) => setError(friendlyError(e)))
+          .finally(() => {
+            if (import.meta.env.MODE === "standalone" && !client.instances.size)
+              setConnect(true);
+          });
       })
       .catch((e) => setError(friendlyError(e)))
       .finally(() => setRestoring(false));

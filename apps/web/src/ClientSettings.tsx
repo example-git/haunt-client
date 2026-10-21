@@ -6,7 +6,7 @@ import {
 } from "./NotificationSound";
 import { Backups } from "./Backups";
 import { SyncPanel } from "./SyncPanel";
-import { desktopClient } from "@haunt/browser/client-context";
+import { multiServerClient } from "@haunt/browser/client-context";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { NarratorSettings } from "./NarratorSettings";
 import { SettingsNavigation } from "./SettingsNavigation";
@@ -482,7 +482,7 @@ export function ClientSettingsContent({
       {tab !== "narrator" && (
         <p className="muted small">
           Saved on this device for{" "}
-          {desktopClient() ? "all your servers" : "this server"}.
+          {multiServerClient() ? "all your servers" : "this server"}.
         </p>
       )}
       <ErrorNotice error={error} />

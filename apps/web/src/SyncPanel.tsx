@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
-import { desktopClient } from "@haunt/browser/client-context";
+import { multiServerClient } from "@haunt/browser/client-context";
 import { BrowserSyncPairing, DesktopSyncPairing } from "./SyncPairing";
 import { SyncSecretsForm } from "./SyncSecretsForm";
 import { SyncService } from "@haunt/browser/sync/service";
@@ -13,7 +13,7 @@ import {
 } from "./sync-runtime";
 
 export function SyncBanner() {
-  if (desktopClient()) return null;
+  if (multiServerClient()) return null;
   return (
     <aside className="sync-banner">
       <strong>Your servers, together</strong>
@@ -69,8 +69,8 @@ export function SyncPanel() {
       <h3>Encrypted sync · optional</h3>
       <p className="muted">
         Choose your group’s sync service to keep settings and saved sign-ins in
-        sync. Community accounts work without it. This service can disappear;
-        your working settings stay on this device.
+        sync. Community accounts work without it; working settings stay on this
+        device.
       </p>
       <SyncBanner />
       {(error || status.error) && (
@@ -85,7 +85,7 @@ export function SyncPanel() {
           </p>
           <p className="muted small">
             {status.session.scope === "full"
-              ? "All servers on this desktop"
+              ? "All servers on this client"
               : "Only " + status.session.origin}
             . Sync runs every minute while this client is open. This session
             stays signed in until you sign out or revoke it.
@@ -288,7 +288,7 @@ export function SyncPanel() {
             <button>Choose this sync service</button>
           </form>
           {service &&
-            (desktopClient() ? (
+            (multiServerClient() ? (
               <SyncAccountForm service={service} onSignIn={enableSync} />
             ) : (
               <BrowserSyncPairing service={service} onSignIn={enableSync} />

@@ -127,6 +127,7 @@ See the [sync guide](docs/sync.md) for encrypted synchronization and recovery.
 - [Notifications and desktop behavior](docs/notifications.md)
 - [Text to speech](docs/narrator.md)
 - [Audio plugin authoring](docs/audio-plugin-authoring.md)
+- [Standalone web hosting](docs/web-hosting.md)
 - [Development and release qualification](VERIFICATION.md)
 - [Project hub and screenshots](https://github.com/example-git/haunt)
 

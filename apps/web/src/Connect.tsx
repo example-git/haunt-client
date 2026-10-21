@@ -14,7 +14,7 @@ import { client, knownServers } from "./runtime";
 import { Modal, ErrorNotice } from "./App";
 import { BanAppealPanel } from "./Moderation";
 import { SyncPanel, SyncBanner } from "./SyncPanel";
-import { desktopClient } from "@haunt/browser/client-context";
+import { multiServerClient } from "@haunt/browser/client-context";
 
 function initialAccount(origin?: string, username?: string) {
   if (!origin) return "";
@@ -124,7 +124,7 @@ export function Connect({
         const target = register
           ? { origin: address.trim(), username }
           : parseAccountAddress(account, https);
-        if (!desktopClient() && target.origin !== location.origin)
+        if (!multiServerClient() && target.origin !== location.origin)
           throw Error(
             "This web client signs in only to this server. Install Haunt desktop to add other servers.",
           );
@@ -172,9 +172,9 @@ export function Connect({
             : "Connect to a server"
       }
       onClose={onClose}
-      wide={desktopClient()}
+      wide={multiServerClient()}
     >
-      <div className={desktopClient() ? "connect-sync-columns" : ""}>
+      <div className={multiServerClient() ? "connect-sync-columns" : ""}>
         <section>
           {reset ? (
             <p className="muted">
@@ -393,7 +393,7 @@ export function Connect({
           </form>
           {ban && <BanAppealPanel server={ban.server} ticket={ban.ticket} />}
         </section>
-        {desktopClient() && (
+        {multiServerClient() && (
           <aside>
             <SyncPanel />
           </aside>

@@ -1,5 +1,5 @@
 import { SyncEngine, SyncConflict } from "@haunt/browser/sync/engine";
-import { desktopClient } from "@haunt/browser/client-context";
+import { multiServerClient } from "@haunt/browser/client-context";
 import { open, seal, serverScope, version } from "@haunt/browser/sync/crypto";
 import {
   finishRevocations,
@@ -85,16 +85,18 @@ export async function syncNow(choice?: "local" | "cloud", force = false) {
   }
 }
 export async function enableSync(session: Session, force = false) {
-  const desktop = desktopClient();
+  const fullClient = multiServerClient();
   if (
-    !desktop &&
+    !fullClient &&
     (session.scope === "full" || session.origin !== location.origin)
   )
     throw Error(
       "Web sync is restricted to this server. Install the desktop app for multiple servers.",
     );
-  if (desktop && session.scope !== "full")
-    throw Error("Use the desktop sync sign-in for your complete backup.");
+  if (fullClient && session.scope !== "full")
+    throw Error(
+      "Use the standalone client sync sign-in for your complete backup.",
+    );
   if (force) session.resyncRequired = true;
   await saveSession(session);
   const service = new SyncService(session.issuer, session.portal);
@@ -103,7 +105,7 @@ export async function enableSync(session: Session, force = false) {
     session,
     () => collectSyncBackup(scoped),
     (value) => applySyncBackup(value, scoped),
-    desktop
+    fullClient
       ? async (_service, _session, backup, force) => {
           const warnings: string[] = [];
           const delegated = await service.request<{ origins: string[] }>(
@@ -196,7 +198,7 @@ export async function changeSyncSecrets(
 ) {
   const current = state.session;
   if (!current || current.scope !== "full")
-    throw Error("Sign in to desktop sync first.");
+    throw Error("Sign in to full-account sync first.");
   if (state.busy)
     throw Error("Wait for the current sync to finish before changing secrets.");
   await syncNow();

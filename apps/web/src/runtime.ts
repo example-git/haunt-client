@@ -2,7 +2,10 @@ import { MLSClient } from "@haunt/browser/dm-crypto/client";
 import { restoreAudioPlugins } from "@haunt/browser/audio-plugins/cache";
 import { Client, type Runtime } from "@haunt/core";
 import { randomUUID } from "@haunt/browser/random";
-import { desktopClient } from "@haunt/browser/client-context";
+import {
+  desktopClient,
+  multiServerClient,
+} from "@haunt/browser/client-context";
 import {
   BrowserVault,
   IndexedDBKnownServers,
@@ -20,7 +23,7 @@ const runtime: Runtime = {
 const servers = desktopClient()
   ? new DesktopKnownServers(window.hauntDesktop!)
   : new IndexedDBKnownServers();
-export const knownServers = desktopClient()
+export const knownServers = multiServerClient()
   ? servers
   : {
       list: async () =>
@@ -36,7 +39,7 @@ export const knownServers = desktopClient()
 const vault = desktopClient()
   ? new DesktopVault(window.hauntDesktop!)
   : new BrowserVault();
-const scopedVault = desktopClient()
+const scopedVault = multiServerClient()
   ? vault
   : {
       list: async () =>
