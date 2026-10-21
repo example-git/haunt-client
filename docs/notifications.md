@@ -17,9 +17,13 @@ included in client backups.
 ## Desktop delivery and badges
 
 Enable **Client settings → Notification Settings → Desktop popups** for alerts
-while Haunt is in the background. **Send test notification** exercises the same
-native delivery service immediately, including while the app is focused, without
-changing your saved notification preferences. Native errors appear in settings.
+while Haunt is in the background. **Send test notification** gives you five seconds
+to switch away, then uses the normal notification rules, popup and sound delivery,
+and unread badge path. It adds one temporary unread item for one minute; **Clear
+test badge** removes only that item. Keeping Haunt focused suppresses the popup.
+The result reports disabled settings, native errors and unconfirmed delivery.
+Desktop focus comes from the native window, including minimization and hiding;
+browser clients use page visibility and document focus.
 A system acknowledgement does not mean a banner was visible: Focus/Do Not Disturb
 and notification permissions still control what the desktop presents.
 
@@ -42,12 +46,11 @@ notification lifetime; Haunt no longer forcibly dismisses them after 15 seconds.
 Clicking restores the window and opens the originating server/conversation.
 Keep Haunt running and connected; closing the window to its tray is supported.
 
-Native Actions rehearsals exercise the packaged bridge and real Dock badge reads
-on Apple Silicon, and real notification/LauncherEntry D-Bus traffic against a
-private Linux daemon with click-to-restore checks. These are integration checks,
-not evidence that banners or badges were visually displayed in every desktop.
-Verify an installed client's alerts and clear-on-read behavior on the target Mac
-or Linux desktop using another account, with Haunt hidden and system alerts enabled.
+Native Actions rehearsals use the packaged app, actual OS notifications and
+desktop captures, real popup clicks, unread transitions and selected notification
+sounds. Linux also records output from PipeWire and runs the RPM in Fedora KDE
+Plasma. macOS reads the real Dock badge. Test reports and captures are retained as
+release artifacts; they do not establish behavior on every desktop configuration.
 
 References: [Electron notifications](https://www.electronjs.org/docs/latest/api/notification),
 [desktop identity and badges](https://www.electronjs.org/docs/latest/api/app#appsetdesktopnamename-linux).

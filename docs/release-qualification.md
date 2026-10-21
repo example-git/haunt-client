@@ -11,13 +11,21 @@ that job and build on Windows x64, Linux x64/arm64 and macOS arm64. Each native
 runner executes `scripts/check-installed-upgrade.mjs`: verify the previous signed
 installer, install into a temporary directory, launch with a private profile,
 install the candidate, then observe its version and preserved profile marker.
-Linux uses AppImage extraction; macOS copies the DMG application; Windows executes
+Linux uses AppImage extraction; macOS runs the local signing installer; Windows executes
 NSIS. The `installed-upgrade-*` artifacts record the result. No user profile is used.
 
 Linux jobs also install the RPM with DNF in a disposable Fedora container and launch
 the installed Electron application as an unprivileged user. They check the menu
 launcher, RPM update selection, package replacement, removal, and profile retention
 through reinstallation. Results are recorded in `fedora-rpm-*` artifacts.
+
+Notification checks drive the packaged app with protocol messages and real UI
+actions. They inspect actual desktop popups and badges, click OS notifications,
+and observe sound output, including PipeWire recordings on Linux. Playwright's
+default focus emulation is disabled so real window focus controls delivery.
+Fedora checks run against KDE Plasma's notification service. The macOS update
+check verifies local signing, the Update app action, bundle replacement, stable
+signing identity and relaunch with the original profile.
 
 This checks full-installer replacement. Automatic ASAR restarts, OS prompts,
 physical capture, account recovery and perceived media quality need the checks

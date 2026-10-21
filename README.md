@@ -41,6 +41,15 @@ is not yet shipped; see [Android planning](ANDROID.md). macOS builds target Appl
 Silicon only. The current macOS distribution workflow leaves application signing to
 the person installing or distributing their baseline copy.
 
+### macOS installation
+
+The DMG includes **Install Haunt.command** and **Installation.txt**. Run the command
+with `bash` in Terminal and review its consent prompt. It creates a persistent
+code-signing identity in your user keychain and installs Haunt in `~/Applications`
+(or updates an existing `/Applications/Haunt.app`). Later **Update app** actions
+reuse that identity, stage and verify the replacement, then relaunch Haunt.
+The public download remains unsigned and is not notarized by Apple.
+
 ### Fedora installation
 
 Download the `.rpm` from the [desktop releases](https://github.com/example-git/haunt-client/releases/latest).
@@ -101,8 +110,9 @@ The app never restarts automatically during a call or upload.
 
 Changes to Electron, the launcher or native workers require a new baseline package.
 Windows uses its installer to update the existing installation; AppImage updates
-replace the launch file and retain a recovery copy. macOS baseline changes use a new
-DMG and the user's chosen signing workflow. Fedora installations download an RPM
+replace the launch file and retain a recovery copy. macOS installations made with
+the included local installer reuse their signing identity for new DMGs; other
+installations open the DMG for manual installation. Fedora installations download an RPM
 and open the system package installer. See [release setup](docs/releases.md).
 
 Pushes to `main` automatically update the client version: explicit version intent
