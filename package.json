@@ -1,6 +1,6 @@
 {
   "name": "haunt-client",
-  "version": "0.10.15",
+  "version": "0.10.16",
   "private": true,
   "license": "BSD-3-Clause",
   "type": "module",
