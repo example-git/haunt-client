@@ -34,6 +34,7 @@ function setup() {
   const settings = normalizeNarratorSettings({
     enabled: true,
     cooldownMs: 1500,
+    voice: "configured_voice",
   });
   const events = new NarratorEvents(
     "self",
@@ -63,7 +64,7 @@ describe("client voice narrator", () => {
     ).toEqual([
       {
         text: "BOB joined Lounge",
-        voice: "en_us_001",
+        voice: "configured_voice",
         user: "bob",
         event: "joined",
       },
@@ -71,6 +72,21 @@ describe("client voice narrator", () => {
     expect(events.observe(snapshot([], "reconnecting"), settings)).toEqual([]);
     expect(events.observe(snapshot(["self", "charlie"]), settings)).toEqual([]);
     expect(events.observe(snapshot([], "ended"), settings)).toEqual([]);
+  });
+  it("preserves extension-default selection and explicit voice changes", () => {
+    const { events } = setup();
+    const settings = normalizeNarratorSettings({
+      enabled: true,
+      provider: "example-tts",
+    });
+    events.observe(snapshot(["self"]), settings);
+    expect(events.observe(snapshot(["self", "alice"]), settings)[0].voice).toBe(
+      "",
+    );
+    settings.voice = "selected_voice";
+    expect(
+      events.observe(snapshot(["self", "alice", "bob"]), settings)[0].voice,
+    ).toBe("selected_voice");
   });
   it("honors cooldowns, blanks, user ignores, account-scoped voices and live settings", () => {
     const { events, settings, advance } = setup();
