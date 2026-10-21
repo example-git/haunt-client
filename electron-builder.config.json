@@ -90,7 +90,12 @@
     "executableName": "haunt",
     "icon": "static/icons",
     "artifactName": "Haunt-${version}-linux-${arch}.${ext}",
-    "syncDesktopName": true
+    "syncDesktopName": true,
+    "desktop": {
+      "entry": {
+        "X-GNOME-UsesNotifications": "true"
+      }
+    }
   },
   "nsis": {
     "oneClick": false,
@@ -103,6 +108,7 @@
     "maintainer": "Haunt",
     "vendor": "Haunt",
     "synopsis": "Community messaging and calls",
+    "afterRemove": "static/linux/rpm-after-remove.sh",
     "depends": [
       "gtk3",
       "libnotify",

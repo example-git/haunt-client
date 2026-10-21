@@ -14,6 +14,11 @@ install the candidate, then observe its version and preserved profile marker.
 Linux uses AppImage extraction; macOS copies the DMG application; Windows executes
 NSIS. The `installed-upgrade-*` artifacts record the result. No user profile is used.
 
+Linux jobs also install the RPM with DNF in a disposable Fedora container and launch
+the installed Electron application as an unprivileged user. They check the menu
+launcher, RPM update selection, package replacement, removal, and profile retention
+through reinstallation. Results are recorded in `fedora-rpm-*` artifacts.
+
 This checks full-installer replacement. Automatic ASAR restarts, OS prompts,
 physical capture, account recovery and perceived media quality need the checks
 below. A missing previous installer or failed rehearsal fails the release job.

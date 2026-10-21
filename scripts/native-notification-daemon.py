@@ -36,7 +36,8 @@ class Notifications(dbus.service.Object):
     @dbus.service.method("org.freedesktop.Notifications", in_signature="susssasa{sv}i", out_signature="u")
     def Notify(self, app, replaces, icon, title, body, actions, hints, expires):
         self.count += 1
-        record({"kind": "notification", "id": self.count, "app": str(app), "title": str(title), "body": str(body), "actions": list(actions)})
+        record({"kind": "notification", "id": self.count, "app": str(app), "title": str(title), "body": str(body), "actions": list(actions),
+                "desktopEntry": str(hints.get("desktop-entry", "")), "transient": bool(hints.get("transient", False)), "expires": int(expires)})
         return self.count
 
     @dbus.service.method("org.freedesktop.Notifications", in_signature="u", out_signature="")

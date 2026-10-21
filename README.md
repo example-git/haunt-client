@@ -41,6 +41,15 @@ is not yet shipped; see [Android planning](ANDROID.md). macOS builds target Appl
 Silicon only. The current macOS distribution workflow leaves application signing to
 the person installing or distributing their baseline copy.
 
+### Fedora installation
+
+Download the `.rpm` from the [desktop releases](https://github.com/example-git/haunt-client/releases/latest).
+Choose `linux-x64` for Intel/AMD systems or `linux-arm64` for ARM systems, then install
+the downloaded file with `sudo dnf install ./Haunt-VERSION-linux-x64.rpm`, substituting
+its filename. Open **Haunt** from the applications menu or run `haunt` in a terminal.
+The package installs in `/opt/Haunt`; your profile stays in `~/.config/haunt`
+(or `$XDG_CONFIG_HOME/haunt`). Removing the package leaves that profile intact.
+
 ## Local development
 
 Requires Node.js 22.12+ and npm.
@@ -93,7 +102,8 @@ The app never restarts automatically during a call or upload.
 Changes to Electron, the launcher or native workers require a new baseline package.
 Windows uses its installer to update the existing installation; AppImage updates
 replace the launch file and retain a recovery copy. macOS baseline changes use a new
-DMG and the user's chosen signing workflow. See [release setup](docs/releases.md).
+DMG and the user's chosen signing workflow. Fedora installations download an RPM
+and open the system package installer. See [release setup](docs/releases.md).
 
 Pushes to `main` automatically update the client version: explicit version intent
 takes priority, otherwise source-diff size selects patch, minor or major. See the

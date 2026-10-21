@@ -295,8 +295,11 @@ export async function checkNativeNotifications(
     const delivered = (await fixture.records()).filter(
       (r) => r.kind === "notification",
     );
-    for (const notification of delivered)
+    for (const notification of delivered) {
       assert.equal(notification.app, "Haunt");
+      assert.equal(notification.desktopEntry, "com.exampleuser.haunt");
+      assert.equal(notification.transient, false);
+    }
     const clicked = delivered.find(
       (r) => r.title === `Native message ${second}`,
     );

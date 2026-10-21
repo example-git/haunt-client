@@ -135,6 +135,7 @@ indicator available; the same notice does not repeat on every poll.
 | --- | --- |
 | Windows | Open NSIS installer, quit Haunt and upgrade the existing installation |
 | Linux AppImage | Verify and atomically replace the actual launch file, retaining `.haunt-previous` |
+| Fedora RPM | Verify and open the RPM in the system package installer; DNF manages the installed files |
 | macOS arm64 | Open the new DMG; install/sign the replacement app as needed |
 
 An extracted Linux directory build opens the downloaded AppImage instead of

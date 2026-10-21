@@ -7,7 +7,7 @@ rpm_file=$(find release/updates -maxdepth 1 -name '*.rpm' -print)
 test -n "$rpm_file"
 test "$(printf '%s\n' "$rpm_file" | wc -l)" = 1
 rpm_file=$(realpath "$rpm_file")
-dnf install -y nodejs xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon shadow-utils desktop-file-utils
+dnf install -y nodejs xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon shadow-utils desktop-file-utils python3-dbus python3-gobject-base
 dnf install -y "$rpm_file"
 test "$(rpm -q --qf '%{NAME}' -p "$rpm_file")" = haunt
 test "$(cat /opt/Haunt/resources/package-type)" = rpm
@@ -17,16 +17,17 @@ rpm -ql haunt | grep -Fx /usr/share/applications/com.exampleuser.haunt.desktop
 rpm -ql haunt | grep -Fx /opt/Haunt/resources/package-type
 desktop-file-validate /usr/share/applications/com.exampleuser.haunt.desktop
 grep -Fx 'StartupWMClass=com.exampleuser.haunt' /usr/share/applications/com.exampleuser.haunt.desktop
+grep -Fx 'X-GNOME-UsesNotifications=true' /usr/share/applications/com.exampleuser.haunt.desktop
 useradd --create-home --uid 1001 haunt-rpm
 mkdir -p test-results
 chmod a+rwx test-results
-runuser -u haunt-rpm -- dbus-run-session -- xvfb-run -a node scripts/check-rpm-installed.mjs write
+runuser -u haunt-rpm -- xvfb-run -a dbus-run-session -- node scripts/check-rpm-installed.mjs write
 dnf reinstall -y "$rpm_file"
 test "$(readlink -f /usr/bin/haunt)" = /opt/Haunt/haunt
-runuser -u haunt-rpm -- dbus-run-session -- xvfb-run -a node scripts/check-rpm-installed.mjs read
+runuser -u haunt-rpm -- xvfb-run -a dbus-run-session -- node scripts/check-rpm-installed.mjs read
 dnf remove -y haunt
 test ! -e /opt/Haunt/haunt
 test ! -e /usr/share/applications/com.exampleuser.haunt.desktop
 test -d /home/haunt-rpm/.config/haunt
 dnf install -y "$rpm_file"
-runuser -u haunt-rpm -- dbus-run-session -- xvfb-run -a node scripts/check-rpm-installed.mjs read
+runuser -u haunt-rpm -- xvfb-run -a dbus-run-session -- node scripts/check-rpm-installed.mjs complete

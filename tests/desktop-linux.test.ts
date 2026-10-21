@@ -25,6 +25,7 @@ it("installs matching launcher identity and persistent artwork; updates a manage
   expect(path.basename(result.file)).toBe(desktopName);
   const entry = await fs.readFile(result.file, "utf8");
   expect(entry).toContain("StartupWMClass=com.exampleuser.haunt\n");
+  expect(entry).toContain("X-GNOME-UsesNotifications=true\n");
   expect(entry).toContain("X-Haunt-Managed=true\n");
   expect(entry).toContain('\\\\$file\\\\` \\\\"50%%\\\\"');
   expect(await fs.readFile(result.icon, "utf8")).toBe("fixture icon bytes");

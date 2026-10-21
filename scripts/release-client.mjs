@@ -77,8 +77,10 @@ if (command === "keygen") {
   let rpm;
   if (config.platform === "linux") {
     rpm = `Haunt-${config.version}-linux-${config.arch}.rpm`;
-    const builtRPM =
-      config.arch === "x64" ? rpm.replace("-x64.rpm", "-x86_64.rpm") : rpm;
+    const builtRPM = rpm.replace(
+      `-${config.arch}.rpm`,
+      `-${config.arch === "x64" ? "x86_64" : "aarch64"}.rpm`,
+    );
     await fs.copyFile(path.join(builder, builtRPM), path.join(directory, rpm));
   }
   const describe = async (file) => {
