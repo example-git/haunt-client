@@ -195,7 +195,28 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
             psm: 11,
           });
       }
-    } else regions.push({ x: offset, y: 0, zoom: 1 }, ...additionalRegions);
+    } else {
+      if (process.platform === "win32") {
+        const { stdout } = await run("magick", [
+          "identify",
+          "-format",
+          "%w %h",
+          screen,
+        ]);
+        const [width, height] = stdout.trim().split(/\s+/).map(Number);
+        // The toast's text column avoids both its large icon and the runner
+        // console behind it. Read wrapped lines from the actual native pixels.
+        regions.push({
+          x: Math.max(offset, width - Math.round(294 * scaleFactor)),
+          y: Math.max(0, height - Math.round(300 * scaleFactor)),
+          width: Math.min(width - offset, Math.round(294 * scaleFactor)),
+          height: Math.min(height, Math.round(260 * scaleFactor)),
+          zoom: 3,
+          psm: 6,
+        });
+      }
+      regions.push({ x: offset, y: 0, zoom: 1 }, ...additionalRegions);
+    }
     const readings = [];
     for (const region of regions) {
       const geometry = `${region.width ? `${region.width}x${region.height}` : ""}+${region.x}+${region.y}`;

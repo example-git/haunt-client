@@ -43,6 +43,25 @@ const message = {
   conversation: "conversation",
 };
 
+it("reports native presentation initialization failure without claiming delivery", async () => {
+  const f = fixture();
+  const service = createNotificationService({
+    Notification: f.Notification,
+    getWindow: () => f.window,
+    onError: f.onError,
+    preparePresentation: () => {
+      throw Error("Native notification delegate unavailable");
+    },
+  });
+  await expect(service.show(message)).rejects.toThrow(
+    "Native notification delegate unavailable",
+  );
+  expect(f.onError).toHaveBeenCalledWith(
+    "Native notification delegate unavailable",
+  );
+  expect(f.popups[0].show).not.toHaveBeenCalled();
+});
+
 it("delivers simultaneous conversations, replaces the same conversation, and retains notifications for the OS", async () => {
   vi.useFakeTimers();
   const f = fixture();

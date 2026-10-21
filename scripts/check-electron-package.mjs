@@ -43,6 +43,23 @@ const filename = path.resolve(
   root,
   process.argv[2] ?? path.join(config.directories.output, defaultArchive),
 );
+if (process.platform === "darwin") {
+  const native = path.join(
+    path.dirname(filename),
+    "native/mac/notification-presentation.node",
+  );
+  const bytes = await fs.readFile(native);
+  assert.equal(
+    bytes.readUInt32LE(0),
+    0xfeedfacf,
+    "Notification presentation is a Mach-O binary",
+  );
+  assert.equal(
+    bytes.readUInt32LE(4),
+    0x100000c,
+    "Notification presentation targets Apple Silicon",
+  );
+}
 const packagedIdentity = JSON.parse(
   asar.extractFile(filename, "package.json").toString(),
 );

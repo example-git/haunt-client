@@ -166,6 +166,23 @@ export async function checkNotificationMessages(app, page, native, report) {
   const delivered = async (body, options) => {
     await native.expectPopup(body, options);
     checks.push({ body, nativePopup: "visible" });
+    if (process.platform === "darwin") {
+      await expect
+        .poll(() =>
+          app.evaluate(
+            async ({ Notification }, body) =>
+              (await Notification.getHistory()).some((item) =>
+                item.body.includes(body),
+              ),
+            body,
+          ),
+        )
+        .toBe(true);
+      checks.push({
+        body,
+        nativeHistory: "present in macOS Notification Center",
+      });
+    }
   };
   const badge = async (count, label) => {
     if (process.platform === "darwin")

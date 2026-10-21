@@ -383,6 +383,15 @@ async function startMain() {
     Notification,
     getWindow: () => window,
     icon: path.join(app.getAppPath(), "dist/brand/logo-128.png"),
+    preparePresentation: () => {
+      if (process.platform === "darwin")
+        require(
+          path.join(
+            process.resourcesPath,
+            "native/mac/notification-presentation.node",
+          ),
+        ).install();
+    },
     onError: (message) => {
       if (!window.isDestroyed())
         window.webContents.send("notification:error", message);

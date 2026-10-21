@@ -49,6 +49,8 @@ export async function runtimeConfig(
     );
   if (platform === "darwin")
     names.push(
+      "native/mac-notifications/presentation.m",
+      "scripts/build-notification-presentation.mjs",
       "electron-app/entitlements.mac.plist",
       "electron-app/entitlements.mac.inherit.plist",
       "static/mac/Install Haunt.command",
