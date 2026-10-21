@@ -121,6 +121,13 @@ export function validateMenu(raw: unknown): MenuManifest {
     )
       throw Error("Invalid server menu");
     ids.add(page.id);
+    if (
+      page.extension_id !== undefined &&
+      (page.builtin !== "server-extensions" ||
+        typeof page.extension_id !== "string" ||
+        !/^[a-z][a-z0-9-]{0,63}$/.test(page.extension_id))
+    )
+      throw Error("Invalid extension menu");
     if (page.form) {
       const f = page.form;
       menuAPIPath(f.load_path);

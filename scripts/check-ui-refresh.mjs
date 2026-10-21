@@ -122,7 +122,7 @@ export async function checkUIRefresh(browser, fixtures) {
       password: fixtures.password,
       device_name: "UI authorization probe",
     });
-    const extension = "/api/v1/admin/server-extensions/tiktok-tts";
+    const extension = "/api/v1/admin/server-extensions/example-tts";
     await request("GET", extension, aliceAPI.token, undefined, 403);
     await expect(
       alice.getByRole("button", { name: "Server settings", exact: true }),
@@ -161,9 +161,9 @@ export async function checkUIRefresh(browser, fixtures) {
     await alice
       .getByRole("button", { name: "Server settings", exact: true })
       .click();
-    await section(alice, "Server extensions");
+    await section(alice, "Example speech");
     await alice
-      .getByLabel("TikTok session token", { exact: true })
+      .getByLabel("Session token", { exact: true })
       .fill("a".repeat(32));
     await alice.getByLabel("Enable for this server’s clients").check();
     await alice

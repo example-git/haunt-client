@@ -51,10 +51,10 @@ const icons: Record<string, LucideIcon> = {
   audit: ScrollText,
 };
 const keywords: Record<string, string> = {
-  narrator: "voice tts tiktok announcements",
+  narrator: "voice tts speech announcements",
   devices: "microphone speaker camera voice video",
   "audio-plugins": "noise suppression voice",
-  "server-extensions": "tiktok tts session token credentials",
+  "server-extensions": "extensions tts speech credentials",
   account: "password login sessions",
   appearance: "theme colors size font",
 };

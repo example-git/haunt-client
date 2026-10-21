@@ -244,6 +244,22 @@ export interface APIContract {
       patch?: never;
       trace?: never;
     };
+    "/api/v1/admin/server-extensions/reload": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get?: never;
+      put?: never;
+      post: OperationReloadServerExtensions;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
     "/api/v1/admin/server-extensions/{id}": {
       parameters: {
         query?: never;
@@ -1653,8 +1669,11 @@ export interface APIContract {
       IdentityUser: IdentityUser;
       ServerextensionConfiguration: ServerextensionConfiguration;
       ServerextensionExtension: ServerextensionExtension;
+      ServerextensionField: ServerextensionField;
+      ServerextensionOption: ServerextensionOption;
       ServerextensionSaveRequest: ServerextensionSaveRequest;
       ServerextensionSpeechRequest: ServerextensionSpeechRequest;
+      ServerextensionVoice: ServerextensionVoice;
       V4ICECandidateInit: V4ICECandidateInit;
       V4RTPCodecCapability: V4RTPCodecCapability;
       V4SDPType: V4SDPType;
@@ -1684,6 +1703,7 @@ export interface APIContract {
     moderateMember: OperationModerateMember;
     resetMemberPassword: OperationResetMemberPassword;
     issueTemporaryPassword: OperationIssueTemporaryPassword;
+    reloadServerExtensions: OperationReloadServerExtensions;
     getServerExtension: OperationGetServerExtension;
     saveServerExtension: OperationSaveServerExtension;
     testServerExtension: OperationTestServerExtension;
@@ -2429,6 +2449,52 @@ export interface IdentityTemporaryPassword {
    */
   temporary_password: string;
 }
+export interface OperationReloadServerExtensions {
+  parameters: {
+    query?: never;
+    header?: never;
+    path?: never;
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiServerExtensionsResponse;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface HttpapiServerExtensionsResponse {
+  extensions: ServerextensionExtension[] | null;
+}
+export interface ServerextensionExtension {
+  category: "tts";
+  configured: boolean;
+  default_voice: string;
+  description: string;
+  enabled: boolean;
+  id: string;
+  name: string;
+  voice_pattern?: string;
+  voices: ServerextensionVoice[] | null;
+}
+export interface ServerextensionVoice {
+  group?: string;
+  id: string;
+  name: string;
+}
 export interface OperationGetServerExtension {
   parameters: {
     query?: never;
@@ -2461,11 +2527,34 @@ export interface OperationGetServerExtension {
 export interface ServerextensionConfiguration {
   category: "tts";
   configured: boolean;
+  configured_secrets: string[] | null;
+  default_voice: string;
+  description: string;
   enabled: boolean;
-  endpoint: string;
+  fields: ServerextensionField[] | null;
   id: string;
   name: string;
   revision: number;
+  values: {
+    [k: string]: string;
+  } | null;
+  voice_pattern?: string;
+  voices: ServerextensionVoice[] | null;
+}
+export interface ServerextensionField {
+  default?: string;
+  help?: string;
+  key: string;
+  label: string;
+  max_length?: number;
+  options?: ServerextensionOption[];
+  pattern?: string;
+  required?: boolean;
+  type: "text" | "password" | "select";
+}
+export interface ServerextensionOption {
+  label: string;
+  value: string;
 }
 export interface OperationSaveServerExtension {
   parameters: {
@@ -2501,14 +2590,12 @@ export interface OperationSaveServerExtension {
   };
 }
 export interface ServerextensionSaveRequest {
-  clear_token?: boolean;
+  clear_secrets?: string[];
   enabled: boolean;
-  endpoint: string;
   revision: number;
-  /**
-   * Write-only TikTok sessionid. Omit or leave blank to keep the saved token.
-   */
-  session_token?: string;
+  values: {
+    [k: string]: string;
+  } | null;
 }
 export interface OperationTestServerExtension {
   parameters: {
@@ -2558,6 +2645,9 @@ export interface OperationTestServerExtension {
   };
 }
 export interface ServerextensionSpeechRequest {
+  /**
+   * Text limited to 500 UTF-8 bytes.
+   */
   text: string;
   voice: string;
 }
@@ -3728,6 +3818,7 @@ export interface HttpapiMenuPage {
   action?: HttpapiMenuCommand;
   builtin?: string;
   context_label?: string;
+  extension_id?: string;
   form?: HttpapiMenuForm;
   id: string;
   label: string;
@@ -5871,16 +5962,6 @@ export interface OperationListServerExtensions {
     };
   };
 }
-export interface HttpapiServerExtensionsResponse {
-  extensions: ServerextensionExtension[] | null;
-}
-export interface ServerextensionExtension {
-  category: "tts";
-  configured: boolean;
-  enabled: boolean;
-  id: string;
-  name: string;
-}
 export interface OperationServerExtensionSpeech {
   parameters: {
     query?: never;
@@ -5930,6 +6011,9 @@ export interface OperationServerExtensionSpeech {
 }
 export interface HttpapiExtensionSpeechRequest {
   room_id?: string;
+  /**
+   * Text limited to 500 UTF-8 bytes.
+   */
   text: string;
   voice: string;
 }

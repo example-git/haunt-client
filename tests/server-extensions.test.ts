@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
   parseServerExtensions,
+  parseExtensionConfiguration,
   requestExtensionSpeech,
 } from "../packages/core/src/server-extensions";
 
@@ -97,6 +98,9 @@ it("validates extension metadata without retaining arbitrary credentials or dupl
   const extension = {
     id: "tiktok-tts",
     name: "TikTok TTS",
+    description: "Speech provider",
+    default_voice: "voice_1",
+    voices: [{ id: "voice_1", name: "First voice", group: "Examples" }],
     category: "tts",
     enabled: true,
     configured: true,
@@ -108,6 +112,60 @@ it("validates extension metadata without retaining arbitrary credentials or dupl
   ).toEqual([extension]);
   expect(() =>
     parseServerExtensions({ extensions: [extension, extension] }),
+  ).toThrow();
+});
+
+it("uses server-provided fields and voices for an unknown extension", () => {
+  const extension = {
+    id: "example-speech",
+    name: "Example speech",
+    description: "Remote speech",
+    category: "tts",
+    enabled: false,
+    configured: true,
+    default_voice: "example_voice",
+    voices: [
+      { id: "example_voice", name: "Server supplied voice", group: "Examples" },
+    ],
+    revision: 3,
+    fields: [
+      {
+        key: "region",
+        label: "Server supplied region",
+        type: "select",
+        options: [{ value: "east", label: "East" }],
+      },
+      {
+        key: "credential",
+        label: "Server supplied credential",
+        type: "password",
+      },
+    ],
+    values: { region: "east", credential: "do not retain" },
+    configured_secrets: ["credential"],
+  };
+  const configuration = parseExtensionConfiguration(
+    extension,
+    "example-speech",
+  );
+  expect(configuration.values).toEqual({ region: "east" });
+  expect(configuration.voices).toEqual(extension.voices);
+  expect(configuration.fields.map((field) => field.label)).toEqual([
+    "Server supplied region",
+    "Server supplied credential",
+  ]);
+  expect(configuration.configured_secrets).toEqual(["credential"]);
+  expect(() =>
+    parseExtensionConfiguration(extension, "different-extension"),
+  ).toThrow();
+  expect(() =>
+    parseExtensionConfiguration(
+      {
+        ...extension,
+        fields: [{ key: "constructor", label: "Bad", type: "text" }],
+      },
+      "example-speech",
+    ),
   ).toThrow();
 });
 

@@ -5,9 +5,9 @@ import { fillSignin } from "./signin-fields.mjs";
 import { checkSettingsLayout } from "./check-settings-layout.mjs";
 
 const expect = baseExpect.configure({ timeout: 15000 });
-const speechPath = "/api/v1/server-extensions/tiktok-tts/speech";
-const defaultVoice = "en_male_narration";
-const userVoice = "en_us_stitch";
+const speechPath = "/api/v1/server-extensions/example-tts/speech";
+const defaultVoice = "example_voice";
+const userVoice = "example_voice";
 
 // Observe detached narrator Audio elements without replacing synthesis, play(),
 // decoding, output routing or the media element's normal output.
@@ -201,18 +201,18 @@ export async function checkNarrator(browser, fixtures) {
         .getByRole("button", { name: "Server settings", exact: true })
         .click();
       await listener
-        .getByRole("button", { name: "Server extensions", exact: true })
+        .getByRole("button", { name: "Example speech", exact: true })
         .click();
       const admin = listener.locator(".extension-settings");
       await admin
-        .getByLabel("TikTok session token", { exact: true })
+        .getByLabel("Session token", { exact: true })
         .fill("a".repeat(32));
       await admin.getByLabel("Enable for this server’s clients").check();
       const saved = listener.waitForResponse(
         (reply) =>
           reply.request().method() === "PUT" &&
           new URL(reply.url()).pathname ===
-            "/api/v1/admin/server-extensions/tiktok-tts",
+            "/api/v1/admin/server-extensions/example-tts",
       );
       await admin
         .getByRole("button", { name: "Save configuration", exact: true })
@@ -222,25 +222,27 @@ export async function checkNarrator(browser, fixtures) {
         admin
           .getByLabel("Test voice", { exact: true })
           .locator("optgroup option"),
-      ).toHaveCount(42);
+      ).toHaveCount(1);
       await admin
         .getByLabel("Test voice", { exact: true })
-        .selectOption("jp_005");
+        .selectOption("example_voice");
       await closeSettings();
 
       let settings = await openSettings();
       await settings
         .getByLabel("Speech provider", { exact: true })
-        .selectOption("tiktok-tts");
-      const voice = settings.getByLabel("TikTok voice", { exact: true });
-      await expect(voice.locator("optgroup option")).toHaveCount(42);
-      await expect(voice.locator("optgroup")).toHaveCount(5);
+        .selectOption("example-tts");
+      const voice = settings.getByLabel("Example speech voice", {
+        exact: true,
+      });
+      await expect(voice.locator("optgroup option")).toHaveCount(1);
+      await expect(voice.locator("optgroup")).toHaveCount(1);
       await voice.selectOption(":custom:");
       await settings
-        .getByLabel("TikTok voice ID", { exact: true })
+        .getByLabel("Example speech voice ID", { exact: true })
         .fill("custom_voice_01");
       await settings
-        .getByLabel("TikTok voice ID", { exact: true })
+        .getByLabel("Example speech voice ID", { exact: true })
         .fill("invalid voice!");
       await expect(settings.getByRole("alert")).toContainText(
         "hasn’t been saved",
@@ -248,10 +250,10 @@ export async function checkNarrator(browser, fixtures) {
       await closeSettings();
       settings = await openSettings();
       await expect(
-        settings.getByLabel("TikTok voice ID", { exact: true }),
+        settings.getByLabel("Example speech voice ID", { exact: true }),
       ).toHaveValue("custom_voice_01");
       await settings
-        .getByLabel("TikTok voice", { exact: true })
+        .getByLabel("Example speech voice", { exact: true })
         .selectOption(defaultVoice);
       await settings.getByLabel("Enabled", { exact: true }).check();
       await settings
@@ -277,8 +279,8 @@ export async function checkNarrator(browser, fixtures) {
       const override = settings.getByLabel("Extension voice override", {
         exact: true,
       });
-      await expect(override.locator("optgroup option")).toHaveCount(42);
-      await override.selectOption("fr_002");
+      await expect(override.locator("optgroup option")).toHaveCount(1);
+      await override.selectOption("example_voice");
       await override.selectOption("");
       await expect(override).toHaveValue("");
       await override.selectOption(userVoice);

@@ -20,7 +20,7 @@ import {
   type NarratorSettings as Settings,
 } from "@haunt/browser/narrator/settings";
 import { useServerExtensions } from "./useServerExtensions";
-import { TikTokVoiceSelect } from "./TikTokVoiceSelect";
+import { ExtensionVoiceSelect } from "./ExtensionVoiceSelect";
 import { SlidersHorizontal, TextCursorInput, Users } from "lucide-react";
 import "./tts-settings.css";
 
@@ -89,7 +89,15 @@ export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
           <select
             aria-label="Speech provider"
             value={settings.provider}
-            onChange={(event) => set({ provider: event.target.value })}
+            onChange={(event) => {
+              const provider = providers.extensions.find(
+                (item) => item.id === event.target.value,
+              );
+              set({
+                provider: event.target.value,
+                voice: provider?.default_voice ?? "",
+              });
+            }}
           >
             <option value="device">Device TTS</option>
             {settings.provider !== "device" && !selected && (
@@ -126,9 +134,13 @@ export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
               ))}
             </select>
           </label>
-        ) : settings.provider === "tiktok-tts" ? (
-          <TikTokVoiceSelect
-            label="TikTok voice"
+        ) : selected ? (
+          <ExtensionVoiceSelect
+            key={selected.id}
+            label={`${selected.name} voice`}
+            voices={selected.voices}
+            pattern={selected.voice_pattern}
+            defaultLabel="Extension default voice"
             value={settings.voice}
             onChange={(voice) => set({ voice })}
           />
@@ -324,9 +336,11 @@ export function NarratorSettings({ instance }: { instance?: InstanceClient }) {
             </label>
             {userKey && (
               <>
-                {settings.provider === "tiktok-tts" ? (
-                  <TikTokVoiceSelect
-                    key={userKey}
+                {selected ? (
+                  <ExtensionVoiceSelect
+                    voices={selected.voices}
+                    pattern={selected.voice_pattern}
+                    key={`${selected.id}:${userKey}`}
                     label="Extension voice override"
                     value={override?.voice ?? ""}
                     defaultLabel="Use default voice"

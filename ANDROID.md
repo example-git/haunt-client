@@ -1,6 +1,6 @@
 # Android messaging integration
 
-Android is the planned mobile target. The SDK and responsive UI are implemented; an Android application project, signing, emulator/device verification, background service and push delivery are not implemented in this pass. Mobile voice remains separate work. There is no iOS target.
+Android is the planned mobile target. The SDK and responsive UI are implemented; an Android application project, signing, emulator/device verification, background service and push delivery are not implemented. Mobile voice remains separate work. There is no iOS target.
 
 ## Reusable SDK
 

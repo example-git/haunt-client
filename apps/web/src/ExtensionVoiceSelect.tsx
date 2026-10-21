@@ -1,29 +1,31 @@
 import { useId, useState } from "react";
-import { tikTokVoiceGroups } from "@haunt/browser/narrator/voices";
+import type { ExtensionVoice } from "@haunt/core";
 
-const knownVoices = new Set<string>(
-  Object.values(tikTokVoiceGroups).flatMap((voices) =>
-    voices.map(([id]) => id),
-  ),
-);
 const customChoice = ":custom:";
 
-export function TikTokVoiceSelect({
+export function ExtensionVoiceSelect({
   label,
   value,
   onChange,
+  voices,
   defaultLabel,
+  pattern,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  voices: ExtensionVoice[];
   defaultLabel?: string;
+  pattern?: string;
 }) {
   const id = useId();
   const [custom, setCustom] = useState(false);
   const [invalid, setInvalid] = useState<string>();
   const showCustom =
-    custom || (!knownVoices.has(value) && !(defaultLabel && value === ""));
+    custom ||
+    (!voices.some((voice) => voice.id === value) &&
+      !(defaultLabel && value === ""));
+  const groups = [...new Set(voices.map((voice) => voice.group ?? "Voices"))];
   return (
     <div className="tts-voice-select">
       <label htmlFor={id}>{label}</label>
@@ -32,19 +34,21 @@ export function TikTokVoiceSelect({
         value={showCustom ? customChoice : value}
         onChange={(event) => {
           const next = event.target.value;
-          setInvalid(undefined);
           setCustom(next === customChoice);
+          setInvalid(undefined);
           if (next !== customChoice) onChange(next);
         }}
       >
         {defaultLabel && <option value="">{defaultLabel}</option>}
-        {Object.entries(tikTokVoiceGroups).map(([group, voices]) => (
+        {groups.map((group) => (
           <optgroup key={group} label={group}>
-            {voices.map(([voice, name]) => (
-              <option key={voice} value={voice}>
-                {name} ({voice})
-              </option>
-            ))}
+            {voices
+              .filter((voice) => (voice.group ?? "Voices") === group)
+              .map((voice) => (
+                <option key={voice.id} value={voice.id}>
+                  {voice.name} ({voice.id})
+                </option>
+              ))}
           </optgroup>
         ))}
         <option value={customChoice}>Custom voice ID…</option>
@@ -55,14 +59,15 @@ export function TikTokVoiceSelect({
           <input
             aria-label={`${label} ID`}
             value={invalid ?? value}
-            aria-invalid={invalid !== undefined}
-            aria-describedby={invalid === undefined ? undefined : `${id}-error`}
             maxLength={64}
             spellCheck={false}
+            aria-invalid={invalid !== undefined}
+            aria-describedby={invalid === undefined ? undefined : `${id}-error`}
             onChange={(event) => {
               const next = event.target.value;
               if (
-                !/^[a-z0-9_]{2,64}$/i.test(next) &&
+                pattern &&
+                !new RegExp(pattern).test(next) &&
                 !(defaultLabel && !next)
               ) {
                 setInvalid(next);
@@ -74,8 +79,8 @@ export function TikTokVoiceSelect({
           />
           {invalid !== undefined && (
             <span id={`${id}-error`} role="alert" className="error small">
-              Use 2–64 letters, numbers or underscores. This value hasn’t been
-              saved; the previous voice is still selected.
+              This ID does not match the extension’s format and hasn’t been
+              saved.
             </span>
           )}
         </label>

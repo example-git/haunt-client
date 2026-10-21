@@ -1,43 +1,52 @@
 import { useEffect, useRef, useState } from "react";
-import type { InstanceClient, ServerExtensionConfiguration } from "@haunt/core";
+import {
+  parseExtensionConfiguration,
+  type InstanceClient,
+  type ServerExtensionConfiguration,
+} from "@haunt/core";
 import { followAudioOutput } from "@haunt/browser/audio-output";
 import { Status, useAction } from "./Customization";
-import { TikTokVoiceSelect } from "./TikTokVoiceSelect";
-import { KeyRound } from "lucide-react";
+import { ExtensionVoiceSelect } from "./ExtensionVoiceSelect";
+import { useServerExtensions } from "./useServerExtensions";
 import { can, Permission } from "./Permissions";
 import "./tts-settings.css";
 
 export function ServerExtensionsAdmin({
   instance,
+  extensionID,
+  onReload,
 }: {
   instance: InstanceClient;
+  extensionID?: string;
+  onReload?: () => void;
 }) {
+  const catalog = useServerExtensions(instance);
+  const [selected, setSelected] = useState(extensionID ?? "");
+  const id = extensionID ?? selected;
   const [configuration, setConfiguration] =
     useState<ServerExtensionConfiguration>();
   const [enabled, setEnabled] = useState(false);
-  const [endpoint, setEndpoint] = useState(
-    "https://api16-normal-useast5.us.tiktokv.com",
-  );
-  const [token, setToken] = useState("");
-  const [voice, setVoice] = useState("en_us_001");
-  const [text, setText] = useState("Haunt's speech extension is ready.");
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [voice, setVoice] = useState("");
+  const [text, setText] = useState("The speech extension is ready.");
   const [audioURL, setAudioURL] = useState("");
   const audio = useRef<HTMLAudioElement>(null);
   const testing = useRef<AbortController>(undefined);
   const action = useAction();
   const allowed = can(instance, Permission.ManageConfiguration);
-  const path = "/api/v1/admin/server-extensions/tiktok-tts";
-  const apply = (value: unknown) => {
-    const next = value as ServerExtensionConfiguration;
-    if (next?.id !== "tiktok-tts" || !Number.isSafeInteger(next.revision))
-      throw Error("Invalid extension configuration.");
+  const path = `/api/v1/admin/server-extensions/${id}`;
+  const apply = (raw: unknown) => {
+    const next = parseExtensionConfiguration(raw, id);
     setConfiguration(next);
     setEnabled(next.enabled);
-    setEndpoint(next.endpoint);
-    setToken("");
+    setValues(next.values);
+    setVoice((current) => current || next.default_voice);
   };
   useEffect(() => {
-    if (!allowed) return;
+    setConfiguration(undefined);
+    setVoice("");
+    setAudioURL("");
+    if (!allowed || !id) return;
     const abort = new AbortController();
     void action.run(async () => {
       const value = await instance.menuRequest(
@@ -52,7 +61,7 @@ export function ServerExtensionsAdmin({
       abort.abort();
       testing.current?.abort();
     };
-  }, [instance, allowed]);
+  }, [instance, allowed, id]);
   useEffect(() => {
     if (!audioURL) return;
     const off = audio.current ? followAudioOutput(audio.current) : undefined;
@@ -70,19 +79,58 @@ export function ServerExtensionsAdmin({
     );
   const dirty =
     !!configuration &&
-    (token !== "" ||
-      endpoint !== configuration.endpoint ||
-      enabled !== configuration.enabled);
+    (enabled !== configuration.enabled ||
+      configuration.fields.some(
+        (field) =>
+          (values[field.key] ?? "") !== (configuration.values[field.key] ?? ""),
+      ));
   return (
     <section className="form extension-settings">
-      <h3>Server extensions</h3>
+      <h3>{configuration?.name ?? "Server extensions"}</h3>
       <p className="muted small">
-        Server-hosted integrations, separate from voice processing plugins.
-        Credentials stay on this server; users configure playback in their
-        client’s Text to speech section.
+        {configuration?.description ??
+          "Installed server extensions provide their settings and voices to this client."}
       </p>
       <Status action={action} />
-      {!configuration ? (
+      {!extensionID && (
+        <>
+          <button
+            disabled={action.busy}
+            onClick={() =>
+              void action.run(async () => {
+                await instance.menuRequest(
+                  "/api/v1/admin/server-extensions/reload",
+                  "POST",
+                );
+                catalog.refresh();
+                onReload?.();
+              }, "Installed extensions reloaded.")
+            }
+          >
+            Reload installed extensions
+          </button>
+          {catalog.error && <p role="alert">{catalog.error}</p>}
+          {!catalog.loading && !catalog.extensions.length && (
+            <p>No server extensions are installed.</p>
+          )}
+          <label>
+            Extension
+            <select
+              aria-label="Server extension"
+              value={selected}
+              onChange={(event) => setSelected(event.target.value)}
+            >
+              <option value="">Choose an extension</option>
+              {catalog.extensions.map((extension) => (
+                <option key={extension.id} value={extension.id}>
+                  {extension.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      )}
+      {id && !configuration && (
         <button
           disabled={action.busy}
           onClick={() =>
@@ -92,39 +140,31 @@ export function ServerExtensionsAdmin({
             )
           }
         >
-          Refresh extensions
+          Refresh extension
         </button>
-      ) : (
+      )}
+      {configuration && (
         <>
-          <label>
-            Extension
-            <select
-              aria-label="Server extension"
-              value="tiktok-tts"
-              onChange={() => {}}
-            >
-              <option value="tiktok-tts">TikTok TTS · speech relay</option>
-            </select>
-          </label>
           <p role="status" className="muted small">
             {configuration.enabled ? "Enabled" : "Disabled"} ·{" "}
-            {configuration.configured
-              ? "Session token configured"
-              : "Setup required"}
+            {configuration.configured ? "Configured" : "Setup required"}
           </p>
           <form
             className="form"
             onSubmit={(event) => {
               event.preventDefault();
               void action.run(async () => {
-                const value = await instance.menuRequest(path, "PUT", {
-                  revision: configuration.revision,
-                  enabled,
-                  endpoint,
-                  ...(token ? { session_token: token } : {}),
-                });
-                apply(value);
+                testing.current?.abort();
+                audio.current?.pause();
+                apply(
+                  await instance.menuRequest(path, "PUT", {
+                    revision: configuration.revision,
+                    enabled,
+                    values,
+                  }),
+                );
                 setAudioURL("");
+                catalog.refresh();
               }, "Extension configuration saved.");
             }}
           >
@@ -137,86 +177,91 @@ export function ServerExtensionsAdmin({
                 />
                 Enable for this server’s clients
               </label>
-              <label>
-                TikTok session token
-                <input
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={token}
-                  maxLength={32}
-                  placeholder={
-                    configuration.configured
-                      ? "Configured — leave blank to keep"
-                      : "TikTok sessionid (32 hex characters)"
-                  }
-                  onChange={(event) => setToken(event.target.value.trim())}
-                />
-              </label>
-              <label>
-                API region
-                <select
-                  value={endpoint}
-                  onChange={(event) => setEndpoint(event.target.value)}
-                >
-                  <option value="https://api16-normal-useast5.us.tiktokv.com">
-                    US East 5
-                  </option>
-                  <option value="https://api16-normal-useast5.tiktokv.us">
-                    US East 5 · alternate
-                  </option>
-                </select>
-              </label>
+              {configuration.fields.map((field) => (
+                <label key={field.key}>
+                  {field.label}
+                  {field.type === "select" ? (
+                    <select
+                      value={values[field.key] ?? ""}
+                      onChange={(event) =>
+                        setValues((old) => ({
+                          ...old,
+                          [field.key]: event.target.value,
+                        }))
+                      }
+                    >
+                      {!field.required && <option value="">Not set</option>}
+                      {field.options?.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type={field.type}
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={values[field.key] ?? ""}
+                      maxLength={field.max_length || 4096}
+                      placeholder={
+                        field.type === "password" &&
+                        configuration.configured_secrets.includes(field.key)
+                          ? "Configured; leave blank to keep"
+                          : undefined
+                      }
+                      onChange={(event) =>
+                        setValues((old) => ({
+                          ...old,
+                          [field.key]: event.target.value,
+                        }))
+                      }
+                    />
+                  )}
+                  {field.help && <small className="muted">{field.help}</small>}
+                </label>
+              ))}
               <div className="button-row">
                 <button className="primary" type="submit">
                   Save configuration
                 </button>
-                <button
-                  type="button"
-                  disabled={!configuration.configured}
-                  onClick={() =>
-                    void action.run(async () => {
-                      testing.current?.abort();
-                      audio.current?.pause();
-                      setAudioURL("");
-                      apply(
-                        await instance.menuRequest(path, "PUT", {
-                          revision: configuration.revision,
-                          enabled: false,
-                          endpoint: configuration.endpoint,
-                          clear_token: true,
-                        }),
-                      );
-                    }, "Extension disabled and credentials removed.")
-                  }
-                >
-                  Clear credentials
-                </button>
+                {!!configuration.configured_secrets.length && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void action.run(async () => {
+                        testing.current?.abort();
+                        audio.current?.pause();
+                        setAudioURL("");
+                        apply(
+                          await instance.menuRequest(path, "PUT", {
+                            revision: configuration.revision,
+                            enabled: false,
+                            values: {},
+                            clear_secrets: configuration.configured_secrets,
+                          }),
+                        );
+                        catalog.refresh();
+                      }, "Extension disabled and credentials removed.")
+                    }
+                  >
+                    Clear credentials
+                  </button>
+                )}
               </div>
             </fieldset>
           </form>
-          <details>
-            <summary>
-              <KeyRound size={15} aria-hidden="true" />
-              About credentials
-            </summary>
-            <p className="muted small">
-              Use a TikTok sessionid obtained from an account you control. This
-              endpoint uses a session token, not the old Worker’s relay API key.
-              Saved credentials are encrypted at rest and never returned by the
-              API. Update an expired token here.
-            </p>
-          </details>
           <h4>Test extension</h4>
           <p className="muted small">
-            Save configuration first, then test actual speech before enabling
-            the extension for clients. Tests work while disabled and never use
-            device fallback.
+            Save configuration before testing. Tests work while disabled and do
+            not use device fallback.
           </p>
           <div className="tts-grid">
-            <TikTokVoiceSelect
+            <ExtensionVoiceSelect
               label="Test voice"
               value={voice}
+              voices={configuration.voices}
+              pattern={configuration.voice_pattern}
               onChange={setVoice}
             />
             <label>
@@ -234,8 +279,7 @@ export function ServerExtensionsAdmin({
                 action.busy ||
                 dirty ||
                 !configuration.configured ||
-                !text.trim() ||
-                !voice.trim()
+                !text.trim()
               }
               onClick={() =>
                 void action.run(async () => {
@@ -243,7 +287,7 @@ export function ServerExtensionsAdmin({
                   const abort = new AbortController();
                   testing.current = abort;
                   const bytes = await instance.extensionSpeech(
-                    "tiktok-tts",
+                    id,
                     { text, voice },
                     abort.signal,
                     true,
@@ -256,7 +300,7 @@ export function ServerExtensionsAdmin({
                         }),
                       ),
                     );
-                }, "Live provider test succeeded. Generated audio is ready below.")
+                }, "Extension test succeeded. Generated audio is ready below.")
               }
             >
               Test and play speech

@@ -2,35 +2,34 @@
 
 Open **Account settings → Text to speech**, below voice plugins. This compact
 section controls personal narration for the current server/account; provider
-credentials and setup belong in the separate owner-only **Server settings →
-Server extensions** page.
+credentials and setup belong in **Server settings → Server extensions**, available
+to owners, Administrators, and members with Manage configuration.
 
-Settings navigation is grouped and searchable: search **TikTok** to find the
-speech page or the server extension. Groups collapse independently, and the
+Settings navigation is grouped and searchable. Installed extension pages use
+their server-provided names. Groups collapse independently, and the
 header's expand control gives you more room without losing the close button.
 On narrow screens, use **Browse settings** to switch sections.
 
 ## Provider and fallback
 
 Choose **Device TTS** for local system speech, or an enabled server extension such
-as **TikTok TTS**. Browser and desktop clients use the same server relay. No
-Cloudflare Worker, desktop cookie capture, extension API key or individual TikTok
-login is required on the client.
+as **TikTok TTS**. Browser and desktop clients use the same server relay;
+provider credentials stay on the server.
 
 **Use device TTS if this extension fails** is independent of provider selection.
 Turn it off for extension-only playback: errors stay silent and report a failure,
 never use a local voice, and never choose another server. Disabled/unconfigured
-extensions do not alter the saved provider or fallback choice. Owners configure
-and test the actual provider in Server extensions; owner tests never fall back.
+extensions do not alter the saved provider or fallback choice. Administrator
+extension tests never use device fallback.
 
 Only voices exposed as local system voices are used for device speech. If none
 are available, install a system voice supported by your browser or desktop
 runtime. Device speech uses the OS default output; extension audio follows
 Haunt's Devices output selection. Volume and speed apply only to the narrator.
 
-The **TikTok voice** picker lists 42 voices grouped by language/region and
-characters, with readable names and their IDs. The same list is available for
-per-user overrides and the owner's extension test. Choose **Custom voice ID**
+The extension voice picker displays the voice catalog delivered by the server,
+with groups, readable names and IDs. The same list is available for
+per-user overrides and administrator extension tests. Choose **Custom voice ID**
 to use an unlisted voice; existing custom IDs remain editable. A user's
 **Use default voice** option removes their override. Actual voice availability
 depends on the upstream provider.
@@ -69,6 +68,7 @@ HAUNT_CLIENT_CHECK=narrator npm run test:integration
 The browser check signs in two independent clients on real isolated servers and
 tests both WebRTC and WebSocket calls. It asserts the actor's name and voice in
 speech requests, measures actual audio playback, and checks ignores and disabled
-events. Only the external TikTok response is simulated with a generated MP3 tone;
-no live credentials are needed. Use the owner's **Test extension** control to
-check live TikTok voice availability and pronunciation.
+events. An installed executable test extension returns a generated MP3 tone;
+no live credentials are needed. This checks dynamic menus, extension invocation
+and playback rather than a real provider's voice availability. Use the administrator
+**Test extension** control to check a configured provider.

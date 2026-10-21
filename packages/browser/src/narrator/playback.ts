@@ -132,7 +132,8 @@ async function playAudio(
         30_000,
       );
       audio.onended = () => finish();
-      audio.onerror = () => finish(Error("TikTok audio could not be played."));
+      audio.onerror = () =>
+        finish(Error("Extension audio could not be played."));
       signal.addEventListener("abort", abort, { once: true });
       void audio
         .play()

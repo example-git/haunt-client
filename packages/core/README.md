@@ -1,3 +1,5 @@
+![Haunt](../../assets/haunt-wordmark.png)
+
 # @haunt/core
 
 Installation-scoped Haunt HTTP, event and messaging SDK. Generated OpenAPI types cover the server API; networking, token storage and message storage are adapters. No UI or browser media implementation is imported by this package.

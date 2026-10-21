@@ -1,3 +1,5 @@
+![Haunt](../../assets/haunt-wordmark.png)
+
 # Haunt brand kit
 
 This directory preserves Haunt's source artwork, original visual specification and
@@ -5,7 +7,8 @@ reproducible platform exports. `Haunt-brand-spec.pdf` describes the original kit
 the application's current surface and accent tokens are in
 `apps/web/src/brand-tokens.css`.
 
-The product display name is **Haunt**. The approved ghost owl is unchanged.
+The product display name is **Haunt**. The canonical owl artwork is
+`source/logo-original.png`.
 
 ## Contents
 
@@ -18,6 +21,4 @@ The product display name is **Haunt**. The approved ghost owl is unchanged.
 - `tools/export_assets.py`: reproducible size/format exports using Pillow.
 - `SHA256SUMS.txt`: hashes of kit files, excluding this checksum list itself.
 
-The client build verifies installed icons against `asset-manifest.json`. The source
-artwork and exported assets are required repository inputs, not build-directory
-output. Original development handoff notes are kept outside the tracked source.
+The client build verifies installed icons against `asset-manifest.json`.

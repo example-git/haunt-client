@@ -32,7 +32,7 @@ export interface NarratorSettings {
 export const defaultNarratorSettings: NarratorSettings = {
   enabled: false,
   provider: "device",
-  voice: "en_us_001",
+  voice: "",
   deviceVoice: "",
   fallback: true,
   volume: 80,
@@ -89,7 +89,7 @@ export function normalizeNarratorSettings(value: unknown): NarratorSettings {
     next.provider = raw.provider === "tiktok" ? "tiktok-tts" : raw.provider;
   for (const key of ["deviceVoice"] as const)
     if (typeof raw[key] === "string") next[key] = raw[key].slice(0, 512);
-  if (typeof raw.voice === "string" && /^[a-z0-9_]{0,64}$/i.test(raw.voice))
+  if (typeof raw.voice === "string" && raw.voice.length <= 64)
     next.voice = raw.voice;
   for (const [key, minimum, maximum] of [
     ["volume", 0, 100],
@@ -118,7 +118,7 @@ export function normalizeNarratorSettings(value: unknown): NarratorSettings {
                 ignored: override.ignored === true,
                 voice:
                   typeof override.voice === "string" &&
-                  /^[a-z0-9_]{0,64}$/i.test(override.voice)
+                  override.voice.length <= 64
                     ? override.voice
                     : "",
               },

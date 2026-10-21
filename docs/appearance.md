@@ -26,9 +26,8 @@ device. On mobile, the header's server/menu button opens servers and channels;
 an unread dot keeps activity visible while the drawer is closed. Chat uses the
 full width when navigation is closed.
 
-Preferences apply across servers on the current client, survive logout/restart and
-are included in configuration backups. They are local UI settings, not a server's
-branding or permission to change another user's appearance.
+Appearance preferences affect only this client, apply across its servers, survive
+logout/restart, and are included in configuration backups.
 
 ## Save and share
 
@@ -62,9 +61,8 @@ The native preference contains only validated mode/color values and is separate
 from authentication data. Old desktop shells without the bridge show an update note.
 
 The platform APIs are [Electron background materials and vibrancy](https://www.electronjs.org/docs/latest/api/base-window#winsetbackgroundmaterialmaterial-windows).
-Their appearance must still be checked on the target OS. The Linux development
-host uses web screenshots and unit tests; it does not run Electron or pretend to
-capture Windows/macOS native material rendering.
+Native material appearance depends on the operating system and compositor.
+See [platform qualification](release-qualification.md) for target-OS checks.
 
 ## wumpoff palette
 

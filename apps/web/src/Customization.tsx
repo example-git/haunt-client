@@ -739,7 +739,12 @@ export function ServerSettings({
           {tab === "storage" && <StorageSettings instance={instance} />}
           {tab === "audio-plugins" && <AudioPluginsAdmin instance={instance} />}
           {tab === "server-extensions" && (
-            <ServerExtensionsAdmin key={instance.scope} instance={instance} />
+            <ServerExtensionsAdmin
+              key={`${instance.scope}:${page?.extension_id ?? ""}`}
+              instance={instance}
+              extensionID={page?.extension_id}
+              onReload={serverMenu.retry}
+            />
           )}
           {tab === "bans" && <BanManager instance={instance} />}
           {tab === "audit" && <AuditLog instance={instance} />}

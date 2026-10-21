@@ -31,7 +31,7 @@ export async function checkSettingsLayout(page, label) {
   await expect(
     nav.getByRole("button", { name: "Text to speech", exact: true }),
   ).toHaveCount(0);
-  await nav.getByLabel("Search settings", { exact: true }).fill("tiktok");
+  await nav.getByLabel("Search settings", { exact: true }).fill("speech");
   await expect(
     nav.getByRole("button", { name: "Text to speech", exact: true }),
   ).toBeVisible();
@@ -122,7 +122,7 @@ export async function checkSettingsLayout(page, label) {
   await nav
     .getByRole("button", { name: "Browse settings", exact: true })
     .click();
-  await nav.getByLabel("Search settings", { exact: true }).fill("tiktok");
+  await nav.getByLabel("Search settings", { exact: true }).fill("speech");
   await nav
     .getByRole("button", { name: "Text to speech", exact: true })
     .click();
@@ -130,9 +130,9 @@ export async function checkSettingsLayout(page, label) {
   await nav
     .getByRole("button", { name: "Clear settings search", exact: true })
     .click();
-  await expect(content.getByLabel("TikTok voice", { exact: true })).toHaveValue(
-    "en_male_narration",
-  );
+  await expect(
+    content.getByLabel("Example speech voice", { exact: true }),
+  ).toHaveValue("example_voice");
   console.log(
     `PASS settings ${label}: icons, search, collapsed groups, expand/restore, fixed header, 390px navigation and no horizontal overflow`,
   );

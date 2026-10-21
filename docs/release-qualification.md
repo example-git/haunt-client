@@ -50,9 +50,9 @@ capacity, physical capture quality, congested-network behavior or day-long stabi
 
 ## Native device and automatic-update qualification
 
-Use dedicated accounts and a disposable profile on each intended OS. Retain
-original/filtered clips for audio comparisons and process any corpus serially at
-low priority. Keep echo cancellation disabled and microphone monitoring explicit.
+Use dedicated accounts and a disposable profile on each intended OS. Compare
+original and filtered clips for audio checks. Keep echo cancellation disabled and
+microphone monitoring explicit.
 
 | Case | Required observation |
 | --- | --- |
