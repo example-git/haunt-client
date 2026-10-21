@@ -89,11 +89,18 @@ export async function checkNotificationMessages(app, page, native, report) {
       .toBe(true);
   };
   const hide = async () => {
-    await app.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0];
-      if (process.platform === "darwin") window.hide();
-      else window.minimize();
-    });
+    // Exercise the same IPC and native command as the titlebar's Minimize
+    // button. BrowserWindow.hide() is not a Haunt user action on macOS.
+    await page.evaluate(() =>
+      window.hauntDesktop.windowControl("minimize", "main"),
+    );
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0].isMinimized(),
+        ),
+      )
+      .toBe(true);
     await native.movePointerAway();
     await expect
       .poll(() =>
@@ -254,6 +261,21 @@ export async function checkNotificationMessages(app, page, native, report) {
     await badge(1, "minimized-current-channel");
     await show();
     await expect(page).toHaveTitle("Haunt");
+    if (process.platform === "darwin") {
+      // The native Hide Haunt menu command hides the application, separately
+      // from minimizing a window. Verify both actual macOS user states.
+      await app.evaluate(({ app }) => app.hide());
+      await expect
+        .poll(() => app.evaluate(({ app }) => app.isHidden()))
+        .toBe(true);
+      server.send(server.general, true, {
+        body: "@owner Haunt hidden application message",
+      });
+      await delivered("Haunt hidden application message");
+      await badge(1, "hidden-application");
+      await show();
+      await expect(page).toHaveTitle("Haunt");
+    }
     await select("quiet");
     await hide();
     server.send(server.general, false, { body: "Haunt ordinary message" });
@@ -493,23 +515,6 @@ export async function checkNotificationMessages(app, page, native, report) {
         };
       })
       .catch((failure) => ({ error: failure.message }));
-    if (process.platform === "darwin") {
-      // Preserve the original failure, then distinguish a hidden window in an
-      // active app from macOS Hide Application using the same message pipeline.
-      const comparison = {};
-      report.messageNotifications.backgroundComparison = comparison;
-      try {
-        await app.evaluate(({ app }) => app.hide());
-        await expect
-          .poll(() => app.evaluate(({ app }) => app.isHidden()))
-          .toBe(true);
-        server.send(server.dm, false, { body: "Haunt background comparison" });
-        await native.expectPopup("Haunt background comparison");
-        comparison.nativePopup = "visible";
-      } catch (failure) {
-        comparison.error = failure.message;
-      }
-    }
     report.messageNotifications.nativeDiagnostics = await native.diagnose?.();
     await settings()
       .then(async () => {
