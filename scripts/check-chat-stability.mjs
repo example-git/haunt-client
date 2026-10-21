@@ -295,11 +295,13 @@ try {
       await applySyncBackup(await collectSyncBackup());
     });
   }
-  async function refresh() {
-    await page.evaluate(async () => {
+  async function refresh(afterChange = false) {
+    await page.evaluate(async (changed) => {
       const { client } = await import("/src/runtime.ts");
-      await client.instances.values().next().value.refresh();
-    });
+      const instance = client.instances.values().next().value;
+      if (changed) await instance.refreshAfterChange();
+      else await instance.refresh();
+    }, afterChange);
   }
   async function verifyUpdates() {
     for (let pass = 0; pass < 3; pass++) {
@@ -367,11 +369,11 @@ try {
   await observe("channel");
   await verifyUpdates();
   channels = [];
-  await refresh();
+  await refresh(true);
   await expect(input).toHaveCount(0);
   await expect(page.locator(".empty-conversation")).toBeVisible();
   channels = [channel];
-  await refresh();
+  await refresh(true);
   await expect(input).toBeVisible();
   await page
     .getByRole("button", {
@@ -383,7 +385,7 @@ try {
     .getByRole("button", { name: "Message Alice via Community", exact: true })
     .click();
   conversations = [];
-  await refresh();
+  await refresh(true);
   await expect(page.locator(".dm-unavailable")).toBeVisible();
   await expect(input).toHaveCount(0);
   assert.deepEqual(errors, []);
