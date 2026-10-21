@@ -40,7 +40,8 @@
     "build:dm-crypto": "node scripts/build-dm-crypto.mjs",
     "updates:pack": "node scripts/release-client.mjs pack",
     "updates:manifest": "node scripts/release-client.mjs manifest",
-    "postinstall": "npm ci --prefix scripts/api-generator --ignore-scripts"
+    "postinstall": "npm ci --prefix scripts/api-generator --ignore-scripts",
+    "predesktop": "node scripts/build-notification-replacement.mjs"
   },
   "dependencies": {
     "@serenity-kit/opaque": "1.1.0",

@@ -26,6 +26,10 @@
   "mac": {
     "extraResources": [
       {
+        "from": "release/native/mac/notification-replacement.node",
+        "to": "native/mac/notification-replacement.node"
+      },
+      {
         "from": "static/mac",
         "to": "local-install",
         "filter": [
@@ -46,6 +50,7 @@
       }
     ],
     "binaries": [
+      "Contents/Resources/native/mac/notification-replacement.node",
       "Contents/Resources/native/mac/SwiftCaptureWorker",
       "Contents/Resources/native/mac/HauntMediaWorker"
     ],

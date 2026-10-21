@@ -382,9 +382,23 @@ async function startMain() {
   const nativeNotifications = createNotificationService({
     Notification,
     getWindow: () => window,
+    replaceNotification:
+      process.platform === "darwin"
+        ? (popup, value) =>
+            require(
+              app.isPackaged
+                ? path.join(
+                    process.resourcesPath,
+                    "native/mac/notification-replacement.node",
+                  )
+                : path.resolve(
+                    __dirname,
+                    "../../release/native/mac/notification-replacement.node",
+                  ),
+            ).replace(popup.id, value.title, value.body)
+        : undefined,
     // macOS supplies the signed bundle's app icon. An explicit icon becomes
-    // a duplicate image attachment; on macOS 14 its relocation suppresses
-    // banners while Haunt remains the active application after minimizing.
+    // a duplicate image attachment rather than changing that app identity.
     icon:
       process.platform === "darwin"
         ? undefined

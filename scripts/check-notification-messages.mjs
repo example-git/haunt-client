@@ -508,23 +508,6 @@ export async function checkNotificationMessages(app, page, native, report) {
     report.messageNotifications.nativeErrors = await page
       .evaluate(() => window.nativeNotificationErrors)
       .catch(() => []);
-    if (process.platform === "darwin") {
-      // Preserve the failed assertion and compare fresh versus replacement
-      // conversations through actual incoming messages and production IPC.
-      report.messageNotifications.replacementComparison = [];
-      for (const label of ["fresh", "replacement"]) {
-        const body = `Haunt ${label} conversation comparison`;
-        server.send(server.dm, false, { body });
-        const result = { body };
-        try {
-          await native.expectPopup(body);
-          result.nativePopup = "visible";
-        } catch (failure) {
-          result.error = failure.message;
-        }
-        report.messageNotifications.replacementComparison.push(result);
-      }
-    }
     report.messageNotifications.nativeState = await app
       .evaluate(async ({ BrowserWindow, Notification }) => {
         const window = BrowserWindow.getAllWindows()[0];

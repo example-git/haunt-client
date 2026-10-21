@@ -55,6 +55,7 @@ function createNotificationService({
   getWindow,
   icon,
   onError = () => {},
+  replaceNotification,
 }) {
   const popups = new Map();
   const show = (value) => {
@@ -63,13 +64,17 @@ function createNotificationService({
         Error("Desktop notifications are unavailable on this system."),
       );
     const key = JSON.stringify([value.instance, value.conversation]);
-    popups.get(key)?.close();
-    const popup = new Notification({
-      title: value.title,
-      body: value.body,
-      silent: true,
-      icon,
-    });
+    const previous = popups.get(key);
+    const replacing = Boolean(previous && replaceNotification);
+    if (!replacing) previous?.close();
+    const popup = replacing
+      ? previous
+      : new Notification({
+          title: value.title,
+          body: value.body,
+          silent: true,
+          icon,
+        });
     popups.set(key, popup);
     while (popups.size > 50) {
       const [oldKey, oldest] = popups.entries().next().value;
@@ -79,20 +84,22 @@ function createNotificationService({
     const remove = () => {
       if (popups.get(key) === popup) popups.delete(key);
     };
-    popup.on("click", () => {
-      const window = getWindow();
-      if (!window || window.isDestroyed()) return;
-      if (window.isMinimized()) window.restore();
-      window.show();
-      window.focus();
-      window.webContents.send("notification:click", {
-        instance: value.instance,
-        conversation: value.conversation,
+    if (!replacing) {
+      popup.on("click", () => {
+        const window = getWindow();
+        if (!window || window.isDestroyed()) return;
+        if (window.isMinimized()) window.restore();
+        window.show();
+        window.focus();
+        window.webContents.send("notification:click", {
+          instance: value.instance,
+          conversation: value.conversation,
+        });
+        popup.close();
+        remove();
       });
-      popup.close();
-      remove();
-    });
-    popup.on("close", remove);
+      popup.on("close", remove);
+    }
     return new Promise((resolve, reject) => {
       // Some Linux daemons do not acknowledge display. Report submission honestly
       // without dismissing the notification or blocking the message pipeline.
@@ -103,26 +110,35 @@ function createNotificationService({
         resolve("submitted");
       }, 8000);
       timeout.unref?.();
-      popup.once("show", () => {
+      const shown = () => {
         clearTimeout(timeout);
         resolve("shown");
-      });
-      popup.once("failed", (_event, error) => {
+      };
+      const failed = (error) => {
         clearTimeout(timeout);
-        remove();
+        if (!replacing) remove();
         const message = String(
-          error || "The system declined this notification.",
+          error?.message || error || "The system declined this notification.",
         ).slice(0, 240);
         onError(message);
         reject(Error(message));
-      });
+      };
       try {
-        popup.show();
+        if (replacing) {
+          // Preserve the native identifier and Electron click handler. Closing
+          // first races macOS's notification-list refresh against presentation.
+          Promise.resolve(replaceNotification(popup, value)).then(() => {
+            popup.title = value.title;
+            popup.body = value.body;
+            shown();
+          }, failed);
+        } else {
+          popup.once("show", shown);
+          popup.once("failed", (_event, error) => failed(error));
+          popup.show();
+        }
       } catch (error) {
-        clearTimeout(timeout);
-        remove();
-        onError(error.message);
-        reject(error);
+        failed(error);
       }
     });
   };

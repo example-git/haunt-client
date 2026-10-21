@@ -84,6 +84,38 @@ it("resolves the window at click time when the service precedes window creation"
   service.dispose();
 });
 
+it("retains the live click handler through native replacement and replacement failure", async () => {
+  const f = fixture();
+  const replaceNotification = vi.fn().mockResolvedValue(undefined);
+  const service = createNotificationService({
+    Notification: f.Notification,
+    getWindow: () => f.window,
+    onError: f.onError,
+    replaceNotification,
+  });
+  await service.show(message);
+  const latest = { ...message, body: "Latest reply" };
+  await expect(service.show(latest)).resolves.toBe("shown");
+  expect(replaceNotification).toHaveBeenCalledWith(f.popups[0], latest);
+  expect(f.popups).toHaveLength(1);
+  expect(f.popups[0].close).not.toHaveBeenCalled();
+  replaceNotification.mockRejectedValueOnce(Error("Native replacement failed"));
+  await expect(service.show(message)).rejects.toThrow(
+    "Native replacement failed",
+  );
+  expect(f.onError).toHaveBeenCalledWith("Native replacement failed");
+  await expect(service.show(latest)).resolves.toBe("shown");
+  expect(f.popups).toHaveLength(1);
+  f.popups[0].emit("click");
+  expect(f.window.webContents.send).toHaveBeenCalledOnce();
+  expect(f.window.webContents.send).toHaveBeenCalledWith("notification:click", {
+    instance: message.instance,
+    conversation: message.conversation,
+  });
+  expect(f.popups[0].close).toHaveBeenCalledOnce();
+  service.dispose();
+});
+
 it("surfaces native failure and distinguishes unacknowledged submission from display", async () => {
   vi.useFakeTimers();
   const f = fixture();

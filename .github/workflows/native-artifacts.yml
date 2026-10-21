@@ -43,7 +43,7 @@ jobs:
           echo "target=$target" >> "$GITHUB_OUTPUT"
           mkdir -p test-results
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ARTIFACT_RUN" --jq '{id,head_sha,html_url,path}' > test-results/notification-artifact-source.json
-          git diff --exit-code "$built_sha" HEAD -- apps packages static native electron-app electron-builder.config.json scripts/update-runtime.mjs ':(exclude)packages/core/package.json' ':(exclude)electron-app/package.json'
+          git diff --exit-code "$built_sha" HEAD -- apps packages static native electron-app electron-builder.config.json scripts/build-notification-replacement.mjs scripts/update-runtime.mjs ':(exclude)packages/core/package.json' ':(exclude)electron-app/package.json'
           gh run download "$ARTIFACT_RUN" --repo "$GITHUB_REPOSITORY" --name "release-$target" --dir release/updates
       - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'

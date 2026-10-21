@@ -215,6 +215,27 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
           psm: 6,
         });
       }
+      if (process.platform === "darwin") {
+        const { stdout } = await run("magick", [
+          "identify",
+          "-format",
+          "%w %h",
+          screen,
+        ]);
+        const [width, height] = stdout.trim().split(/\s+/).map(Number);
+        // Read the native banner's text separately from its app icon.
+        regions.push({
+          x: Math.max(offset, width - Math.round(304 * scaleFactor)),
+          y: Math.round(30 * scaleFactor),
+          width: Math.min(width - offset, Math.round(290 * scaleFactor)),
+          height: Math.min(
+            height - Math.round(30 * scaleFactor),
+            Math.round(700 * scaleFactor),
+          ),
+          zoom: 3,
+          psm: 6,
+        });
+      }
       regions.push({ x: offset, y: 0, zoom: 1 }, ...additionalRegions);
     }
     const readings = [];
