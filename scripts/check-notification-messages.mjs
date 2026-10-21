@@ -493,6 +493,23 @@ export async function checkNotificationMessages(app, page, native, report) {
         };
       })
       .catch((failure) => ({ error: failure.message }));
+    if (process.platform === "darwin") {
+      // Preserve the original failure, then distinguish a hidden window in an
+      // active app from macOS Hide Application using the same message pipeline.
+      const comparison = {};
+      report.messageNotifications.backgroundComparison = comparison;
+      try {
+        await app.evaluate(({ app }) => app.hide());
+        await expect
+          .poll(() => app.evaluate(({ app }) => app.isHidden()))
+          .toBe(true);
+        server.send(server.dm, false, { body: "Haunt background comparison" });
+        await native.expectPopup("Haunt background comparison");
+        comparison.nativePopup = "visible";
+      } catch (failure) {
+        comparison.error = failure.message;
+      }
+    }
     report.messageNotifications.nativeDiagnostics = await native.diagnose?.();
     await settings()
       .then(async () => {
