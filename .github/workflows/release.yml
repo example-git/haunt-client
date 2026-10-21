@@ -55,12 +55,13 @@ jobs:
         if: matrix.platform == 'win'
         run: node scripts/check-packaged-startup.mjs
       - run: npm run updates:pack
+        id: pack
       - name: Install and launch the RPM on Fedora
         if: matrix.platform == 'linux'
         run: docker run --rm --cap-add=SYS_ADMIN -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash scripts/ci/check-fedora-rpm.sh
       - name: Install native Linux test dependencies
-        if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi plank openbox imagemagick desktop-file-utils x11-utils dunst tesseract-ocr xdotool
+        if: ${{ !cancelled() && matrix.platform == 'linux' && steps.pack.outcome == 'success' }}
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi plank openbox imagemagick desktop-file-utils x11-utils dunst tesseract-ocr xdotool pipewire pipewire-pulse wireplumber pulseaudio-utils
       - name: Install macOS native UI inspection tools
         if: matrix.platform == 'mac'
         run: brew install tesseract imagemagick cliclick
@@ -73,6 +74,7 @@ jobs:
         if: matrix.platform == 'mac'
         run: node scripts/check-mac-local-update.mjs
       - name: Rehearse a full installer upgrade on the native runner
+        if: ${{ !cancelled() && steps.pack.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -93,6 +95,7 @@ jobs:
             test-results/notification-*
             test-results/mac-local-update.json
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.pack.outcome == 'success' }}
         with:
           name: release-${{ matrix.target }}
           path: release/updates/*

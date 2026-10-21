@@ -29,6 +29,16 @@ export async function checkNotificationMessages(app, page, native, report) {
         ),
       time,
     );
+  const waitForQuiet = () =>
+    expect
+      .poll(
+        () =>
+          app.evaluate(({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows()[0].webContents.isCurrentlyAudible(),
+          ),
+        { timeout: 10000 },
+      )
+      .toBe(false);
   const sound = async (since, expected) => {
     if (expected)
       await expect
@@ -51,11 +61,14 @@ export async function checkNotificationMessages(app, page, native, report) {
         : "No audible output",
       since,
     });
+    if (native.audio)
+      checks.push({ output: await native.audio.check(since, expected) });
   };
   const show = async () => {
     await app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0];
       window.setBounds({ x: 0, y: 40, width: 600, height: 620 });
+      if (window.isMinimized()) window.restore();
       window.show();
       window.focus();
     });
@@ -64,15 +77,25 @@ export async function checkNotificationMessages(app, page, native, report) {
       .toBe(true);
   };
   const hide = async () => {
-    await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].hide(),
-    );
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      if (process.platform === "win32") window.minimize();
+      else window.hide();
+    });
     await expect
       .poll(() => page.evaluate(() => document.hasFocus()))
       .toBe(false);
   };
   const settings = async () => {
     await show();
+    if (
+      !(await page
+        .getByRole("button", { name: "Client settings", exact: true })
+        .isVisible())
+    )
+      await page
+        .getByRole("button", { name: /^(Show servers|Show channels)$/ })
+        .click();
     await page
       .getByRole("button", { name: "Client settings", exact: true })
       .click();
@@ -113,6 +136,14 @@ export async function checkNotificationMessages(app, page, native, report) {
       ),
     );
     await show();
+    if (
+      !(await page
+        .getByRole("button", { name: "Add server", exact: true })
+        .isVisible())
+    )
+      await page
+        .getByRole("button", { name: /^(Show servers|Show channels)$/ })
+        .click();
     await page.getByRole("button", { name: "Add server", exact: true }).click();
     await fillSignin(page, server.origin, "owner");
     await page
@@ -151,11 +182,13 @@ export async function checkNotificationMessages(app, page, native, report) {
     await hide();
     server.send(server.general, false, { body: "Haunt ordinary message" });
     await absent("Haunt ordinary message");
+    await waitForQuiet();
     let soundStart = Date.now();
     server.send(server.general, true, { body: "@owner Haunt mention message" });
     await delivered("Haunt mention message");
     await sound(soundStart, true);
     await new Promise((resolve) => setTimeout(resolve, 1100));
+    await waitForQuiet();
     soundStart = Date.now();
     server.send(server.dm, false, { body: "Haunt direct message" });
     await delivered("Haunt direct message");
@@ -190,6 +223,7 @@ export async function checkNotificationMessages(app, page, native, report) {
       .uncheck();
     await closeSettings();
     await hide();
+    await waitForQuiet();
     soundStart = Date.now();
     server.send(server.dm, false, { body: "Haunt disabled message" });
     await absent("Haunt disabled message");
@@ -203,6 +237,7 @@ export async function checkNotificationMessages(app, page, native, report) {
       .uncheck();
     await closeSettings();
     await hide();
+    await waitForQuiet();
     soundStart = Date.now();
     server.send(server.dm, false, { body: "Haunt popup disabled message" });
     await absent("Haunt popup disabled message");
@@ -259,6 +294,7 @@ export async function checkNotificationMessages(app, page, native, report) {
     await page.getByLabel("Ping sound", { exact: true }).selectOption("none");
     await closeSettings();
     await hide();
+    await waitForQuiet();
     soundStart = Date.now();
     server.send(server.dm, false, { body: "Haunt silent message" });
     await delivered("Haunt silent message");
@@ -267,6 +303,7 @@ export async function checkNotificationMessages(app, page, native, report) {
     await page.getByLabel("Ping sound", { exact: true }).selectOption("chime");
     await closeSettings();
     await hide();
+    await waitForQuiet();
     soundStart = Date.now();
     server.send(server.dm, false, { body: "Haunt chime message" });
     await delivered("Haunt chime message");

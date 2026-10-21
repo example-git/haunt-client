@@ -27,7 +27,7 @@ progress() { if $prepare; then printf 'HAUNT_PROGRESS\t%s\t%s\t%s\n' "$1" "${2:-
 [[ -d "$source_app" && ! -L "$source_app" ]] || die 'The source Haunt.app is missing or is a symbolic link.'
 bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$source_app/Contents/Info.plist")
 [[ "$bundle_id" == com.exampleuser.haunt ]] || die 'This installer only accepts the Haunt application.'
-/usr/bin/lipo -verify_arch arm64 "$source_app/Contents/MacOS/Haunt"
+/usr/bin/lipo "$source_app/Contents/MacOS/Haunt" -verify_arch arm64
 
 state_dir="$HOME/Library/Application Support/Haunt Local Signing"
 state="$state_dir/identity.plist"

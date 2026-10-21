@@ -7,7 +7,7 @@ rpm_file=$(find release/updates -maxdepth 1 -name '*.rpm' -print)
 test -n "$rpm_file"
 test "$(printf '%s\n' "$rpm_file" | wc -l)" = 1
 rpm_file=$(realpath "$rpm_file")
-dnf install -y nodejs xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon shadow-utils desktop-file-utils python3-dbus python3-gobject-base plasma-workspace-x11 kwin-x11 xdotool ImageMagick tesseract appstream-glib
+dnf install -y nodejs xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon shadow-utils desktop-file-utils python3-dbus python3-gobject-base plasma-workspace-x11 kwin-x11 xdotool ImageMagick tesseract appstream pipewire pipewire-pulseaudio wireplumber pulseaudio-utils
 dnf install -y "$rpm_file"
 test "$(rpm -q --qf '%{NAME}' -p "$rpm_file")" = haunt
 test "$(cat /opt/Haunt/resources/package-type)" = rpm
@@ -17,7 +17,7 @@ rpm -ql haunt | grep -Fx /usr/share/applications/com.exampleuser.haunt.desktop
 rpm -ql haunt | grep -Fx /opt/Haunt/resources/package-type
 rpm -qf /usr/bin/haunt
 rpm -V haunt
-appstream-util validate-relax --nonet /usr/share/metainfo/com.exampleuser.haunt.metainfo.xml
+appstreamcli validate --no-net /usr/share/metainfo/com.exampleuser.haunt.metainfo.xml
 desktop-file-validate /usr/share/applications/com.exampleuser.haunt.desktop
 grep -Fx 'StartupWMClass=com.exampleuser.haunt' /usr/share/applications/com.exampleuser.haunt.desktop
 grep -Fx 'X-GNOME-UsesNotifications=true' /usr/share/applications/com.exampleuser.haunt.desktop

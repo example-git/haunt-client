@@ -9,9 +9,13 @@ import { promisify } from "node:util";
 import { checkMessageBadges } from "./check-message-badges.mjs";
 import { checkNotificationMessages } from "./check-notification-messages.mjs";
 import { nativeNotificationUI } from "./native-notification-ui.mjs";
+import { prepareLinuxAudio } from "./native-notification-audio.mjs";
 
 export async function prepareNativeNotifications(scratch, executable) {
-  const ui = nativeNotificationUI(`${process.platform}-${process.arch}`);
+  const ui = nativeNotificationUI(`${process.platform}-${process.arch}`, {
+    // Dunst's default action is middle-click; KDE uses ordinary left-click.
+    clickButton: process.platform === "linux" ? 2 : 1,
+  });
   if (process.platform !== "linux") return { ...ui, stop() {} };
   assert(
     process.env.DBUS_SESSION_BUS_ADDRESS,
@@ -25,6 +29,7 @@ export async function prepareNativeNotifications(scratch, executable) {
   ]);
   const desktop = "com.exampleuser.haunt.desktop";
   const run = promisify(execFile);
+  const audio = await prepareLinuxAudio(scratch, `linux-${process.arch}`);
   const data = path.join(scratch, "xdg-data");
   const config = path.join(scratch, "xdg-config");
   // BAMF watches application directories present at session startup.
@@ -72,9 +77,10 @@ export async function prepareNativeNotifications(scratch, executable) {
       { timeout: 30000 },
     )
     .toBe(true)
-    .catch((error) => {
+    .catch(async (error) => {
       dock.kill();
       wm.kill();
+      await audio.stop();
       throw error;
     });
   const daemon = spawn("dunst", [], { stdio: ["ignore", "ignore", "inherit"] });
@@ -90,7 +96,14 @@ export async function prepareNativeNotifications(scratch, executable) {
       ]);
       return stdout.includes("boolean true");
     })
-    .toBe(true);
+    .toBe(true)
+    .catch(async (error) => {
+      daemon.kill();
+      dock.kill();
+      wm.kill();
+      await audio.stop();
+      throw error;
+    });
   const log = path.join(scratch, "native-notifications.jsonl");
   const child = spawn(
     "/usr/bin/python3",
@@ -112,10 +125,12 @@ export async function prepareNativeNotifications(scratch, executable) {
     daemon.kill();
     dock.kill();
     wm.kill();
+    await audio.stop();
     throw error;
   }
   return {
     ...ui,
+    audio,
     records,
     desktop,
     stop: () => {
@@ -123,6 +138,7 @@ export async function prepareNativeNotifications(scratch, executable) {
       daemon.kill();
       dock.kill();
       wm.kill();
+      void audio.stop();
     },
     async installedLauncher(executablePath, windowId) {
       const filename = path.join(data, "applications", desktop);

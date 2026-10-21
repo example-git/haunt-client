@@ -29,12 +29,15 @@ export async function checkMessageBadges(
     states,
   };
   const hidden = () =>
-    app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].hide(),
-    );
+    app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      if (process.platform === "win32") window.minimize();
+      else window.hide();
+    });
   const show = () =>
     app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0];
+      if (window.isMinimized()) window.restore();
       window.show();
       window.focus();
     });

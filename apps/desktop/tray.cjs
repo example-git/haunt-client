@@ -37,13 +37,13 @@ function updateAppBadge({ app, window, platform = process.platform }, value) {
     const accepted = app.setBadgeCount(count);
     if (!accepted && active)
       throw Error(
-        "The Linux desktop did not accept the launcher badge. Check desktop badge support and Haunt's launcher entry.",
+        "Haunt could not submit the Linux launcher badge. Check Haunt's desktop launcher entry.",
       );
     // Keep the window icon stable: docks can cache it after the native count clears.
     return {
       status: "unconfirmed",
       message:
-        "Linux received the launcher badge request; dock visibility still depends on the desktop's badge settings.",
+        "Haunt submitted the Linux launcher badge request. The API does not confirm delivery or on-screen visibility.",
     };
   }
 }

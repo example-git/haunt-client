@@ -7,6 +7,7 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { nativeNotificationUI } from "./native-notification-ui.mjs";
 import { checkNotificationMessages } from "./check-notification-messages.mjs";
+import { prepareLinuxAudio } from "./native-notification-audio.mjs";
 
 assert.equal(process.env.CI, "true", "Use a disposable Fedora CI container");
 const mode = process.argv[2];
@@ -23,39 +24,40 @@ process.env.XDG_RUNTIME_DIR = runtime;
 process.env.XDG_CURRENT_DESKTOP = "KDE";
 process.env.QT_QUICK_BACKEND = "software";
 process.env.KWIN_COMPOSE = "N";
-const desktop = spawn("startplasma-x11", [], {
-  stdio: ["ignore", "inherit", "inherit"],
-  env: process.env,
-});
-await expect
-  .poll(
-    async () => {
-      const { stdout } = await promisify(execFile)("dbus-send", [
-        "--session",
-        "--print-reply",
-        "--dest=org.freedesktop.DBus",
-        "/org/freedesktop/DBus",
-        "org.freedesktop.DBus.NameHasOwner",
-        "string:org.freedesktop.Notifications",
-      ]);
-      return stdout.includes("boolean true");
-    },
-    { timeout: 60000 },
-  )
-  .toBe(true);
-const daemon = spawn(
-  "python3",
-  ["scripts/native-notification-observer.py", notificationLog],
-  { stdio: ["ignore", "inherit", "inherit"] },
-);
+let audio, desktop, daemon, app;
 const records = async () =>
   (await fs.readFile(notificationLog, "utf8").catch(() => ""))
     .trim()
     .split("\n")
     .filter(Boolean)
     .map(JSON.parse);
-let app;
 try {
+  audio = await prepareLinuxAudio(os.homedir(), `fedora-${process.arch}`);
+  desktop = spawn("startplasma-x11", [], {
+    stdio: ["ignore", "inherit", "inherit"],
+    env: process.env,
+  });
+  await expect
+    .poll(
+      async () => {
+        const { stdout } = await promisify(execFile)("dbus-send", [
+          "--session",
+          "--print-reply",
+          "--dest=org.freedesktop.DBus",
+          "/org/freedesktop/DBus",
+          "org.freedesktop.DBus.NameHasOwner",
+          "string:org.freedesktop.Notifications",
+        ]);
+        return stdout.includes("boolean true");
+      },
+      { timeout: 60000 },
+    )
+    .toBe(true);
+  daemon = spawn(
+    "python3",
+    ["scripts/native-notification-observer.py", notificationLog],
+    { stdio: ["ignore", "inherit", "inherit"] },
+  );
   await expect
     .poll(async () => {
       assert.equal(
@@ -97,6 +99,7 @@ try {
     };
     const native = {
       ...nativeNotificationUI(`fedora-${process.arch}`),
+      audio,
       records,
       desktop: "com.exampleuser.haunt.desktop",
     };
@@ -153,8 +156,14 @@ try {
       ) + "\n",
     );
   }
+} catch (error) {
+  await nativeNotificationUI(`fedora-${process.arch}`)
+    .capture(`test-results/notification-fedora-${process.arch}-failure.png`)
+    .catch(() => {});
+  throw error;
 } finally {
   await app?.close();
-  daemon.kill();
-  desktop.kill();
+  daemon?.kill();
+  desktop?.kill();
+  await audio?.stop();
 }

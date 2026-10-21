@@ -26,7 +26,7 @@ $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 try { $graphics.CopyFromScreen($bounds.Location,[System.Drawing.Point]::Empty,$bounds.Size); $bitmap.Save(${literal(path.resolve(filename))},[System.Drawing.Imaging.ImageFormat]::Png) } finally { $graphics.Dispose(); $bitmap.Dispose() }`);
 }
 
-export function nativeNotificationUI(target) {
+export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
   let sequence = 0;
   let scaleFactor = 1;
   const artifacts = [];
@@ -128,7 +128,13 @@ export function nativeNotificationUI(target) {
       const x = Math.round((word.x + word.width / 2) / coordinateScale),
         y = Math.round((word.y + word.height / 2) / coordinateScale);
       if (process.platform === "linux")
-        await run("xdotool", ["mousemove", String(x), String(y), "click", "1"]);
+        await run("xdotool", [
+          "mousemove",
+          String(x),
+          String(y),
+          "click",
+          String(clickButton),
+        ]);
       else if (process.platform === "darwin")
         await run("cliclick", [`c:${x},${y}`]);
       else
