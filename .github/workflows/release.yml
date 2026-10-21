@@ -95,6 +95,10 @@ jobs:
             test-results/notification-*
             test-results/mac-local-update.json
             test-results/mac-installer.log
+            test-results/mac-keychain-consent.json
+      - name: Remove native test signing keychain
+        if: ${{ always() && matrix.platform == 'mac' }}
+        run: node scripts/mac-ci-keychain.mjs cleanup
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && steps.pack.outcome == 'success' }}
         with:

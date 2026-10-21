@@ -96,10 +96,24 @@ export async function checkNotificationMessages(app, page, native, report) {
         .getByRole("button", { name: /^(Show servers|Show channels)$/ })
         .click();
     await button.click();
+    const notifications = page.getByRole("dialog").getByRole("button", {
+      name: "Notification Settings",
+      exact: true,
+    });
+    if (!(await notifications.isVisible()))
+      await page
+        .getByRole("dialog")
+        .getByRole("button", {
+          name: "Browse settings",
+          exact: true,
+        })
+        .click();
+    await notifications.click();
     await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Notification Settings", exact: true })
-      .click();
+      .getByLabel("Server for notifications", { exact: true })
+      .selectOption({
+        label: `Badge delivery — ${new URL(server.origin).host}`,
+      });
   };
   const closeSettings = () =>
     page
@@ -334,6 +348,82 @@ export async function checkNotificationMessages(app, page, native, report) {
     server.send(server.dm, false, { body: "Haunt chime message" });
     await delivered("Haunt chime message");
     await sound(soundStart, true);
+    await settings();
+    await page.getByLabel("Ping sound", { exact: true }).selectOption("soft");
+    await closeSettings();
+    await hide();
+    await waitForQuiet();
+    soundStart = Date.now();
+    server.send(server.dm, false, { body: "Haunt soft message" });
+    await delivered("Haunt soft message");
+    await sound(soundStart, true);
+    await settings();
+    await page
+      .getByLabel("Custom ping sound", { exact: true })
+      .setInputFiles("tests/fixtures/narrator-tone.mp3");
+    await expect(page.getByLabel("Ping sound", { exact: true })).toHaveValue(
+      "custom",
+    );
+    await closeSettings();
+    await hide();
+    await waitForQuiet();
+    soundStart = Date.now();
+    server.send(server.dm, false, { body: "Haunt custom sound message" });
+    await delivered("Haunt custom sound message");
+    await sound(soundStart, true);
+    await settings();
+    await page.getByLabel("Ping volume", { exact: true }).fill("0");
+    await closeSettings();
+    await hide();
+    await waitForQuiet();
+    soundStart = Date.now();
+    server.send(server.dm, false, { body: "Haunt zero volume message" });
+    await delivered("Haunt zero volume message");
+    await sound(soundStart, false);
+    await settings();
+    await page.getByLabel("Ping volume", { exact: true }).fill("70");
+    await page
+      .getByLabel("Notifications for Badge delivery", { exact: true })
+      .selectOption("mute");
+    await closeSettings();
+    await hide();
+    await waitForQuiet();
+    soundStart = Date.now();
+    server.send(server.dm, false, { body: "Haunt muted server message" });
+    await absent("Haunt muted server message");
+    await sound(soundStart, false);
+    await settings();
+    await page
+      .getByLabel("Notifications for Badge delivery", { exact: true })
+      .selectOption("inherit");
+    await page
+      .getByLabel("Find a user for notifications", { exact: true })
+      .fill("alice");
+    await page
+      .getByLabel(`Notifications for alice@${new URL(server.origin).host}`, {
+        exact: true,
+      })
+      .selectOption("mute");
+    await closeSettings();
+    await hide();
+    await waitForQuiet();
+    soundStart = Date.now();
+    server.send(server.dm, false, { body: "Haunt muted user message" });
+    await absent("Haunt muted user message");
+    await sound(soundStart, false);
+    await settings();
+    await page
+      .getByLabel("Notifications for #general", { exact: true })
+      .selectOption("mute");
+    await closeSettings();
+    await hide();
+    await waitForQuiet();
+    soundStart = Date.now();
+    server.send(server.general, true, {
+      body: "@owner Haunt muted channel message",
+    });
+    await absent("Haunt muted channel message");
+    await sound(soundStart, false);
     report.messageNotifications.passed = true;
   } finally {
     await app
