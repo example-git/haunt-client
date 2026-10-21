@@ -81,6 +81,9 @@
     "target": [
       {
         "target": "AppImage"
+      },
+      {
+        "target": "rpm"
       }
     ],
     "category": "Network",
@@ -94,5 +97,25 @@
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,
     "artifactName": "Haunt-Setup-${version}-${arch}.${ext}"
+  },
+  "rpm": {
+    "packageName": "haunt",
+    "maintainer": "Haunt",
+    "vendor": "Haunt",
+    "synopsis": "Community messaging and calls",
+    "depends": [
+      "gtk3",
+      "libnotify",
+      "nss",
+      "libXScrnSaver",
+      "libXtst",
+      "xdg-utils",
+      "at-spi2-core",
+      "libuuid",
+      "libsecret",
+      "alsa-lib",
+      "mesa-libgbm"
+    ],
+    "fpm": ["static/linux/package-type=/opt/Haunt/resources/package-type"]
   }
 }

@@ -66,3 +66,25 @@ it("rejects invalid explicit paths without writing launcher data", async () => {
   ).rejects.toThrow("XDG_DATA_HOME");
   await expect(fs.access(f.dataHome)).rejects.toThrow();
 });
+
+it("uses the RPM system launcher and repoints only Haunt-managed AppImage shortcuts", async () => {
+  const f = await fixture();
+  const rpm = {
+    ...f,
+    packageFormat: "rpm",
+    nativeExecutable: "/opt/Haunt/haunt",
+  };
+  expect((await installLinuxDesktop(rpm)).file).toBe(
+    "/usr/share/applications/" + desktopName,
+  );
+  await expect(fs.access(f.dataHome)).rejects.toThrow();
+  const previous = await installLinuxDesktop({
+    ...f,
+    appImage: "/downloads/Haunt.AppImage",
+  });
+  await installLinuxDesktop(rpm);
+  expect(await fs.readFile(previous.file, "utf8")).toContain(
+    'Exec="/opt/Haunt/haunt" %U',
+  );
+  expect(await fs.readFile(previous.file, "utf8")).not.toContain(".AppImage");
+});

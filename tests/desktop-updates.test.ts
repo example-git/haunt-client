@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 const {
   Updater,
+  linuxInstallerFormat,
   verifyManifest,
   requestURL,
   replaceAppImage,
@@ -69,7 +70,11 @@ function manifest(
     },
   });
 }
-async function fixture(platform = "win32", arch = "x64") {
+async function fixture(
+  platform = "win32",
+  arch = "x64",
+  installerFormat?: string,
+) {
   const directory = await fs.mkdtemp(
     path.join(os.tmpdir(), "haunt updates & ' "),
   );
@@ -79,7 +84,7 @@ async function fixture(platform = "win32", arch = "x64") {
   const requests: string[] = [];
   const options = {
     directory,
-    config,
+    config: { ...config, ...(installerFormat ? { installerFormat } : {}) },
     runtime,
     version: "0.1.0",
     platform,
@@ -639,4 +644,78 @@ it("prefers sync for equal releases, keeps newer community updates, and falls ba
   expect(f.updater.available.source.id).toBe("community");
   f.updater.source({ id: "sync", remove: true });
   expect(f.updater.sources.has("sync")).toBe(false);
+});
+
+describe("Fedora RPM updates", () => {
+  const withRPM = (envelope: any) => {
+    const data = JSON.parse(Buffer.from(envelope.payload, "base64").toString());
+    data.targets["linux-x64"].rpm = artifact("Haunt.rpm", installer);
+    return signed(data);
+  };
+  it("downloads and verifies the signed RPM for an installed RPM runtime", async () => {
+    const f = await fixture("linux", "x64", "rpm");
+    f.set(withRPM(manifest("linux", "x64", "0.2.0", "b".repeat(64))));
+    expect((await f.updater.check()).phase).toBe("runtime-required");
+    expect((await f.updater.download()).phase).toBe("installer-ready");
+    const ready = await f.updater.verifyReady();
+    expect(ready.filename).toMatch(/\.rpm$/);
+    expect(await fs.readFile(ready.filename)).toEqual(installer);
+    expect(f.requests.some((url) => url.endsWith("Haunt.rpm"))).toBe(true);
+    expect(f.requests.some((url) => url.endsWith(".AppImage"))).toBe(false);
+    const shell = { openPath: vi.fn().mockResolvedValue("") };
+    const app = { relaunch: vi.fn(), quit: vi.fn() };
+    await createUpdateInstaller({
+      updater: f.updater,
+      platform: "linux",
+      appImage: undefined,
+      shell,
+      app,
+      readActivity: async () => ({}),
+      confirm: vi.fn(),
+    })();
+    expect(shell.openPath).toHaveBeenCalledWith(ready.filename);
+    expect(app.relaunch).not.toHaveBeenCalled();
+  });
+  it("keeps AppImage updates and rejects missing, invalid or unsupported RPM selections", () => {
+    const envelope = withRPM(manifest("linux"));
+    expect(
+      verifyManifest(envelope, config, "linux", "x64").installer.file,
+    ).toBe("Haunt.AppImage");
+    expect(() =>
+      verifyManifest(
+        manifest("linux"),
+        { ...config, installerFormat: "rpm" },
+        "linux",
+        "x64",
+      ),
+    ).toThrow("does not provide");
+    expect(() =>
+      verifyManifest(
+        envelope,
+        { ...config, installerFormat: "deb" },
+        "linux",
+        "x64",
+      ),
+    ).toThrow("Unsupported installer format");
+    const invalid = JSON.parse(
+      Buffer.from(envelope.payload, "base64").toString(),
+    );
+    invalid.targets["linux-x64"].rpm.file = "wrong.AppImage";
+    expect(() =>
+      verifyManifest(signed(invalid), config, "linux", "x64"),
+    ).toThrow("Invalid update artifact");
+  });
+  it("reads the installed package marker and fails on unsupported explicit formats", async () => {
+    const f = await fixture();
+    expect(linuxInstallerFormat(f.directory, undefined)).toBeUndefined();
+    await fs.writeFile(path.join(f.directory, "package-type"), "rpm\n");
+    expect(linuxInstallerFormat(f.directory, undefined)).toBe("rpm");
+    expect(linuxInstallerFormat(f.directory, "/apps/Haunt.AppImage")).toBe(
+      "AppImage",
+    );
+    await fs.writeFile(path.join(f.directory, "package-type"), "invalid");
+    expect(() => linuxInstallerFormat(f.directory, undefined)).toThrow(
+      "Unsupported installed Linux package format",
+    );
+  });
 });

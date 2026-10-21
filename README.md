@@ -33,7 +33,7 @@ This client does not federate accounts or messages between independent services.
 | --- | --- |
 | Browser | Static web build, separately hosted or embedded in Haunt Server |
 | Windows x64 | Electron / NSIS installer |
-| Linux x64 and arm64 | Electron / AppImage |
+| Linux x64 and arm64 | Electron / AppImage or Fedora RPM |
 | macOS arm64 | Electron / DMG, native capture helpers |
 
 The shared TypeScript core keeps future mobile messaging in mind. An Android client

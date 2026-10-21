@@ -21,12 +21,14 @@ async function installLinuxDesktop({
   dataHome = process.env.XDG_DATA_HOME ||
     path.join(os.homedir(), ".local/share"),
   iconPath,
+  packageFormat,
+  nativeExecutable,
 }) {
   // Development/unpacked executables are not AppImage installations.
-  if (!appImage) return;
+  if (!appImage && packageFormat !== "rpm") return;
   if (!path.isAbsolute(dataHome) || /[\r\n\0]/.test(dataHome))
     throw Error("XDG_DATA_HOME must be an absolute directory.");
-  const exec = executable(appImage);
+  const exec = executable(appImage || nativeExecutable);
   const file = path.join(dataHome, "applications", desktopName);
   const icon = path.join(dataHome, "icons", `${appId}.png`);
   let previous;
@@ -35,6 +37,11 @@ async function installLinuxDesktop({
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
+  if (packageFormat === "rpm" && previous === undefined)
+    return {
+      file: path.join("/usr/share/applications", desktopName),
+      managed: false,
+    };
   if (previous !== undefined && !previous.split(/\r?\n/).includes(managed)) {
     if (!previous.split(/\r?\n/).includes(`StartupWMClass=${appId}`))
       throw Error(

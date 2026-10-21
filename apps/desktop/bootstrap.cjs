@@ -9,6 +9,7 @@ const {
 const path = require("node:path");
 const {
   Updater,
+  linuxInstallerFormat,
   startUpdatePolling,
   createUpdateInstaller,
   updateActivityScript,
@@ -40,7 +41,12 @@ async function start() {
   await profile.migrateCredentials(safeStorage);
   const updater = new Updater({
     directory: path.join(app.getPath("userData"), "client-updates"),
-    config,
+    config: {
+      ...config,
+      ...(process.platform === "linux"
+        ? { installerFormat: linuxInstallerFormat(process.resourcesPath) }
+        : {}),
+    },
     runtime: config.runtime,
     version: config.version,
   });

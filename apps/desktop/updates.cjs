@@ -47,6 +47,20 @@ function artifact(value, ext, max) {
   )
     throw Error("Invalid update artifact");
 }
+function linuxInstallerFormat(resourcesPath, appImage = process.env.APPIMAGE) {
+  if (appImage) return "AppImage";
+  try {
+    const format = fs
+      .readFileSync(path.join(resourcesPath, "package-type"), "utf8")
+      .trim();
+    if (format !== "rpm")
+      throw Error("Unsupported installed Linux package format: " + format);
+    return format;
+  } catch (error) {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
 function verifyManifest(envelope, config, platform, arch) {
   if (!config.publicKey)
     throw Error("Updates are not configured in this build");
@@ -89,7 +103,25 @@ function verifyManifest(envelope, config, platform, arch) {
         : ".AppImage",
     MAX_INSTALLER,
   );
-  return { ...target, version: data.version, notes: data.notes };
+  if (target.rpm !== undefined) {
+    if (platform !== "linux")
+      throw Error("RPM installer is only valid for Linux");
+    artifact(target.rpm, ".rpm", MAX_INSTALLER);
+  }
+  let installer = target.installer;
+  if (config.installerFormat !== undefined) {
+    if (
+      platform !== "linux" ||
+      !["rpm", "AppImage"].includes(config.installerFormat)
+    )
+      throw Error("Unsupported installer format");
+    if (config.installerFormat === "rpm") {
+      if (!target.rpm)
+        throw Error("This release does not provide a Fedora RPM installer.");
+      installer = target.rpm;
+    }
+  }
+  return { ...target, installer, version: data.version, notes: data.notes };
 }
 function requestURL(raw, config) {
   const repo = typeof config === "string" ? config : config.repository;
@@ -384,7 +416,7 @@ class Updater extends EventEmitter {
     }
     for (const file of await fsp.readdir(this.directory)) {
       if (
-        /^[a-f0-9]{64}\.(asar|exe|dmg|AppImage)(\.part)?$/.test(file) &&
+        /^[a-f0-9]{64}\.(asar|exe|dmg|AppImage|rpm)(\.part)?$/.test(file) &&
         !keep.has(file)
       )
         await fsp.rm(path.join(this.directory, file), { force: true });
@@ -720,6 +752,7 @@ async function replaceAppImage(current, downloaded, info) {
 }
 module.exports = {
   Updater,
+  linuxInstallerFormat,
   verifyManifest,
   verifyFile,
   hashFile,

@@ -74,6 +74,13 @@ if (command === "keygen") {
     path.join(builder, builtName),
     path.join(directory, expected),
   );
+  let rpm;
+  if (config.platform === "linux") {
+    rpm = `Haunt-${config.version}-linux-${config.arch}.rpm`;
+    const builtRPM =
+      config.arch === "x64" ? rpm.replace("-x64.rpm", "-x86_64.rpm") : rpm;
+    await fs.copyFile(path.join(builder, builtRPM), path.join(directory, rpm));
+  }
   const describe = async (file) => {
     const bytes = await fs.readFile(path.join(directory, file));
     return {
@@ -92,6 +99,7 @@ if (command === "keygen") {
         runtime: config.runtime,
         asar: await describe(file),
         installer: await describe(expected),
+        ...(rpm ? { rpm: await describe(rpm) } : {}),
       },
       null,
       2,
@@ -128,7 +136,13 @@ if (command === "keygen") {
       entry.target !== target
     )
       throw Error(`Mismatched release artifact: ${target}`);
-    for (const artifact of [entry.asar, entry.installer]) {
+    if (target.startsWith("linux-") && !entry.rpm)
+      throw Error(`Missing Fedora installer: ${target}`);
+    for (const artifact of [
+      entry.asar,
+      entry.installer,
+      ...(entry.rpm ? [entry.rpm] : []),
+    ]) {
       if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,160}$/.test(artifact.file))
         throw Error("Invalid artifact path");
       const bytes = await fs.readFile(path.join(directory, artifact.file));
@@ -142,6 +156,7 @@ if (command === "keygen") {
       runtime: entry.runtime,
       asar: entry.asar,
       installer: entry.installer,
+      ...(entry.rpm ? { rpm: entry.rpm } : {}),
     };
   }
   const notes = process.env.HAUNT_RELEASE_NOTES || `Haunt ${config.version}`;

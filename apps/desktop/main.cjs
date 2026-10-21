@@ -31,6 +31,7 @@ const {
 } = require("./network.cjs");
 const { installTray, updateAppBadge } = require("./tray.cjs");
 const { installLinuxDesktop } = require("./linux-desktop.cjs");
+const { linuxInstallerFormat } = require("./updates.cjs");
 const {
   validateNotification,
   validateBadge,
@@ -118,6 +119,8 @@ async function startMain() {
   if (process.platform === "linux" && app.isPackaged) {
     try {
       await installLinuxDesktop({
+        packageFormat: linuxInstallerFormat(process.resourcesPath),
+        nativeExecutable: app.getPath("exe"),
         iconPath: path.join(__dirname, "../../resources/icon.png"),
       });
     } catch (error) {

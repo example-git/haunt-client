@@ -14,7 +14,7 @@ jobs:
   regression:
     uses: ./.github/workflows/regression.yml
   build:
-    timeout-minutes: 25
+    timeout-minutes: 40
     needs: regression
     strategy:
       fail-fast: false
@@ -46,12 +46,18 @@ jobs:
       - run: npm test -- --run tests/desktop-updates.test.ts tests/desktop-installer.test.ts tests/desktop-appearance.test.ts tests/desktop-tray.test.ts tests/desktop-notifications.test.ts
       - run: npm run build
       - run: npm run electron:stage
+      - name: Install RPM build tools
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm
       - run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never
       - run: npm run electron:check
       - name: Start packaged Windows client
         if: matrix.platform == 'win'
         run: node scripts/check-packaged-startup.mjs
       - run: npm run updates:pack
+      - name: Install and launch the RPM on Fedora
+        if: matrix.platform == 'linux'
+        run: docker run --rm --cap-add=SYS_ADMIN -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash scripts/ci/check-fedora-rpm.sh
       - name: Install native Linux test dependencies
         if: matrix.platform == 'linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi plank openbox imagemagick desktop-file-utils x11-utils
@@ -71,6 +77,7 @@ jobs:
           path: |
             test-results/installed-upgrade-*.json
             test-results/message-badge*
+            test-results/fedora-rpm-*.json
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}
@@ -106,7 +113,7 @@ jobs:
             echo 'Tag and package version differ' >&2
             exit 1
           fi
-          gh release create "$tag" release/updates/*.asar release/updates/*.exe release/updates/*.dmg release/updates/*.AppImage release/updates/haunt-updates.json --target "$GITHUB_SHA" --title "Haunt $version" --generate-notes
+          gh release create "$tag" release/updates/*.asar release/updates/*.exe release/updates/*.dmg release/updates/*.AppImage release/updates/*.rpm release/updates/haunt-updates.json --target "$GITHUB_SHA" --title "Haunt $version" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Mirror verified downloads

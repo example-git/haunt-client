@@ -38,6 +38,7 @@ export async function runtimeConfig(
     "electron-app/main.cjs",
     "electron-builder.config.json",
   ];
+  if (platform === "linux") names.push("static/linux/package-type");
   if (platform === "darwin")
     names.push(
       "electron-app/entitlements.mac.plist",

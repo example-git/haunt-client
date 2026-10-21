@@ -74,11 +74,12 @@
   "engines": {
     "node": ">=22.12.0"
   },
-  "description": "Haunt — self-hosted community messaging and calls",
+  "description": "Haunt \u2014 self-hosted community messaging and calls",
   "author": "Haunt",
   "build": {
     "extends": "./electron-builder.config.json"
   },
   "productName": "Haunt",
-  "desktopName": "com.exampleuser.haunt.desktop"
+  "desktopName": "com.exampleuser.haunt.desktop",
+  "homepage": "https://github.com/example-git/haunt"
 }
