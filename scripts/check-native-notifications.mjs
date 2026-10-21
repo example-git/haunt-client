@@ -16,6 +16,41 @@ export async function prepareNativeNotifications(scratch, executable) {
     // Dunst's default action is middle-click; KDE uses ordinary left-click.
     clickButton: process.platform === "linux" ? 2 : 1,
   });
+  if (process.platform === "darwin") {
+    assert.equal(process.env.CI, "true", "Desktop setup is limited to CI");
+    const run = promisify(execFile);
+    const plist =
+      "/System/Library/LaunchAgents/com.apple.notificationcenterui.plist";
+    const { stdout: label } = await run("/usr/libexec/PlistBuddy", [
+      "-c",
+      "Print :Label",
+      plist,
+    ]);
+    const domain = `gui/${process.getuid()}`;
+    const service = `${domain}/${label.trim()}`;
+    const before = await run("launchctl", ["print-disabled", domain]);
+    // GitHub's macOS image unloads Notification Center. Restore the actual
+    // Apple service so the test can observe real permission UI and banners.
+    await run("launchctl", ["enable", service]);
+    const loaded = await run("launchctl", ["print", service])
+      .then(() => true)
+      .catch(() => false);
+    if (!loaded) await run("launchctl", ["bootstrap", domain, plist]);
+    await run("launchctl", ["kickstart", service]);
+    let after;
+    await expect
+      .poll(async () => {
+        after = await run("launchctl", ["print", service]);
+        return /state = running/.test(after.stdout);
+      })
+      .toBe(true);
+    await fs.mkdir("test-results", { recursive: true });
+    await fs.writeFile(
+      "test-results/notification-darwin-service.json",
+      JSON.stringify({ service, before, after }, null, 2),
+    );
+    return { ...ui, stop() {} };
+  }
   if (process.platform !== "linux") return { ...ui, stop() {} };
   assert(
     process.env.DBUS_SESSION_BUS_ADDRESS,
