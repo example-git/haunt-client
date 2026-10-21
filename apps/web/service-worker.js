@@ -99,7 +99,16 @@ self.addEventListener("fetch", (event) => {
     path === "haunt-sw.js"
   )
     return;
-  const key = new URL(url.pathname, url.origin).href;
+  let canonicalPath;
+  try {
+    canonicalPath = url.pathname
+      .split("/")
+      .map((part) => encodeURIComponent(decodeURIComponent(part)))
+      .join("/");
+  } catch {
+    return;
+  }
+  const key = new URL(canonicalPath, url.origin).href;
   const target = assets.has(key)
     ? key
     : request.mode === "navigate"

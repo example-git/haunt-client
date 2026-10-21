@@ -28,7 +28,11 @@ async function collect(directory) {
     ) {
       const data = await fs.readFile(filename);
       files.push({
-        path: path.relative(root, filename).split(path.sep).join("/"),
+        path: path
+          .relative(root, filename)
+          .split(path.sep)
+          .map(encodeURIComponent)
+          .join("/"),
         sha256: createHash("sha256").update(data).digest("hex"),
       });
     }

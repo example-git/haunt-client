@@ -223,6 +223,25 @@ try {
     await page.evaluate(() => localStorage.getItem("cache-preservation-test")),
     "retained",
   );
+  assert.equal(
+    await page.evaluate(
+      async () => (await fetch("/brand/trayTemplate@2x.png")).ok,
+    ),
+    true,
+  );
+  assert.equal(
+    await page.evaluate(async () => {
+      try {
+        await fetch("/index.html", {
+          headers: { Authorization: "Bearer fixture" },
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    }),
+    false,
+  );
   await page.screenshot({
     path: path.join(
       output,
