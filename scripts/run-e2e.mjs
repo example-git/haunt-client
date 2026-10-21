@@ -1,3 +1,4 @@
+import { checkImageViewer } from "./check-image-viewer.mjs";
 import { checkUIRefresh } from "./check-ui-refresh.mjs";
 import { checkPublicDownloads } from "./check-public-downloads.mjs";
 import { checkNotificationDelivery } from "./check-notification-delivery.mjs";
@@ -176,6 +177,7 @@ try {
   if (
     ![
       "demo",
+      "image-viewer",
       "signin-browser",
       "secure-dm",
       "source-audio",
@@ -215,6 +217,8 @@ try {
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   if (process.env.HAUNT_CLIENT_CHECK === "demo") {
     await captureDemo(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "image-viewer") {
+    await checkImageViewer(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "source-audio") {
     await checkSourceAudio(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "ui-refresh") {

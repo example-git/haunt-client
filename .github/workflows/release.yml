@@ -54,7 +54,7 @@ jobs:
       - run: npm run updates:pack
       - name: Install native Linux test dependencies
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi plank openbox imagemagick desktop-file-utils x11-utils
       - name: Rehearse a full installer upgrade on the native runner
         env:
           GH_TOKEN: ${{ github.token }}
@@ -68,7 +68,9 @@ jobs:
         if: always()
         with:
           name: installed-upgrade-${{ matrix.target }}
-          path: test-results/installed-upgrade-*.json
+          path: |
+            test-results/installed-upgrade-*.json
+            test-results/message-badge*
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}

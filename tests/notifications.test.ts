@@ -306,6 +306,12 @@ describe("notification delivery", () => {
       overlay: "data:image/png;base64,iVBORw0KGgo=",
     };
     expect(validateBadge({ ...value, arbitrary: "ignored" })).toEqual(value);
+    expect(validateBadge({ count: 3, unread: true })).toEqual({
+      count: 3,
+      unread: true,
+      icon: undefined,
+      overlay: undefined,
+    });
     for (const bad of [
       null,
       {},

@@ -76,10 +76,20 @@ it("keeps the owl through pending decode, unread, count, 99+, clear and logout; 
   expect(f.document.title).toBe("• Haunt");
   expect(f.icon.href).toBe("/brand/favicon-32.png");
   expect(f.drawImage).not.toHaveBeenCalled();
+  expect(f.setBadge).toHaveBeenLastCalledWith({
+    count: 0,
+    unread: true,
+    icon: undefined,
+    overlay: undefined,
+  });
   f.ready();
   await vi.waitFor(() =>
     expect(f.setBadge).toHaveBeenCalledWith(
-      expect.objectContaining({ count: 0, unread: true }),
+      expect.objectContaining({
+        count: 0,
+        unread: true,
+        icon: expect.any(String),
+      }),
     ),
   );
   expect(f.drawImage.mock.calls.at(-1)?.slice(1)).toEqual([0, 8, 56, 56]);
@@ -119,11 +129,12 @@ it("a disposed subscription cannot redraw after its pending image finishes", asy
   const { installBadges } = await import("../packages/browser/src/badges");
   const stop = installBadges([f.client as unknown as InstanceClient]);
   stop();
+  const calls = f.setBadge.mock.calls.length;
   f.document.title = "new subscription";
   f.ready();
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
   expect(f.document.title).toBe("new subscription");
-  expect(f.setBadge).not.toHaveBeenCalled();
+  expect(f.setBadge).toHaveBeenCalledTimes(calls);
 });

@@ -143,16 +143,10 @@ async function install(filename) {
     }
     return path.join(installed, "Haunt.app/Contents/MacOS/Haunt");
   }
-  await fs.chmod(filename, 0o755);
-  await fs.rm(path.join(installed, "squashfs-root"), {
-    recursive: true,
-    force: true,
-  });
-  await run(filename, ["--appimage-extract"], {
-    cwd: installed,
-    maxBuffer: 16 * 1024 * 1024,
-  });
-  return path.join(installed, "squashfs-root/haunt");
+  const appImage = path.join(installed, "Haunt.AppImage");
+  await fs.copyFile(filename, appImage);
+  await fs.chmod(appImage, 0o755);
+  return appImage;
 }
 async function launch(
   executablePath,
@@ -162,6 +156,12 @@ async function launch(
 ) {
   app = await electron.launch({
     executablePath,
+    env: {
+      ...process.env,
+      ...(process.platform === "linux"
+        ? { APPIMAGE_EXTRACT_AND_RUN: "1" }
+        : {}),
+    },
     args: [
       `--user-data-dir=${restore ? profile : legacyProfile}`,
       ...(process.platform === "linux"
@@ -281,6 +281,16 @@ async function launch(
   }
   if (checkNotifications) {
     report.notifications = {};
+    if (notificationFixture.installedLauncher)
+      report.notifications.desktopIntegration =
+        await notificationFixture.installedLauncher(
+          executablePath,
+          await app.evaluate(({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows()[0]
+              .getNativeWindowHandle()
+              .readUInt32LE(0),
+          ),
+        );
     await checkNativeNotifications(
       app,
       page,

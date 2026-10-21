@@ -70,10 +70,8 @@ export function installBadges(instances: Iterable<InstanceClient>) {
     disposed = false,
     logo: HTMLImageElement | undefined;
   const draw = (count: number, unread: boolean) => {
-    if (!logo) return;
-    const png = drawBadge(logo, count, unread);
-    if (!png) return;
-    if (unread || count) {
+    const png = logo && drawBadge(logo, count, unread);
+    if (png && (unread || count)) {
       icon!.href = png;
       icon!.sizes.value = "64x64";
     } else restoreIcon();
@@ -82,9 +80,12 @@ export function installBadges(instances: Iterable<InstanceClient>) {
         count,
         unread,
         icon: png,
-        overlay: drawBadge(logo, count, unread, true)!,
+        overlay: logo && drawBadge(logo, count, unread, true),
       })
-      .catch(() => {});
+      .catch((error) => {
+        previous = "";
+        console.error("Haunt could not update the desktop badge", error);
+      });
   };
   const update = () => {
     if (disposed) return;

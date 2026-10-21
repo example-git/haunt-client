@@ -18,7 +18,7 @@ def record(value):
 
 
 bus = dbus.SessionBus()
-unity = dbus.service.BusName("com.canonical.Unity", bus)
+unity = None if "--observe-launcher" in sys.argv else dbus.service.BusName("com.canonical.Unity", bus)
 name = dbus.service.BusName("org.freedesktop.Notifications", bus)
 
 

@@ -2447,41 +2447,158 @@ summary {
   margin-left: auto;
   white-space: nowrap;
 }
-.image-viewer {
-  /* Image previews size to their content, not the settings dialog width. */
-  width: fit-content;
-  border: none;
-  background: var(--haunt-black);
-  padding: 38px 16px 12px;
-  border-radius: 12px;
-  max-width: calc(100vw - 32px);
-  max-height: calc(100dvh - 32px);
+/* Media uses the full viewport, independently of the selected app theme. */
+dialog.image-viewer {
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #f5f5f5;
+  box-shadow: none;
+  overflow: hidden;
+  user-select: none;
+  -webkit-app-region: no-drag;
 }
 .image-viewer::backdrop {
-  background: rgb(12 12 12 / 91%);
+  background: rgb(0 0 0 / 90%);
+  backdrop-filter: none;
 }
-.image-viewer > img {
-  display: block;
-  width: auto;
-  height: auto;
-  /* Leave room for the dialog padding, close button and download link. */
-  max-width: calc(100vw - 64px);
-  max-height: calc(100dvh - 112px);
-  object-fit: contain;
-}
-.viewer-close {
+.viewer-stage {
   position: absolute;
-  right: 8px;
-  top: 6px;
-  color: var(--text);
+  inset: max(64px, env(safe-area-inset-top)) 64px
+    max(76px, env(safe-area-inset-bottom));
+  touch-action: none;
 }
-.viewer-download {
+.viewer-image {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  object-fit: contain;
+  cursor: zoom-in;
+  -webkit-user-drag: none;
+}
+.viewer-stage.is-zoomed .viewer-image {
+  cursor: grab;
+}
+.viewer-stage.is-dragging .viewer-image {
+  cursor: grabbing;
+}
+.viewer-actions {
+  position: absolute;
+  z-index: 2;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
   display: flex;
-  gap: 6px;
+  gap: 8px;
+}
+.image-viewer .viewer-control,
+.image-viewer .viewer-scale {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #262626;
+  color: #e8e8e8;
+  box-shadow: none;
+  text-decoration: none;
+  transition:
+    background 120ms,
+    color 120ms;
+  touch-action: manipulation;
+}
+.image-viewer .viewer-control:hover,
+.image-viewer .viewer-scale:hover {
+  background: #3b3b3b;
+  color: white;
+}
+.image-viewer button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.image-viewer :is(button, a):focus-visible {
+  outline: 2px solid white;
+  outline-offset: 3px;
+}
+.viewer-previous,
+.viewer-next {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.viewer-previous {
+  left: max(12px, env(safe-area-inset-left));
+}
+.viewer-next {
+  right: max(12px, env(safe-area-inset-right));
+}
+.viewer-zoom {
+  position: absolute;
+  z-index: 2;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
   align-items: center;
-  padding-top: 12px;
-  color: var(--text);
+  padding: 4px;
+  gap: 2px;
+  border-radius: 999px;
+  background: #262626;
+  box-shadow: 0 4px 20px #0003;
+}
+.viewer-zoom .viewer-control {
+  width: 32px;
+  height: 32px;
+  background: #3b3b3b;
+}
+.image-viewer .viewer-scale {
+  width: 58px;
+  height: 32px;
+  border-radius: 20px;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.viewer-status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #ddd;
+  font-size: 14px;
+}
+@media (max-width: 600px) {
+  .viewer-stage {
+    inset-inline: 12px;
+  }
+  .image-viewer .viewer-control {
+    width: 44px;
+    height: 44px;
+  }
+  .viewer-zoom {
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .viewer-previous {
+    left: 8px;
+  }
+  .viewer-next {
+    right: 8px;
+  }
 }
 
 .context-menu {

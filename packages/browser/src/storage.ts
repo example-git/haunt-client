@@ -328,8 +328,8 @@ export interface DesktopBridge extends NativeBridge {
   setBadge(value: {
     count: number;
     unread: boolean;
-    icon: string;
-    overlay: string;
+    icon?: string;
+    overlay?: string;
   }): Promise<void>;
   testNotification?(): Promise<"shown" | "submitted">;
   onNotificationError?(callback: (message: string) => void): () => void;

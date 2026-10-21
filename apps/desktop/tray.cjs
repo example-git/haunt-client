@@ -1,3 +1,22 @@
+/** Keep native app badging independent of tray availability. */
+function updateAppBadge({ app, window, platform = process.platform }, value) {
+  const { count, unread, overlay } = value;
+  const active = count > 0 || unread;
+  if (platform === "darwin") {
+    app.dock?.setBadge(
+      count ? (count > 99 ? "99+" : String(count)) : unread ? "•" : "",
+    );
+  } else if (platform === "win32") {
+    window.setOverlayIcon(
+      active && overlay ? overlay : null,
+      active ? "Unread notifications" : "No unread messages",
+    );
+  } else {
+    app.setBadgeCount(count);
+    // Keep the window icon stable: docks can cache it after the native count clears.
+  }
+}
+
 /** Native status surfaces share the renderer's aggregated unread state. */
 function installTray({
   app,
@@ -63,17 +82,10 @@ function installTray({
       tray.setTitle(count ? label : unread ? "•" : "", {
         fontType: "monospacedDigit",
       });
-      app.dock?.setBadge(count ? label : unread ? "•" : "");
     } else {
       tray.setImage(
         (count || unread ? icon : base).resize({ width: 24, height: 24 }),
       );
-      if (platform === "win32")
-        window.setOverlayIcon(count || unread ? overlay : null, status);
-      else {
-        app.setBadgeCount(count);
-        window.setIcon(count || unread ? icon : base);
-      }
     }
   };
   const dispose = () => {
@@ -93,4 +105,4 @@ function installTray({
   }
   return { update, show, dispose };
 }
-module.exports = { installTray };
+module.exports = { installTray, updateAppBadge };

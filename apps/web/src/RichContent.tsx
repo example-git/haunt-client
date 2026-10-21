@@ -32,6 +32,8 @@ import {
   type Embed,
 } from "@haunt/browser/embeds";
 
+import { ImagePreview } from "./ImageViewer";
+
 let visibilityObserver: IntersectionObserver | undefined;
 const visibilityCallbacks = new WeakMap<Element, () => void>();
 function useVisible(enabled = true) {
@@ -92,48 +94,6 @@ export function ExternalLink({
     </a>
   );
 }
-function ImageViewer({
-  src,
-  alt,
-  close,
-}: {
-  src: string;
-  alt: string;
-  close: () => void;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    ref.current?.showModal();
-    return () => ref.current?.close();
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      className="image-viewer"
-      aria-label="Image preview"
-      onCancel={(e) => {
-        e.preventDefault();
-        close();
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-    >
-      <button
-        autoFocus
-        className="icon viewer-close"
-        aria-label="Close image preview"
-        onClick={close}
-      >
-        <X />
-      </button>
-      <img src={src} alt={alt} />
-      <a className="viewer-download" href={src} download={alt || "image"}>
-        <Download size={16} /> Save image
-      </a>
-    </dialog>
-  );
-}
 function PreviewCard({
   instance,
   message,
@@ -144,8 +104,7 @@ function PreviewCard({
   embed: Embed;
 }) {
   const [image, setImage] = useState<string>(),
-    [playing, setPlaying] = useState(false),
-    [viewer, setViewer] = useState(false);
+    [playing, setPlaying] = useState(false);
   const player = youtubePlayer(embed.youtube_id ?? "");
   useEffect(() => {
     if (!embed.image) return;
@@ -248,28 +207,17 @@ function PreviewCard({
           </span>
         </button>
       ) : image ? (
-        <button
-          className="embed-picture"
-          aria-label="Enlarge preview image"
-          onClick={() => setViewer(true)}
-        >
+        <ImagePreview className="embed-picture" label="Enlarge preview image">
           <img
             src={image}
             alt={embed.image_alt || embed.title || "Link preview"}
             onError={() => setImage(undefined)}
           />
-        </button>
+        </ImagePreview>
       ) : null}
       <ExternalLink className="embed-open" href={embed.url}>
         <LinkIcon size={12} /> Open {host}
       </ExternalLink>
-      {viewer && image && (
-        <ImageViewer
-          src={image}
-          alt={embed.image_alt || embed.title || "Preview image"}
-          close={() => setViewer(false)}
-        />
-      )}
     </section>
   );
 }
@@ -373,8 +321,7 @@ export function Attachment({
     [meta, setMeta] = useState<Schemas["AttachmentsAttachment"]>(),
     [data, setData] = useState<{ url: string; type: string }>(),
     [error, setError] = useState(false),
-    [busy, setBusy] = useState(false),
-    [viewer, setViewer] = useState(false);
+    [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | undefined>(undefined),
     url = useRef<string | undefined>(undefined);
   const load = (signal: AbortSignal) => {
@@ -432,17 +379,16 @@ export function Attachment({
         <>
           {data ? (
             data.type.startsWith("image/") ? (
-              <button
+              <ImagePreview
                 className="attachment-picture"
-                aria-label={`Enlarge ${meta?.filename || "attachment"}`}
-                onClick={() => setViewer(true)}
+                label={`Enlarge ${meta?.filename || "attachment"}`}
               >
                 <img
                   className="attachment-image"
                   src={data.url}
                   alt={meta?.filename || "Message attachment"}
                 />
-              </button>
+              </ImagePreview>
             ) : data.type.startsWith("video/") ? (
               <video
                 ref={(element) =>
@@ -493,13 +439,6 @@ export function Attachment({
               {meta?.filename || "Download attachment"}
               {meta && <small>{sizeLabel(meta.bytes)}</small>}
             </a>
-          )}
-          {viewer && data && (
-            <ImageViewer
-              src={data.url}
-              alt={meta?.filename || "attachment"}
-              close={() => setViewer(false)}
-            />
           )}
         </>
       )}

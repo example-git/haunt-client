@@ -10,6 +10,7 @@ export const desktopFiles = [
   "media-cache.cjs",
   "notifications.cjs",
   "tray.cjs",
+  "linux-desktop.cjs",
   "capture-picker.cjs",
   "capture-preload.cjs",
   "capture-picker.html",

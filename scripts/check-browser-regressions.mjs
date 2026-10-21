@@ -5,6 +5,7 @@ import { once } from "node:events";
 // None of these modes starts Electron or uses a developer's saved sessions.
 for (const mode of [
   "signin-browser",
+  "image-viewer",
   "secure-dm",
   "source-audio",
   "narrator",

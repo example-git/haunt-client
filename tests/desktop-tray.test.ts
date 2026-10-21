@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
-const { installTray } = createRequire(import.meta.url)(
+const { installTray, updateAppBadge } = createRequire(import.meta.url)(
   "../apps/desktop/tray.cjs",
 );
 for (const platform of ["darwin", "win32", "linux"]) {
@@ -48,7 +48,12 @@ for (const platform of ["darwin", "win32", "linux"]) {
       templatePath: "template",
     });
     const overlay = {};
-    control.update({ count: 12, unread: true, icon: image, overlay });
+    const update = (count: number, unread: boolean) => {
+      const value = { count, unread, icon: image, overlay };
+      updateAppBadge({ app, window, base: image, platform }, value);
+      control.update(value);
+    };
+    update(12, true);
     expect(Tray.current.setToolTip).toHaveBeenLastCalledWith(
       "Haunt — 12 unread notifications",
     );
@@ -61,13 +66,15 @@ for (const platform of ["darwin", "win32", "linux"]) {
     } else if (platform === "win32")
       expect(window.setOverlayIcon).toHaveBeenLastCalledWith(
         overlay,
-        "12 unread notifications",
+        "Unread notifications",
       );
     else expect(app.setBadgeCount).toHaveBeenLastCalledWith(12);
-    control.update({ count: 0, unread: true, icon: image, overlay });
+    update(0, true);
     if (platform === "darwin")
       expect(app.dock.setBadge).toHaveBeenLastCalledWith("•");
-    control.update({ count: 0, unread: false, icon: image, overlay });
+    else if (platform === "linux")
+      expect(app.setBadgeCount).toHaveBeenLastCalledWith(0);
+    update(0, false);
     if (platform === "darwin")
       expect(app.dock.setBadge).toHaveBeenLastCalledWith("");
     else if (platform === "win32")
@@ -76,6 +83,7 @@ for (const platform of ["darwin", "win32", "linux"]) {
         "No unread messages",
       );
     else expect(app.setBadgeCount).toHaveBeenLastCalledWith(0);
+    if (platform === "linux") expect(window.setIcon).not.toHaveBeenCalled();
     const event = { preventDefault: vi.fn() };
     window.emit("close", event);
     expect(event.preventDefault).toHaveBeenCalledOnce();

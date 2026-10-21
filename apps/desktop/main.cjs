@@ -29,7 +29,8 @@ const {
   forwardDesktopRequest,
   installDesktopCors,
 } = require("./network.cjs");
-const { installTray } = require("./tray.cjs");
+const { installTray, updateAppBadge } = require("./tray.cjs");
+const { installLinuxDesktop } = require("./linux-desktop.cjs");
 const {
   validateNotification,
   validateBadge,
@@ -113,6 +114,17 @@ function validateAccounts(accounts) {
 }
 async function startMain() {
   await profile.migrateCredentials(safeStorage);
+  let linuxDesktopError;
+  if (process.platform === "linux" && app.isPackaged) {
+    try {
+      await installLinuxDesktop({
+        iconPath: path.join(__dirname, "../../resources/icon.png"),
+      });
+    } catch (error) {
+      linuxDesktopError = `Haunt could not install its launcher entry: ${error.message}`;
+      console.error(linuxDesktopError);
+    }
+  }
   app.setAboutPanelOptions({
     applicationName: "Haunt",
     applicationVersion:
@@ -322,38 +334,36 @@ async function startMain() {
     return shell.openExternal(externalURL(raw));
   });
   let badgeKey = "";
+  let latestBadge;
+  const badgeBase = nativeImage.createFromPath(
+    path.join(
+      __dirname,
+      app.isPackaged ? "../../resources/icon.png" : "../../static/icon.png",
+    ),
+  );
   ipcMain.handle("badge:set", (event, raw) => {
     validateSender(event);
     const value = validateBadge(raw);
     const key = `${value.count}:${value.unread}:${value.icon}:${value.overlay}`;
     if (key === badgeKey) return;
-    const icon = nativeImage.createFromDataURL(value.icon);
-    const overlay = nativeImage.createFromDataURL(value.overlay);
-    const size = icon.getSize();
-    if (
-      size.width !== 64 ||
-      size.height !== 64 ||
-      overlay.getSize().width !== 64 ||
-      overlay.getSize().height !== 64
-    )
-      throw Error("Invalid badge image");
-    badgeKey = key;
-    statusTray?.update({ ...value, icon, overlay });
-    if (!statusTray) {
-      if (process.platform === "darwin")
-        app.dock?.setBadge(
-          value.count ? String(value.count) : value.unread ? "•" : "",
-        );
-      else if (process.platform === "win32")
-        window.setOverlayIcon(
-          value.count || value.unread ? overlay : null,
-          "Unread notifications",
-        );
-      else {
-        app.setBadgeCount(value.count);
-        window.setIcon(icon);
-      }
+    const artwork = (data) => {
+      if (!data) return;
+      const image = nativeImage.createFromDataURL(data);
+      const size = image.getSize();
+      if (size.width !== 64 || size.height !== 64)
+        throw Error("Invalid badge image");
+      return image;
+    };
+    const icon = artwork(value.icon) || badgeBase;
+    const overlay = artwork(value.overlay);
+    if (linuxDesktopError && (value.count || value.unread)) {
+      window.webContents.send("notification:error", linuxDesktopError);
+      linuxDesktopError = undefined;
     }
+    latestBadge = { ...value, icon, overlay };
+    updateAppBadge({ app, window, base: badgeBase }, latestBadge);
+    statusTray?.update(latestBadge);
+    badgeKey = key;
   });
   const nativeNotifications = createNotificationService({
     Notification,
@@ -367,6 +377,12 @@ async function startMain() {
   ipcMain.handle("notification:available", (event) => {
     validateSender(event);
     return Notification.isSupported();
+  });
+  app.on("browser-window-focus", () => {
+    // Permission may have been granted in the system prompt or Settings since
+    // the last unread event. Reapply the retained native badge on return.
+    if (latestBadge)
+      updateAppBadge({ app, window, base: badgeBase }, latestBadge);
   });
   ipcMain.handle("notification:show", (event, raw) => {
     validateSender(event);
