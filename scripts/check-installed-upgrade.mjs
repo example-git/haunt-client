@@ -66,11 +66,19 @@ const scratch = await fs.mkdtemp(
   path.join(os.tmpdir(), "haunt-installed-upgrade-"),
 );
 const downloads = path.join(scratch, "downloads");
-const installed = path.join(scratch, "installed");
+// macOS rejects UNNotification registration for bundles in /var/folders.
+// Use the real per-user Applications location, with a private installation.
+const applications = path.join(os.homedir(), "Applications");
+if (process.platform === "darwin")
+  await fs.mkdir(applications, { recursive: true });
+const installed =
+  process.platform === "darwin"
+    ? await fs.mkdtemp(path.join(applications, "haunt-upgrade-"))
+    : path.join(scratch, "installed");
 const legacyProfile = path.join(scratch, LEGACY_PROFILE_NAME);
 const profile = path.join(scratch, "haunt");
 await fs.mkdir(downloads);
-await fs.mkdir(installed);
+await fs.mkdir(installed, { recursive: true });
 await fs.mkdir("test-results", { recursive: true });
 const marker = randomUUID();
 let app, notificationFixture, keyring, restoreKeychain;
@@ -167,6 +175,12 @@ async function install(filename) {
           report.localSigning.designatedRequirements[0],
           "Initial install and update reuse the same signing identity and requirement",
         );
+      // The production installer opens through LaunchServices. Playwright starts
+      // the executable directly, so register its actual signed bundle first.
+      await run(
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+        ["-f", path.join(installed, "Haunt.app")],
+      );
     } finally {
       await run("hdiutil", ["detach", mount]);
     }
@@ -474,6 +488,13 @@ try {
   notificationFixture?.stop();
   keyring?.kill();
   await restoreKeychain?.();
+  if (process.platform === "darwin") {
+    await run(
+      "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+      ["-u", path.join(installed, "Haunt.app")],
+    ).catch(() => {});
+    await fs.rm(installed, { recursive: true, force: true });
+  }
   await fs.rm(scratch, {
     recursive: true,
     force: true,

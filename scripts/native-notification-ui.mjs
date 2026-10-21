@@ -57,42 +57,121 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, " ")
       .trim();
-  const read = async () => {
+  const read = async (wanted) => {
     await fs.mkdir("test-results", { recursive: true });
     const screen = `test-results/notification-${target}-current.png`;
     const crop = `test-results/notification-${target}-popup.png`;
     await captureDesktop(screen);
-    // The real Haunt window is confined to the left 600px. Inspect only the
-    // desktop notification area, so chat content cannot satisfy a popup check.
+    // Haunt occupies the left 600 logical pixels. Only actual OS notification
+    // windows or the area outside Haunt can satisfy the visual assertion.
     const convert = process.platform === "linux" ? "convert" : "magick";
     const offset = Math.round(600 * scaleFactor);
-    await run(convert, [screen, "-crop", `+${offset}+0`, "+repage", crop]);
-    const { stdout } = await run(tesseract, [crop, "stdout", "tsv"], {
-      maxBuffer: 2 * 1024 * 1024,
-    });
-    const words = stdout
-      .trim()
-      .split("\n")
-      .slice(1)
-      .map((line) => {
-        const parts = line.split("\t");
-        return {
-          x: Number(parts[6]) + offset,
-          y: Number(parts[7]),
-          width: Number(parts[8]),
-          height: Number(parts[9]),
-          text: parts.slice(11).join("\t"),
-        };
-      })
-      .filter((word) => word.text);
+    const regions = [];
+    if (process.platform === "linux") {
+      const ids = await run("xdotool", [
+        "search",
+        "--onlyvisible",
+        "--class",
+        target.startsWith("fedora-") ? "plasmashell" : "Dunst",
+      ])
+        .then(({ stdout }) => stdout.trim().split(/\s+/).filter(Boolean))
+        .catch((error) => {
+          if (error.code === 1) return [];
+          throw error;
+        });
+      for (const id of ids) {
+        const { stdout } = await run("xdotool", [
+          "getwindowgeometry",
+          "--shell",
+          id,
+        ]);
+        const box = Object.fromEntries(
+          stdout
+            .trim()
+            .split("\n")
+            .map((line) => {
+              const [key, value] = line.split("=");
+              return [key, Number(value)];
+            }),
+        );
+        if (
+          box.X < offset ||
+          box.Y < 0 ||
+          box.WIDTH > 650 * scaleFactor ||
+          box.WIDTH < 20 ||
+          box.HEIGHT < 20
+        )
+          continue;
+        regions.push({
+          x: box.X,
+          y: box.Y,
+          width: box.WIDTH,
+          height: box.HEIGHT,
+          zoom: 3,
+        });
+        // Separate text columns from large notification artwork. Each OCR
+        // attempt still reads the captured native pixels and matches all words.
+        const column = Math.floor(box.WIDTH * 0.8);
+        regions.push({
+          x: box.X,
+          y: box.Y,
+          width: column,
+          height: box.HEIGHT,
+          zoom: 3,
+        });
+        regions.push({
+          x: box.X + box.WIDTH - column,
+          y: box.Y,
+          width: column,
+          height: box.HEIGHT,
+          zoom: 3,
+        });
+      }
+    } else regions.push({ x: offset, y: 0, zoom: 1 });
+    const readings = [];
+    for (const region of regions) {
+      const geometry = `${region.width ? `${region.width}x${region.height}` : ""}+${region.x}+${region.y}`;
+      await run(convert, [
+        screen,
+        "-crop",
+        geometry,
+        "+repage",
+        ...(region.zoom > 1
+          ? ["-resize", `${region.zoom * 100}%`, "-colorspace", "gray"]
+          : []),
+        crop,
+      ]);
+      const { stdout } = await run(tesseract, [crop, "stdout", "tsv"], {
+        maxBuffer: 2 * 1024 * 1024,
+        env: { ...process.env, OMP_THREAD_LIMIT: "1" },
+      });
+      const words = stdout
+        .trim()
+        .split("\n")
+        .slice(1)
+        .map((line) => {
+          const parts = line.split("\t");
+          return {
+            x: Number(parts[6]) / region.zoom + region.x,
+            y: Number(parts[7]) / region.zoom + region.y,
+            width: Number(parts[8]) / region.zoom,
+            height: Number(parts[9]) / region.zoom,
+            text: parts.slice(11).join("\t").trim(),
+          };
+        })
+        .filter((word) => word.text);
+      const text = normalize(words.map((word) => word.text).join(" "));
+      readings.push({ region, words, text });
+      if (wanted && text.includes(normalize(wanted))) break;
+    }
     await fs.writeFile(
       `test-results/notification-${target}-ocr.json`,
-      JSON.stringify({ words, scaleFactor }, null, 2),
+      JSON.stringify({ readings, scaleFactor }, null, 2),
     );
     return {
       screen,
-      words,
-      text: normalize(words.map((word) => word.text).join(" ")),
+      words: readings.at(-1)?.words ?? [],
+      text: readings.map(({ text }) => text).join(" "),
     };
   };
   const retain = async (state, label) => {
@@ -106,7 +185,7 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
     await expect
       .poll(
         async () => {
-          state = await read();
+          state = await read(text);
           if (++attempts <= 2) await retain(state, "search");
           if (
             process.platform === "darwin" &&
@@ -141,6 +220,23 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
       scaleFactor = value;
     },
     capture: captureDesktop,
+    async movePointerAway() {
+      if (process.platform === "win32") {
+        const result =
+          await powershell(String.raw`Add-Type -AssemblyName System.Windows.Forms
+$before = [System.Windows.Forms.Cursor]::Position
+[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(10,10)
+$after = [System.Windows.Forms.Cursor]::Position
+if ($after.X -ne 10 -or $after.Y -ne 10) { throw "Native pointer did not move" }
+[pscustomobject]@{before=$before;after=$after;messageDuration=(Get-ItemProperty 'HKCU:\Control Panel\Accessibility' -ErrorAction SilentlyContinue).MessageDuration} | ConvertTo-Json -Compress`);
+        await fs.appendFile(
+          `test-results/notification-${target}-pointer.jsonl`,
+          result.stdout,
+        );
+      } else if (process.platform === "linux")
+        await run("xdotool", ["mousemove", "--sync", "10", "10"]);
+      else await run("cliclick", ["m:10,10"]);
+    },
     async diagnose() {
       const commands =
         process.platform === "darwin"
@@ -201,7 +297,7 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
       let state;
       const until = Date.now() + 4000;
       do {
-        state = await read();
+        state = await read(text);
         expect(state.text, `No desktop popup containing ${text}`).not.toContain(
           normalize(text),
         );

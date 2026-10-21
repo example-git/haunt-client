@@ -94,6 +94,7 @@ export async function checkNotificationMessages(app, page, native, report) {
       if (process.platform === "darwin") window.hide();
       else window.minimize();
     });
+    await native.movePointerAway();
     await expect
       .poll(() =>
         page.evaluate(
