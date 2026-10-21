@@ -12,6 +12,12 @@ export async function checkNotificationMessages(app, page, native, report) {
   const server = await badgeServerFixture();
   const checks = [];
   report.messageNotifications = { checks, passed: false };
+  await page.evaluate(() => {
+    window.nativeNotificationErrors = [];
+    window.nativeNotificationErrorOff = window.hauntDesktop.onNotificationError(
+      (message) => window.nativeNotificationErrors.push(message),
+    );
+  });
   // Observe Chromium's real audio output. Nothing replaces AudioContext,
   // oscillators, buffers, sound selection or the production delivery path.
   await app.evaluate(({ BrowserWindow }) => {
@@ -444,7 +450,54 @@ export async function checkNotificationMessages(app, page, native, report) {
     await absent("Haunt muted channel message");
     await sound(soundStart, false);
     report.messageNotifications.passed = true;
+  } catch (error) {
+    report.messageNotifications.error = error.stack;
+    report.messageNotifications.nativeErrors = await page
+      .evaluate(() => window.nativeNotificationErrors)
+      .catch(() => []);
+    report.messageNotifications.nativeState = await app
+      .evaluate(async ({ BrowserWindow, Notification }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        return {
+          focused: window.isFocused(),
+          visible: window.isVisible(),
+          minimized: window.isMinimized(),
+          supported: Notification.isSupported(),
+          history:
+            process.platform === "darwin"
+              ? await Promise.race([
+                  Notification.getHistory().then((items) =>
+                    items.map(({ title, body }) => ({ title, body })),
+                  ),
+                  new Promise((resolve) =>
+                    setTimeout(
+                      () => resolve("Native history query timed out"),
+                      5000,
+                    ),
+                  ),
+                ])
+              : undefined,
+        };
+      })
+      .catch((failure) => ({ error: failure.message }));
+    report.messageNotifications.nativeDiagnostics = await native.diagnose?.();
+    await settings()
+      .then(async () => {
+        report.messageNotifications.settings = await page
+          .getByRole("dialog")
+          .innerText();
+        await native.capture(
+          `test-results/notification-${native.target}-settings-failure.png`,
+        );
+      })
+      .catch((failure) => {
+        report.messageNotifications.settingsError = failure.message;
+      });
+    throw error;
   } finally {
+    await page
+      .evaluate(() => window.nativeNotificationErrorOff?.())
+      .catch(() => {});
     await app
       .evaluate(() => {
         clearInterval(global[Symbol.for("haunt.native-audio-observer")]?.timer);

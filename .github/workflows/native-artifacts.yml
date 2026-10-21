@@ -1,0 +1,76 @@
+name: Native installer verification
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Desktop releases run containing the installers
+        required: true
+        type: string
+      runner:
+        description: Native platform
+        required: true
+        type: choice
+        options: [macos-14, windows-2022, ubuntu-24.04, ubuntu-24.04-arm]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HAUNT_UPDATE_PUBLIC_KEY: ${{ vars.HAUNT_UPDATE_PUBLIC_KEY }}
+      ARTIFACT_RUN: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Read installer provenance
+        id: source
+        run: |
+          [[ "$ARTIFACT_RUN" =~ ^[0-9]+$ ]]
+          target=$(node -p '`${process.platform}-${process.arch}`')
+          built_sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ARTIFACT_RUN" --jq .head_sha)
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          mkdir -p test-results
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ARTIFACT_RUN" --jq '{id,head_sha,html_url,path}' > test-results/notification-artifact-source.json
+          git diff --exit-code "$built_sha" HEAD -- apps packages static electron-app electron-builder.config.json ':(exclude)packages/core/package.json' ':(exclude)electron-app/package.json'
+          gh run download "$ARTIFACT_RUN" --repo "$GITHUB_REPOSITORY" --name "release-$target" --dir release/updates
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi plank openbox imagemagick desktop-file-utils x11-utils dunst tesseract-ocr xdotool pipewire pipewire-pulse wireplumber pulseaudio-utils
+      - name: Install macOS desktop tools
+        if: runner.os == 'macOS'
+        run: brew install tesseract imagemagick cliclick
+      - name: Install Windows desktop tools
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y tesseract imagemagick --no-progress
+          powershell -NoProfile -Command '[Environment]::GetEnvironmentVariable("Path", "Machine").Split(";") | Out-File -Append -Encoding utf8 $env:GITHUB_PATH'
+      - name: Verify installed upgrade and native notifications
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            dbus-run-session -- xvfb-run -a -s "-screen 0 1920x1080x24" node scripts/check-installed-upgrade.mjs
+          else
+            node scripts/check-installed-upgrade.mjs
+          fi
+      - name: Verify Fedora RPM and KDE notifications
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.source.outcome == 'success' }}
+        run: docker run --rm --cap-add=SYS_ADMIN -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash scripts/ci/check-fedora-rpm.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-verification-${{ inputs.runner }}
+          path: test-results/
+      - name: Remove native signing keychain
+        if: ${{ always() && runner.os == 'macOS' }}
+        run: node scripts/mac-ci-keychain.mjs cleanup

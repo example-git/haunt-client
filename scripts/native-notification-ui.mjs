@@ -85,6 +85,10 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
         };
       })
       .filter((word) => word.text);
+    await fs.writeFile(
+      `test-results/notification-${target}-ocr.json`,
+      JSON.stringify({ words, scaleFactor }, null, 2),
+    );
     return {
       screen,
       words,
@@ -98,10 +102,12 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
   };
   const find = async (text) => {
     let state;
+    let attempts = 0;
     await expect
       .poll(
         async () => {
           state = await read();
+          if (++attempts <= 2) await retain(state, "search");
           if (
             process.platform === "darwin" &&
             state.text.includes("haunt") &&
@@ -135,6 +141,58 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
       scaleFactor = value;
     },
     capture: captureDesktop,
+    async diagnose() {
+      const commands =
+        process.platform === "darwin"
+          ? [
+              ["defaults", ["read", "com.apple.ncprefs"]],
+              [
+                "log",
+                [
+                  "show",
+                  "--last",
+                  "3m",
+                  "--style",
+                  "compact",
+                  "--predicate",
+                  'process == "usernoted" OR process == "NotificationCenter"',
+                ],
+              ],
+            ]
+          : process.platform === "linux"
+            ? [
+                ["xwininfo", ["-root", "-tree"]],
+                ["dunstctl", ["is-paused"]],
+                ["dunstctl", ["history"]],
+              ]
+            : [];
+      const results = [];
+      for (const [command, args] of commands) {
+        try {
+          results.push({
+            command,
+            args,
+            ...(await run(command, args, {
+              timeout: 10000,
+              maxBuffer: 8 * 1024 * 1024,
+            })),
+          });
+        } catch (error) {
+          results.push({
+            command,
+            args,
+            error: error.message,
+            stdout: error.stdout,
+            stderr: error.stderr,
+          });
+        }
+      }
+      await fs.writeFile(
+        `test-results/notification-${target}-system.json`,
+        JSON.stringify(results, null, 2),
+      );
+      return `test-results/notification-${target}-system.json`;
+    },
     async expectPopup(text) {
       const state = await find(text);
       await retain(state, "visible");
@@ -169,19 +227,32 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
       const coordinateScale = process.platform === "darwin" ? scaleFactor : 1;
       const x = Math.round((word.x + word.width / 2) / coordinateScale),
         y = Math.round((word.y + word.height / 2) / coordinateScale);
+      await fs.writeFile(
+        `test-results/notification-${target}-click.json`,
+        JSON.stringify({ text, x, y, word, scaleFactor }, null, 2),
+      );
+      await retain(state, "click");
       if (process.platform === "linux")
         await run("xdotool", [
           "mousemove",
+          "--sync",
           String(x),
           String(y),
+          "sleep",
+          "0.15",
           "click",
           String(clickButton),
+          "sleep",
+          "0.15",
+          "mousemove",
+          "10",
+          "10",
         ]);
       else if (process.platform === "darwin")
-        await run("cliclick", [`c:${x},${y}`]);
+        await run("cliclick", [`c:${x},${y}`, "m:10,10"]);
       else
         await powershell(
-          `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class HauntMouse { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y); [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra); }'; [HauntMouse]::SetCursorPos(${x},${y}); [HauntMouse]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [HauntMouse]::mouse_event(4,0,0,0,[UIntPtr]::Zero)`,
+          `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class HauntMouse { [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y); [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra); }'; [HauntMouse]::SetCursorPos(${x},${y}); [HauntMouse]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [HauntMouse]::mouse_event(4,0,0,0,[UIntPtr]::Zero); [HauntMouse]::SetCursorPos(10,10)`,
         );
     },
   };

@@ -71,6 +71,7 @@ const legacyProfile = path.join(scratch, LEGACY_PROFILE_NAME);
 const profile = path.join(scratch, "haunt");
 await fs.mkdir(downloads);
 await fs.mkdir(installed);
+await fs.mkdir("test-results", { recursive: true });
 const marker = randomUUID();
 let app, notificationFixture, keyring, restoreKeychain;
 const account = {
@@ -186,6 +187,8 @@ async function launch(
     executablePath,
     env: {
       ...process.env,
+      ELECTRON_ENABLE_LOGGING: "1",
+      ELECTRON_DEBUG_NOTIFICATIONS: "1",
       ...(process.platform === "linux"
         ? { APPIMAGE_EXTRACT_AND_RUN: "1" }
         : {}),
@@ -197,6 +200,13 @@ async function launch(
         : []),
     ],
     timeout: 60000,
+  });
+  app.process().stderr.on("data", (data) => {
+    void fs
+      .appendFile(`test-results/notification-${target}-electron.log`, data)
+      .catch((error) =>
+        console.error("Cannot save Electron diagnostics:", error),
+      );
   });
   const page = await app.firstWindow({ timeout: 60000 });
   const errors = [];

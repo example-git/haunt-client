@@ -83,7 +83,14 @@ export async function prepareNativeNotifications(scratch, executable) {
       await audio.stop();
       throw error;
     });
-  const daemon = spawn("dunst", [], { stdio: ["ignore", "ignore", "inherit"] });
+  const daemonLog = openSync(
+    `test-results/notification-linux-${process.arch}-daemon.log`,
+    "a",
+  );
+  const daemon = spawn("dunst", ["-verbosity", "debug"], {
+    stdio: ["ignore", daemonLog, daemonLog],
+  });
+  closeSync(daemonLog);
   await expect
     .poll(async () => {
       const { stdout } = await run("dbus-send", [

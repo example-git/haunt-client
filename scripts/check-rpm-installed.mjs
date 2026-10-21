@@ -20,6 +20,7 @@ const notificationLog = path.join(
 await fs.rm(notificationLog, { force: true });
 const runtime = path.join(os.homedir(), ".run");
 await fs.mkdir(runtime, { recursive: true, mode: 0o700 });
+await fs.mkdir("test-results", { recursive: true });
 process.env.XDG_RUNTIME_DIR = runtime;
 process.env.XDG_CURRENT_DESKTOP = "KDE";
 process.env.QT_QUICK_BACKEND = "software";
@@ -70,8 +71,23 @@ try {
     .toBe(true);
   app = await electron.launch({
     executablePath: "/usr/bin/haunt",
+    env: {
+      ...process.env,
+      ELECTRON_ENABLE_LOGGING: "1",
+      ELECTRON_DEBUG_NOTIFICATIONS: "1",
+    },
     chromiumSandbox: true,
     timeout: 60000,
+  });
+  app.process().stderr.on("data", (data) => {
+    void fs
+      .appendFile(
+        `test-results/notification-fedora-${process.arch}-electron.log`,
+        data,
+      )
+      .catch((error) =>
+        console.error("Cannot save Electron diagnostics:", error),
+      );
   });
   const page = await app.firstWindow();
   await expect(page.locator("#root")).not.toBeEmpty({ timeout: 30000 });
