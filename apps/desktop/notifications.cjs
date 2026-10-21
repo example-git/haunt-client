@@ -55,7 +55,6 @@ function createNotificationService({
   getWindow,
   icon,
   onError = () => {},
-  preparePresentation = () => {},
 }) {
   const popups = new Map();
   const show = (value) => {
@@ -118,7 +117,6 @@ function createNotificationService({
         reject(Error(message));
       });
       try {
-        preparePresentation();
         popup.show();
       } catch (error) {
         clearTimeout(timeout);
