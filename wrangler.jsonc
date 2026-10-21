@@ -5,6 +5,7 @@
   "workers_dev": true,
   "assets": {
     "directory": "./dist-standalone",
+    "html_handling": "none",
     "not_found_handling": "single-page-application",
   },
 }

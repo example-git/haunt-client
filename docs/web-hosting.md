@@ -21,11 +21,12 @@ Configure these repository secrets:
 - `CLOUDFLARE_ACCOUNT_ID`: that account's ID.
 
 Cloudflare serves application files and update metadata. Authentication, messages,
-uploads, and calls connect directly to the chosen community servers. Each server
-must include the standalone client's exact HTTPS origin in `HAUNT_CLIENT_ORIGINS`.
-For full-account sync sign-in, set `HAUNT_SYNC_TRUSTED_CLIENT_ORIGINS` on the sync
-service to that exact origin. Credentials remain scoped to the selected service;
-no traffic proxy is included.
+uploads, and calls connect directly to the chosen community servers. Successful
+deployments record the public origin in `web-deployment.json`. Server and sync
+Actions builds compile that origin into their trusted-client configuration.
+Local builds and additional hosts can use `HAUNT_CLIENT_ORIGINS` on community
+servers and `HAUNT_SYNC_TRUSTED_CLIENT_ORIGINS` on sync services. Credentials
+remain scoped to the selected service; no traffic proxy is included.
 
 ## Application caching and updates
 
