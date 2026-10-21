@@ -38,7 +38,7 @@ import { MenuAction, useContextMenu } from "./ContextMenu";
 import { NotificationRules } from "./ClientSettings";
 
 export function useDirectMessages(instances: InstanceClient[]) {
-  const directory = useMemo(() => new DirectMessageDirectory(), [instances]);
+  const [directory] = useState(() => new DirectMessageDirectory());
   useEffect(
     () => directory.start(instances, messageStore),
     [directory, instances],

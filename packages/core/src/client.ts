@@ -1345,7 +1345,6 @@ export class Client {
     deviceName: string,
     connect = false,
   ): Promise<void> {
-    await this.knownServers?.put(knownServer(source)).catch(() => {});
     const id = source.instance.instance_id;
     if (
       this.instances.get(id)?.snapshot.status !== "signed-out" &&
@@ -1354,6 +1353,7 @@ export class Client {
       return;
     if ((await this.vault.list()).some((a) => a.instance.instance_id === id))
       return;
+    await this.knownServers?.put(knownServer(source)).catch(() => {});
     const instance = await discover(source.origin, this.runtime);
     if (instance.instance_id !== id)
       throw Error(

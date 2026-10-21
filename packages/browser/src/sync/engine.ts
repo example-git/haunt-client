@@ -89,7 +89,41 @@ export function merge(
     if (
       changedLocal &&
       changedRemote &&
+      !choice &&
+      key.startsWith("server:") &&
+      local[key] &&
+      remote[key]
+    ) {
+      const localServer = local[key] as ClientBackup["servers"][number];
+      const remoteServer = remote[key] as ClientBackup["servers"][number];
+      if (
+        same({ ...localServer, lastUsed: 0 }, { ...remoteServer, lastUsed: 0 })
+      ) {
+        out[key] = {
+          ...remoteServer,
+          lastUsed: Math.max(localServer.lastUsed, remoteServer.lastUsed),
+        };
+        continue;
+      }
+    }
+    const localAccount = key.startsWith("account:")
+      ? (local[key] as ClientBackup["accounts"][number] | undefined)
+      : undefined;
+    const remoteAccount = key.startsWith("account:")
+      ? (remote[key] as ClientBackup["accounts"][number] | undefined)
+      : undefined;
+    const independentSessions =
+      localAccount &&
+      remoteAccount &&
+      localAccount.origin === remoteAccount.origin &&
+      localAccount.instance.instance_id ===
+        remoteAccount.instance.instance_id &&
+      localAccount.login.user.id === remoteAccount.login.user.id;
+    if (
+      changedLocal &&
+      changedRemote &&
       !same(local[key], remote[key]) &&
+      !independentSessions &&
       !choice
     )
       conflicts.push(key);

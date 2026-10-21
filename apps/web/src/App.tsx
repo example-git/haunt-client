@@ -362,8 +362,7 @@ export function App() {
   usePreventFileNavigation();
   const [headerTarget, setHeaderTarget] = useState<HTMLDivElement | null>(null);
   useEffect(installSounds, []);
-  const [version, setVersion] = useState(0),
-    [selected, setSelected] = useState(""),
+  const [selected, setSelected] = useState(""),
     [connect, setConnect] = useState(false),
     [restoring, setRestoring] = useState(true),
     [error, setError] = useState("");
@@ -415,7 +414,15 @@ export function App() {
   const [clientSettings, setClientSettings] = useState(false);
   const [view, setView] = useState<"home" | "server" | "dm">("home");
   const [direct, setDirect] = useState<{ scope: string; id: string }>();
-  const instances = useMemo(() => [...client.instances.values()], [version]);
+  const [instances, setInstances] = useState(() => [...client.instances.values()]);
+  const refreshInstances = () =>
+    setInstances((previous) => {
+      const next = [...client.instances.values()];
+      return next.length === previous.length &&
+        next.every((instance, index) => instance === previous[index])
+        ? previous
+        : next;
+    });
   const directMessages = useDirectMessages(instances);
   const activeDM =
     view === "dm" && direct
@@ -544,7 +551,7 @@ export function App() {
       .restore()
       .then(() => {
         setSelected(client.instances.keys().next().value ?? "");
-        setVersion((v) => v + 1);
+        refreshInstances();
         void resumeSync()
           .catch((e) => setError(friendlyError(e)))
           .finally(() => {
@@ -561,12 +568,12 @@ export function App() {
       setSelected(
         (current) => current || client.instances.keys().next().value || "",
       );
-      setVersion((v) => v + 1);
+      refreshInstances();
     };
     window.addEventListener("haunt-sync-restored", restored);
     return () => window.removeEventListener("haunt-sync-restored", restored);
   }, []);
-  useEffect(() => installBadges(client.instances.values()), [version]);
+  useEffect(() => installBadges(instances), [instances]);
   useEffect(
     () => window.hauntDesktop?.onNotificationError?.(reportNotificationError),
     [],
@@ -574,12 +581,12 @@ export function App() {
   useEffect(() => {
     for (const [id, instance] of client.instances)
       instance.setForeground(view === "server" && id === selected);
-  }, [version, selected, view]);
+  }, [instances, selected, view]);
   const instance = client.instances.get(selected);
   const joined = (value: InstanceClient) => {
     setView("server");
     setSelected(value.account.instance.instance_id);
-    setVersion(version + 1);
+    refreshInstances();
     setConnect(false);
   };
   const logout = async (instance: InstanceClient) => {
@@ -595,7 +602,7 @@ export function App() {
     setView("home");
     setDirect(undefined);
     setSelected(client.instances.keys().next().value ?? "");
-    setVersion((v) => v + 1);
+    refreshInstances();
   };
   const startCall = async (
     instance: InstanceClient,

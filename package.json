@@ -20,6 +20,7 @@
     "test": "vitest run",
     "test:version": "node --test scripts/tests/version-main.test.mjs",
     "test:browser-harness": "node --test scripts/tests/wait-chrome-port.test.mjs",
+    "test:chat-stability": "node scripts/check-chat-stability.mjs",
     "version:preview": "node scripts/version-main.mjs --preview",
     "test:integration": "node scripts/test-integration.mjs",
     "test:browser": "node scripts/check-browser-regressions.mjs",
