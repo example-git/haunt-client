@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { captureDesktop } from "./native-notification-ui.mjs";
+import { runMacInstaller } from "./observed-mac-installer.mjs";
 
 assert(
   process.env.CI === "true" &&
@@ -56,18 +57,14 @@ try {
     filename,
   ]);
   mounted = true;
-  await run(
-    "/bin/bash",
-    [
-      path.resolve("static/mac/Install Haunt.command"),
-      "--accept-local-signing",
-      "--no-open",
-      "--destination",
-      destination,
-      path.join(mount, "Haunt.app"),
-    ],
-    { timeout: 300000, maxBuffer: 2 * 1024 * 1024 },
-  );
+  await runMacInstaller([
+    path.resolve("static/mac/Install Haunt.command"),
+    "--accept-local-signing",
+    "--no-open",
+    "--destination",
+    destination,
+    path.join(mount, "Haunt.app"),
+  ]);
   await run("hdiutil", ["detach", mount]);
   mounted = false;
   report.beforeRequirement = await requirement();

@@ -27,7 +27,20 @@ export async function prepareLinuxAudio(scratch, target) {
   try {
     await fs.mkdir("test-results", { recursive: true });
     log = await fs.open(`test-results/notification-${target}-audio.log`, "a");
-    for (const command of ["pipewire", "wireplumber", "pipewire-pulse"])
+    children.push(spawn("pipewire", [], { stdio: ["ignore", log.fd, log.fd] }));
+    await expect
+      .poll(
+        async () => {
+          try {
+            return (await fs.stat(path.join(runtime, "pipewire-0"))).isSocket();
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 10000 },
+      )
+      .toBe(true);
+    for (const command of ["wireplumber", "pipewire-pulse"])
       children.push(spawn(command, [], { stdio: ["ignore", log.fd, log.fd] }));
     let identity;
     await expect
@@ -53,7 +66,19 @@ export async function prepareLinuxAudio(scratch, target) {
       "sink_name=haunt_ci",
       "sink_properties=device.description=Haunt_CI_Output",
     ]);
-    await run("pactl", ["set-default-sink", "haunt_ci"]);
+    await expect
+      .poll(
+        async () => {
+          try {
+            await run("pactl", ["set-default-sink", "haunt_ci"]);
+            return (await run("pactl", ["get-default-sink"])).stdout.trim();
+          } catch {
+            return "Audio policy is starting";
+          }
+        },
+        { timeout: 20000 },
+      )
+      .toBe("haunt_ci");
     const chunks = [];
     let remainder = Buffer.alloc(0),
       recordedBytes = 0;

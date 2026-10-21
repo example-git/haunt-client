@@ -31,8 +31,8 @@ export async function checkMessageBadges(
   const hidden = () =>
     app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0];
-      if (process.platform === "win32") window.minimize();
-      else window.hide();
+      if (process.platform === "darwin") window.hide();
+      else window.minimize();
     });
   const show = () =>
     app.evaluate(({ BrowserWindow }) => {

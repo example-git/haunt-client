@@ -94,6 +94,7 @@ jobs:
             test-results/fedora-notifications-*.json
             test-results/notification-*
             test-results/mac-local-update.json
+            test-results/mac-installer.log
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && steps.pack.outcome == 'success' }}
         with:

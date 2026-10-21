@@ -88,6 +88,7 @@ export function nativeNotificationUI(target, { clickButton = 1 } = {}) {
     return state;
   };
   return {
+    target,
     artifacts,
     setScaleFactor(value) {
       scaleFactor = value;

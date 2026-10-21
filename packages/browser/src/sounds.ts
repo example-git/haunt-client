@@ -54,7 +54,7 @@ function stopPing() {
   }
   pingSources.clear();
 }
-function unlock() {
+async function unlock() {
   if (typeof AudioContext === "undefined") return;
   if (!context) {
     context = new AudioContext();
@@ -73,21 +73,14 @@ function unlock() {
       };
     } else stopOutput = followAudioOutput(context);
   }
-  if (outputElement?.paused)
-    void outputElement
-      .play()
-      .catch((error) =>
-        reportNotificationError(`Notification audio failed: ${error.message}`),
-      );
-  if (context.state === "suspended")
-    void context
-      .resume()
-      .catch((error) =>
-        reportNotificationError(`Notification audio failed: ${error.message}`),
-      );
+  if (context.state === "suspended") await context.resume();
+  if (outputElement?.paused) await outputElement.play();
 }
 export function installSounds() {
-  const activate = () => unlock();
+  const activate = () =>
+    void unlock().catch((error) =>
+      reportNotificationError(`Notification audio failed: ${error.message}`),
+    );
   document.addEventListener("pointerdown", activate);
   document.addEventListener("keydown", activate);
   return () => {
@@ -198,7 +191,7 @@ export class VoiceCues {
 async function decodeSound(file: File) {
   if (file.size > 2 * 1024 * 1024 || !file.size)
     throw Error("Choose an audio file up to 2 MB.");
-  unlock();
+  await unlock();
   if (!context) throw Error("Audio playback is unavailable in this client.");
   let decoded: AudioBuffer;
   try {
@@ -272,7 +265,7 @@ export async function removePing() {
   setPreferences({ sound: "ping", customSoundName: "" });
 }
 export async function playPing(preview = false, selected?: NotificationSound) {
-  if (preview) unlock();
+  if (preview) await unlock();
   const prefs = getPreferences();
   const sound = selected ?? prefs.sound;
   if (sound === "none" || !prefs.volume)

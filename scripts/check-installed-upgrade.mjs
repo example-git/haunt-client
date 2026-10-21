@@ -3,6 +3,7 @@ import {
   checkNativeNotifications,
 } from "./check-native-notifications.mjs";
 import { captureDesktop } from "./native-notification-ui.mjs";
+import { runMacInstaller } from "./observed-mac-installer.mjs";
 // Native CI only. Install two real releases into a private directory/profile.
 // This tests full-installer replacement; the automatic ASAR restart is a separate
 // qualification case and is never inferred from this result.
@@ -131,18 +132,14 @@ async function install(filename) {
       filename,
     ]);
     try {
-      await run(
-        "/bin/bash",
-        [
-          path.resolve("static/mac/Install Haunt.command"),
-          "--accept-local-signing",
-          "--no-open",
-          "--destination",
-          path.join(installed, "Haunt.app"),
-          path.join(mount, "Haunt.app"),
-        ],
-        { timeout: 300000, maxBuffer: 2 * 1024 * 1024 },
-      );
+      await runMacInstaller([
+        path.resolve("static/mac/Install Haunt.command"),
+        "--accept-local-signing",
+        "--no-open",
+        "--destination",
+        path.join(installed, "Haunt.app"),
+        path.join(mount, "Haunt.app"),
+      ]);
       await run("codesign", [
         "--verify",
         "--deep",

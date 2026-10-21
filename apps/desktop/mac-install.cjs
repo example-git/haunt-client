@@ -45,13 +45,17 @@ function createMacInstaller(app) {
         ]);
         mounted = true;
         const stdout = await new Promise((resolve, reject) => {
-          const child = spawn("/bin/bash", [
-            path.join(resources, "Install Haunt.command"),
-            "--prepare-update",
-            "--destination",
-            destination,
-            path.join(mount, "Haunt.app"),
-          ]);
+          const child = spawn(
+            "/bin/bash",
+            [
+              path.join(resources, "Install Haunt.command"),
+              "--prepare-update",
+              "--destination",
+              destination,
+              path.join(mount, "Haunt.app"),
+            ],
+            { detached: true },
+          );
           let output = "",
             errors = "",
             pending = "";
@@ -75,19 +79,35 @@ function createMacInstaller(app) {
                 });
             }
           });
+          let timedOut = false,
+            force;
+          const terminate = (signal) => {
+            try {
+              process.kill(-child.pid, signal);
+            } catch (error) {
+              if (error.code !== "ESRCH") reject(error);
+            }
+          };
           const timeout = setTimeout(() => {
-            child.kill();
-            reject(
-              Error("Local signing timed out. The installed app is unchanged."),
-            );
+            timedOut = true;
+            terminate("SIGTERM");
+            force = setTimeout(() => terminate("SIGKILL"), 2000);
           }, 300_000);
           child.once("error", (error) => {
             clearTimeout(timeout);
+            clearTimeout(force);
             reject(error);
           });
           child.once("exit", (code) => {
             clearTimeout(timeout);
-            if (code === 0) resolve(output);
+            clearTimeout(force);
+            if (timedOut)
+              reject(
+                Error(
+                  "Local signing timed out. The installed app is unchanged.",
+                ),
+              );
+            else if (code === 0) resolve(output);
             else reject(Error(`Local signing failed: ${errors.trim()}`));
           });
         });

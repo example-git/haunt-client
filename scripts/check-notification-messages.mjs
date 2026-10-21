@@ -79,8 +79,8 @@ export async function checkNotificationMessages(app, page, native, report) {
   const hide = async () => {
     await app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0];
-      if (process.platform === "win32") window.minimize();
-      else window.hide();
+      if (process.platform === "darwin") window.hide();
+      else window.minimize();
     });
     await expect
       .poll(() => page.evaluate(() => document.hasFocus()))
@@ -88,17 +88,14 @@ export async function checkNotificationMessages(app, page, native, report) {
   };
   const settings = async () => {
     await show();
-    if (
-      !(await page
-        .getByRole("button", { name: "Client settings", exact: true })
-        .isVisible())
-    )
+    const button = page.getByRole("button", {
+      name: /^(Client settings|Account settings)$/,
+    });
+    if (!(await button.isVisible()))
       await page
         .getByRole("button", { name: /^(Show servers|Show channels)$/ })
         .click();
-    await page
-      .getByRole("button", { name: "Client settings", exact: true })
-      .click();
+    await button.click();
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Notification Settings", exact: true })
@@ -109,6 +106,13 @@ export async function checkNotificationMessages(app, page, native, report) {
       .getByRole("dialog")
       .getByRole("button", { name: "Close", exact: true })
       .click();
+  const enablePopups = async () => {
+    const checkbox = page.getByLabel(
+      "Desktop popups when the app is in the background",
+    );
+    if (!(await checkbox.isChecked())) await checkbox.click();
+    await expect(checkbox).toBeChecked();
+  };
   const select = async (name) => {
     const sidebar = page.getByRole("button", {
       name: "Show channels",
@@ -124,6 +128,28 @@ export async function checkNotificationMessages(app, page, native, report) {
   const delivered = async (body) => {
     await native.expectPopup(body);
     checks.push({ body, nativePopup: "visible" });
+  };
+  const badge = async (count, label) => {
+    if (process.platform === "darwin")
+      await expect
+        .poll(() => app.evaluate(({ app }) => app.dock.getBadge()))
+        .toBe(count ? String(count) : "");
+    if (native.records) {
+      const latest = async () =>
+        (await native.records())
+          .filter((record) => record.kind === "badge")
+          .at(-1);
+      await expect.poll(async () => (await latest())?.count).toBe(count);
+      const record = await latest();
+      assert.equal(record.application, `application://${native.desktop}`);
+      assert.equal(record.visible, count > 0);
+      checks.push({ badge: record });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const screenshot = `test-results/notification-${native.target}-badge-${label}.png`;
+    await native.capture(screenshot);
+    native.artifacts.push(screenshot);
+    checks.push({ badgeCount: count, screenshot });
   };
   const absent = async (body) => {
     await native.expectNoPopup(body);
@@ -164,9 +190,7 @@ export async function checkNotificationMessages(app, page, native, report) {
     await page.getByLabel("Mentions of me", { exact: true }).check();
     await page.getByLabel("Direct messages", { exact: true }).check();
     await page.getByLabel("All channel messages", { exact: true }).uncheck();
-    await page
-      .getByLabel("Desktop popups when the app is in the background")
-      .check();
+    await enablePopups();
     await page.getByLabel("Show message previews in desktop popups").check();
     await page.getByLabel("Ping sound", { exact: true }).selectOption("ping");
     await closeSettings();
@@ -194,6 +218,7 @@ export async function checkNotificationMessages(app, page, native, report) {
     await delivered("Haunt direct message");
     await sound(soundStart, true);
     await expect(page).toHaveTitle("(2) Haunt");
+    await badge(2, "incoming");
     if (process.platform === "darwin") {
       await expect
         .poll(() => app.evaluate(({ app }) => app.dock.getBadge()))
@@ -208,6 +233,7 @@ export async function checkNotificationMessages(app, page, native, report) {
       page.locator(".message-body").filter({ hasText: "Haunt direct message" }),
     ).toBeVisible();
     await expect(page).toHaveTitle("(1) Haunt");
+    await badge(1, "read-dm");
     checks.push({ click: "restored app, opened DM, cleared its unread state" });
     await settings();
     await page.getByLabel("Show message previews in desktop popups").uncheck();
@@ -243,9 +269,7 @@ export async function checkNotificationMessages(app, page, native, report) {
     await absent("Haunt popup disabled message");
     await sound(soundStart, true);
     await settings();
-    await page
-      .getByLabel("Desktop popups when the app is in the background")
-      .check();
+    await enablePopups();
     await page.getByLabel("All channel messages", { exact: true }).check();
     await closeSettings();
     await hide();
@@ -265,6 +289,7 @@ export async function checkNotificationMessages(app, page, native, report) {
     await hide();
     await delivered("Haunt notification test");
     await expect(page).toHaveTitle(`(${countBefore + 1}) Haunt`);
+    await badge(countBefore + 1, "settings-test");
     if (process.platform === "darwin")
       await expect
         .poll(() => app.evaluate(({ app }) => app.dock.getBadge()))
@@ -274,6 +299,7 @@ export async function checkNotificationMessages(app, page, native, report) {
       .getByRole("button", { name: "Clear test badge", exact: true })
       .click();
     await expect(page).toHaveTitle(titleBefore);
+    await badge(countBefore, "test-cleared");
     await closeSettings();
     assert.deepEqual(server.unexpected, []);
     await settings();
