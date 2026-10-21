@@ -308,7 +308,7 @@ async function startMain() {
       callback(true);
       return;
     }
-    if (permission !== "media") {
+    if (permission !== "media" && permission !== "display-capture") {
       callback(false);
       return;
     }
