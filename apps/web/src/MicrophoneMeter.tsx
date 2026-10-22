@@ -11,6 +11,7 @@ import {
 } from "@haunt/browser/media/microphone";
 
 import type { PluginSelection } from "@haunt/browser/audio-plugins/contract";
+import { openMicrophone } from "@haunt/browser/media/microphone-input";
 
 /** Local processed-mic monitor. Playback is explicit and never published. */
 export function MicrophoneMeter({
@@ -105,14 +106,10 @@ export function MicrophoneMeter({
         throw Error(
           "Microphone access requires HTTPS, localhost or the desktop app.",
         );
-      const captured = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: device ? { exact: device } : undefined,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: desired.current.automaticGain,
-        },
-      });
+      const captured = await openMicrophone(
+        device,
+        desired.current.automaticGain,
+      );
       if (closed) {
         captured.getTracks().forEach((t) => t.stop());
         return;

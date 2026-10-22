@@ -16,6 +16,7 @@ import type { LocalTracks, MediaTransport } from "./types";
 import { VoiceCues } from "../sounds";
 import { getPreferences, subscribePreferences } from "../preferences";
 import { MicrophoneCapture, type NoiseStatus } from "./microphone";
+import { openMicrophone } from "./microphone-input";
 import {
   NativeCapture,
   nativeCaptures,
@@ -67,6 +68,7 @@ export class Call {
   private microphoneDevice = "";
   private microphoneGeneration = 0;
   private microphoneReplacement: Promise<void> = Promise.resolve();
+  private microphonePendingDevice?: string;
   private offDeviceChange?: () => void;
   private speakingTrack?: MediaStreamTrack;
   private monitoringState?: MediaState;
@@ -165,17 +167,10 @@ export class Call {
           "Voice and video need the desktop app or a browser page served over HTTPS (or localhost).",
         );
       const prefs = getPreferences();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: prefs.microphone ? { ideal: prefs.microphone } : undefined,
-          echoCancellation: false,
-          noiseSuppression: false,
-          sampleRate: { ideal: 48000 },
-          channelCount: { ideal: 1 },
-          autoGainControl: prefs.automaticGainControl,
-        },
-        video: false,
-      });
+      const stream = await openMicrophone(
+        prefs.microphone,
+        prefs.automaticGainControl,
+      );
       if (this.ended) {
         stream.getTracks().forEach((t) => t.stop());
         return;
@@ -204,7 +199,10 @@ export class Call {
       this.microphoneDevice = prefs.microphone;
       const refreshProcessing = () => {
         const device = getPreferences().microphone;
-        if (device !== this.microphoneDevice) {
+        if (
+          device !== this.microphoneDevice ||
+          this.microphonePendingDevice !== undefined
+        ) {
           if (this.snapshot.status === "connected")
             void this.replaceMicrophone();
           return;
@@ -270,10 +268,20 @@ export class Call {
     }
   }
   private replaceMicrophone() {
+    const device = getPreferences().microphone;
+    // Loading the replacement's audio plugin emits progress updates. Those
+    // updates must not cancel and restart the same device change indefinitely.
+    if (device === this.microphonePendingDevice)
+      return this.microphoneReplacement;
+    this.microphonePendingDevice = device;
     const generation = ++this.microphoneGeneration;
     this.microphoneReplacement = this.microphoneReplacement
       .catch(() => {})
-      .then(() => this.performMicrophoneReplacement(generation));
+      .then(() => this.performMicrophoneReplacement(generation))
+      .finally(() => {
+        if (generation === this.microphoneGeneration)
+          this.microphonePendingDevice = undefined;
+      });
     return this.microphoneReplacement;
   }
   private async performMicrophoneReplacement(generation: number) {
@@ -288,17 +296,10 @@ export class Call {
     let microphone: MicrophoneCapture | undefined;
     const abort = new AbortController();
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: prefs.microphone ? { ideal: prefs.microphone } : undefined,
-          echoCancellation: false,
-          noiseSuppression: false,
-          sampleRate: { ideal: 48000 },
-          channelCount: { ideal: 1 },
-          autoGainControl: prefs.automaticGainControl,
-        },
-        video: false,
-      });
+      stream = await openMicrophone(
+        prefs.microphone,
+        prefs.automaticGainControl,
+      );
       if (this.ended || generation !== this.microphoneGeneration) {
         stream.getTracks().forEach((track) => track.stop());
         return;
@@ -358,6 +359,7 @@ export class Call {
       previousAbort?.abort();
       previousMicrophone?.close();
       previousStream?.getTracks().forEach((track) => track.stop());
+      await this.refreshProcessing();
       this.change({ error: undefined });
     } catch (error) {
       abort.abort();
@@ -490,6 +492,8 @@ export class Call {
       if (this.ended || generation !== this.generation) return;
       for (const p of participants ?? []) this.participant(p);
       this.change({ status: "connected", error: undefined });
+      if (getPreferences().microphone !== this.microphoneDevice)
+        void this.replaceMicrophone();
       this.stable = setTimeout(() => {
         this.failures = 0;
       }, 30_000);

@@ -25,6 +25,7 @@ import { checkImageCache } from "./check-image-cache.mjs";
 import { checkMediaStatus } from "./check-media-status.mjs";
 import { checkNativeMedia } from "./check-native-media-runtime.mjs";
 import { checkAudio } from "./check-audio.mjs";
+import { checkMicrophoneSelection } from "./check-microphone-selection.mjs";
 import { checkWindows } from "./check-windows.mjs";
 import { checkBranding } from "./check-branding.mjs";
 import { checkPresenceAppearance } from "./check-presence-appearance.mjs";
@@ -181,6 +182,7 @@ try {
       "signin-browser",
       "secure-dm",
       "source-audio",
+      "microphone-selection",
       "narrator",
       "ui-refresh",
       "public-downloads",
@@ -543,6 +545,17 @@ try {
     await checkModeration(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "emojis") {
     await checkEmojis(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "microphone-selection") {
+    await checkScreen(process.env.HAUNT_PACKAGED_EXECUTABLE, async (page) => {
+      await checkMicrophoneSelection(page, browser, fixtures, "electron");
+    });
+    const context = await browser.newContext({ permissions: ["microphone"] });
+    try {
+      const page = await context.newPage();
+      await checkMicrophoneSelection(page, browser, fixtures, "browser");
+    } finally {
+      await context.close();
+    }
   } else if (process.env.HAUNT_CLIENT_CHECK === "audio") {
     const ctx = await browser.newContext({
       permissions: ["microphone", "camera"],
