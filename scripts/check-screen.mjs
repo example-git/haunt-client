@@ -25,28 +25,33 @@ export async function checkScreen(executablePath, afterCheck) {
   const cleanup = () =>
     (cleaning ??= (async () => {
       await desktop?.close().catch(() => {});
-      if (
-        captureWindow &&
-        captureWindow.exitCode === null &&
-        captureWindow.signalCode === null
-      ) {
-        process.kill(-captureWindow.pid, "SIGTERM");
-        await once(captureWindow, "exit");
-      }
-      if (wm && wm.exitCode === null && wm.signalCode === null) {
-        process.kill(-wm.pid, "SIGTERM");
-        await once(wm, "exit");
-      }
-      if (xvfb.exitCode === null && xvfb.signalCode === null) {
-        process.kill(-xvfb.pid, "SIGTERM");
-        await Promise.race([
-          once(xvfb, "exit"),
-          new Promise((resolve) => setTimeout(resolve, 2000)),
-        ]);
-        if (xvfb.exitCode === null && xvfb.signalCode === null) {
-          process.kill(-xvfb.pid, "SIGKILL");
-          await once(xvfb, "exit");
+      for (const child of [captureWindow, wm, xvfb]) {
+        if (!child?.pid) continue;
+        const signal = (value) => {
+          try {
+            process.kill(-child.pid, value);
+          } catch (error) {
+            if (error.code !== "ESRCH") throw error;
+          }
+        };
+        const exited =
+          child.exitCode === null && child.signalCode === null
+            ? once(child, "exit")
+            : Promise.resolve();
+        let timer;
+        signal("SIGTERM");
+        try {
+          await Promise.race([
+            exited,
+            new Promise((resolve) => {
+              timer = setTimeout(resolve, 2000);
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+          signal("SIGKILL");
         }
+        await exited;
       }
       await fs.rm(scratch, { recursive: true, force: true });
     })());
