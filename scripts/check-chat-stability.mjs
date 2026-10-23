@@ -37,7 +37,7 @@ try {
     id: "33333333-3333-4333-8333-333333333333",
     name: "general",
     kind: "text",
-    permissions: 65535,
+    permissions: 262143,
     category_id: null,
   };
   const dm = {
@@ -126,7 +126,7 @@ try {
       body = {
         user: own,
         session_id: account.login.session.id,
-        permissions: 65535,
+        permissions: 262143,
         role_position: 100,
       };
     else if (url.pathname === "/api/v1/channels") body = { channels };

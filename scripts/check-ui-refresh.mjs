@@ -135,6 +135,12 @@ export async function checkUIRefresh(browser, fixtures) {
     await owner.getByLabel("Role name", { exact: true }).fill("Administrator");
     await owner.getByLabel("Role rank").fill("50");
     await owner.getByLabel("Administrator", { exact: true }).check();
+    await expect(
+      owner.getByLabel("Mute members", { exact: true }),
+    ).toBeChecked();
+    await expect(
+      owner.getByLabel("Deafen members", { exact: true }),
+    ).toBeChecked();
     for (const checkbox of await owner
       .locator(".permission-checks input")
       .all())
@@ -182,7 +188,7 @@ export async function checkUIRefresh(browser, fixtures) {
     });
     const principal = await request("GET", "/api/v1/me", aliceAPI.token);
     assert.equal(principal.user.is_owner, false);
-    assert.equal(principal.permissions, 65535);
+    assert.equal(principal.permissions, 262143);
     await request(
       "PUT",
       `/api/v1/members/${aliceAPI.user.id}/roles`,
