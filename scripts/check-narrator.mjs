@@ -290,7 +290,8 @@ export async function checkNarrator(browser, fixtures) {
       await checkSettingsLayout(listener, mode);
       await closeSettings();
       await actor.evaluate(() => {
-        navigator.mediaDevices.getDisplayMedia = async () => {
+        navigator.mediaDevices.getDisplayMedia = async (constraints) => {
+          const fps = constraints.video.frameRate.max;
           const canvas = document.createElement("canvas");
           canvas.width = 160;
           canvas.height = 90;
@@ -299,8 +300,8 @@ export async function checkNarrator(browser, fixtures) {
             const draw = canvas.getContext("2d");
             draw.fillStyle = frame++ % 2 ? "#39a" : "#a39";
             draw.fillRect(0, 0, 160, 90);
-          }, 100);
-          const stream = canvas.captureStream(10);
+          }, 1000 / fps);
+          const stream = canvas.captureStream(fps);
           stream
             .getVideoTracks()[0]
             .addEventListener("ended", () => clearInterval(timer));
