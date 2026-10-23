@@ -30,15 +30,18 @@ export function MenuAction({
   children,
   onClick,
   danger = false,
+  disabled = false,
 }: {
   children: ReactNode;
   onClick: () => void;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   const { close } = useContext(Context);
   return (
     <button
       role="menuitem"
+      disabled={disabled}
       className={danger ? "danger-text" : undefined}
       onClick={() => {
         close();

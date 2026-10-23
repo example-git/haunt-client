@@ -1,5 +1,5 @@
 import { isAudioPurpose, mediaPurposes } from "@haunt/core";
-import type { Participant, Purpose, WireEvent } from "@haunt/core";
+import type { MediaState, Participant, Purpose, WireEvent } from "@haunt/core";
 import type { LocalTracks, MediaTransport, TransportContext } from "./types";
 import { audioBitrate, fullBandOpus } from "./audio-quality";
 import { NativePublisher } from "./native-publisher";
@@ -38,6 +38,12 @@ export class WebRTCTransport implements MediaTransport {
     { pc: RTCPeerConnection; signature: string }
   >();
   private closed = false;
+  private stateValue: MediaState = {
+    muted: true,
+    deafened: false,
+    camera_off: true,
+    screen_off: true,
+  };
   constructor(private context: TransportContext) {}
   private peer() {
     const a = this.context.admission;
@@ -60,7 +66,7 @@ export class WebRTCTransport implements MediaTransport {
   async publish(tracks: LocalTracks) {
     if ([...tracks.values()].some((track) => nativeCaptures.has(track))) {
       const previous = this.nativePublisher;
-      const next = new NativePublisher(this.context);
+      const next = new NativePublisher(this.context, () => this.stateValue);
       this.nativePublisher = next;
       try {
         await next.publish(tracks);
@@ -148,6 +154,8 @@ export class WebRTCTransport implements MediaTransport {
         ]);
     }
     pc.ontrack = (event) => {
+      if (event.track.kind === "audio")
+        event.track.enabled = !this.stateValue.deafened;
       const index = pc
         .getTransceivers()
         .findIndex((t) => t.receiver === event.receiver);
@@ -198,7 +206,12 @@ export class WebRTCTransport implements MediaTransport {
     for (const p of purposes) this.context.remote(id, p, null);
   }
   event(_event: WireEvent) {}
-  state() {}
+  state(state: MediaState) {
+    this.stateValue = state;
+    for (const { pc } of this.receivers.values())
+      for (const { track } of pc.getReceivers())
+        if (track.kind === "audio") track.enabled = !state.deafened;
+  }
   close() {
     this.closed = true;
     this.nativePublisher?.close();

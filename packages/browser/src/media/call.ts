@@ -18,6 +18,13 @@ import { getPreferences, subscribePreferences } from "../preferences";
 import { MicrophoneCapture, type NoiseStatus } from "./microphone";
 import { openMicrophone } from "./microphone-input";
 import {
+  effectiveMediaState,
+  microphoneLoopbacks,
+  publicationBlocked,
+  sameMediaState,
+  type VoiceIntent,
+} from "./state";
+import {
   NativeCapture,
   nativeCaptures,
   nativeCaptureAvailable,
@@ -35,12 +42,16 @@ export interface CallSnapshot {
   participants: Participant[];
   remote: RemoteMedia[];
   local: { purpose: Purpose; stream: MediaStream }[];
-  state: MediaState;
+  state: Readonly<MediaState>;
+  microphoneMonitoring: boolean;
   busy: boolean;
   noiseSuppression?: NoiseStatus;
 }
 export class Call {
-  snapshot: CallSnapshot;
+  private snapshotValue: CallSnapshot;
+  get snapshot(): Readonly<CallSnapshot> {
+    return this.snapshotValue;
+  }
   readonly speaking = new SpeakingActivity();
   private offSpeaking?: () => void;
   private speakingParticipant?: string;
@@ -62,6 +73,8 @@ export class Call {
   private failures = 0;
   private cues: VoiceCues;
   private microphone?: MicrophoneCapture;
+  private microphones = new Set<MicrophoneCapture>();
+  private pendingMicrophones = new Set<MediaStream>();
   private microphoneStream?: MediaStream;
   private offPreferences?: () => void;
   private microphoneAbort?: AbortController;
@@ -71,27 +84,34 @@ export class Call {
   private microphonePendingDevice?: string;
   private offDeviceChange?: () => void;
   private speakingTrack?: MediaStreamTrack;
-  private monitoringState?: MediaState;
-  private monitoringTask: Promise<void> = Promise.resolve();
+  private voiceIntent: VoiceIntent = { muted: false, deafened: false };
+  private offLoopback: () => void;
+  private stateTask?: Promise<void>;
+  private synchronizedState?: MediaState;
+  private stateSession = 0;
+  private stateReady = false;
+  private observedTracks = new Map<MediaStreamTrack, () => void>();
+  private publication: Promise<void> = Promise.resolve();
   constructor(
     readonly client: InstanceClient,
     readonly room: string,
   ) {
     this.cues = new VoiceCues(client.account.login.user.id);
-    this.snapshot = {
+    this.snapshotValue = Object.freeze({
       status: "joining",
       room,
       participants: [],
       remote: [],
       local: [],
-      state: {
-        muted: false,
-        deafened: false,
-        camera_off: true,
-        screen_off: true,
-      },
+      state: effectiveMediaState(this.voiceIntent, {
+        microphone: false,
+        camera: false,
+        screen: false,
+        loopback: microphoneLoopbacks.getSnapshot(),
+      }),
+      microphoneMonitoring: microphoneLoopbacks.getSnapshot(),
       busy: false,
-    };
+    });
     this.unsubscribe = client.onWire((e) => this.event(e));
     this.offConnection = client.subscribe(() => {
       if (
@@ -99,6 +119,12 @@ export class Call {
         client.snapshot.status === "online"
       )
         this.reconnect();
+    });
+    this.offLoopback = microphoneLoopbacks.subscribe(() => {
+      if (!this.ended) {
+        this.change();
+        this.synchronizeStateInBackground();
+      }
     });
   }
   subscribe = (fn: () => void) => {
@@ -109,7 +135,41 @@ export class Call {
   };
   getSnapshot = () => this.snapshot;
   private change(patch: Partial<CallSnapshot> = {}) {
-    this.snapshot = { ...this.snapshot, ...patch };
+    const usable = (track?: MediaStreamTrack) =>
+      !!track && track.readyState === "live" && !track.muted;
+    const state = effectiveMediaState(this.voiceIntent, {
+      microphone:
+        usable(this.tracks.get("audio")) &&
+        usable(this.microphoneStream?.getAudioTracks()[0]),
+      camera: usable(this.tracks.get("camera")),
+      screen: usable(this.tracks.get("screen")),
+      loopback: microphoneLoopbacks.getSnapshot(),
+    });
+    // Gate capture and playback before publishing a snapshot or waiting on the
+    // network. UI, meters and signaling all read this same derived value.
+    for (const microphone of this.microphones) microphone.setMuted(state.muted);
+    for (const stream of this.pendingMicrophones)
+      for (const track of stream.getAudioTracks()) track.enabled = !state.muted;
+    for (const [purpose, track] of this.tracks)
+      track.enabled = !publicationBlocked(state, purpose);
+    const remote = patch.remote ?? this.snapshot.remote;
+    for (const media of remote)
+      for (const track of media.stream.getAudioTracks())
+        track.enabled = !state.deafened;
+    this.transport?.state(state);
+    const next = {
+      ...this.snapshot,
+      ...patch,
+      state,
+      microphoneMonitoring: microphoneLoopbacks.getSnapshot(),
+    };
+    // A delayed server echo must not overwrite our current effective controls.
+    next.participants = next.participants.map((participant) =>
+      participant.participant_id === next.participantId
+        ? { ...participant, state }
+        : participant,
+    );
+    this.snapshotValue = Object.freeze(next);
     const id = this.snapshot.participantId;
     const speakingTrack = this.tracks.get("audio");
     if (
@@ -178,6 +238,12 @@ export class Call {
       const abort = new AbortController();
       this.microphoneAbort = abort;
       this.microphoneStream = stream;
+      this.pendingMicrophones.add(stream);
+      stream.getAudioTracks()[0].enabled = !(
+        this.voiceIntent.muted ||
+        this.voiceIntent.deafened ||
+        microphoneLoopbacks.getSnapshot()
+      );
       const microphone = await MicrophoneCapture.open(
         stream,
         false,
@@ -196,6 +262,10 @@ export class Call {
         return;
       }
       this.microphone = microphone;
+      this.pendingMicrophones.delete(stream);
+      this.microphones.add(microphone);
+      this.observeTrack(stream.getAudioTracks()[0]);
+      this.observeTrack(microphone.track);
       this.microphoneDevice = prefs.microphone;
       const refreshProcessing = () => {
         const device = getPreferences().microphone;
@@ -300,10 +370,12 @@ export class Call {
         prefs.microphone,
         prefs.automaticGainControl,
       );
+      stream.getAudioTracks()[0].enabled = !this.snapshot.state.muted;
       if (this.ended || generation !== this.microphoneGeneration) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
+      this.pendingMicrophones.add(stream);
       microphone = await MicrophoneCapture.open(
         stream,
         prefs.noiseSuppression,
@@ -323,15 +395,24 @@ export class Call {
         return;
       }
       microphone.setMuted(this.snapshot.state.muted);
+      this.pendingMicrophones.delete(stream);
+      this.microphones.add(microphone);
       const previousMicrophone = this.microphone,
         previousStream = this.microphoneStream,
         previousAbort = this.microphoneAbort,
         previousTrack = this.tracks.get("audio");
+      this.microphone = microphone;
+      this.microphoneStream = stream;
+      this.microphoneAbort = abort;
       this.tracks.set("audio", microphone.track);
       this.updateLocal();
       try {
-        await this.transport?.publish(this.tracks);
+        await this.publishTracks();
       } catch (error) {
+        if (this.ended) throw error;
+        this.microphone = previousMicrophone;
+        this.microphoneStream = previousStream;
+        this.microphoneAbort = previousAbort;
         if (previousTrack) this.tracks.set("audio", previousTrack);
         this.updateLocal();
         this.reconnect(
@@ -345,10 +426,9 @@ export class Call {
         microphone.close();
         return;
       }
-      this.microphone = microphone;
-      this.microphoneStream = stream;
-      this.microphoneAbort = abort;
       this.microphoneDevice = prefs.microphone;
+      this.observeTrack(stream.getAudioTracks()[0]);
+      this.observeTrack(microphone.track);
       stream.getAudioTracks()[0].onended = () => {
         if (!this.ended && this.microphoneStream === stream)
           void this.replaceMicrophone();
@@ -358,7 +438,10 @@ export class Call {
       });
       previousAbort?.abort();
       previousMicrophone?.close();
+      if (previousMicrophone) this.microphones.delete(previousMicrophone);
       previousStream?.getTracks().forEach((track) => track.stop());
+      this.change();
+      this.synchronizeStateInBackground();
       await this.refreshProcessing();
       this.change({ error: undefined });
     } catch (error) {
@@ -372,6 +455,10 @@ export class Call {
               ? `Could not switch microphones: ${error.message}`
               : "Could not switch microphones.",
         });
+    } finally {
+      if (stream) this.pendingMicrophones.delete(stream);
+      if (microphone && microphone !== this.microphone)
+        this.microphones.delete(microphone);
     }
   }
   private preparing?: Promise<void>;
@@ -424,6 +511,7 @@ export class Call {
     if (this.joining || this.ended || !this.tracks.has("audio")) return;
     this.joining = true;
     const generation = ++this.generation;
+    this.resetStateSynchronization();
     clearTimeout(this.renewal);
     clearTimeout(this.stable);
     this.transport?.close();
@@ -467,23 +555,30 @@ export class Call {
             this.reconnect(error.message);
         },
       };
-      if (admission.transport === "webrtc")
-        this.transport = new WebRTCTransport(context);
-      else if (admission.transport === "websocket")
-        this.transport = new EncodedTransport(context);
-      else
+      const transport =
+        admission.transport === "webrtc"
+          ? new WebRTCTransport(context)
+          : admission.transport === "websocket"
+            ? new EncodedTransport(context)
+            : undefined;
+      if (!transport)
         throw Error("This server selected an unsupported calling transport.");
-      await this.transport.start();
-      if (this.ended || generation !== this.generation) {
-        this.transport.close();
+      this.transport = transport;
+      await transport.start();
+      if (
+        this.ended ||
+        generation !== this.generation ||
+        this.transport !== transport
+      ) {
+        transport.close();
         return;
       }
-      this.transport.state(this.snapshot.state);
-      await this.client.command(
-        { type: "media.state", state: this.snapshot.state },
-        "media.state.accepted",
-      );
-      await this.transport.publish(this.tracks);
+      this.stateReady = true;
+      this.change();
+      await this.synchronizeState();
+      if (this.ended || generation !== this.generation || !this.transport)
+        return;
+      await this.publishTracks();
       const { participants } = await unwrap(
         this.client.http.GET("/api/v1/voice/{id}", {
           params: { path: { id: this.room } },
@@ -505,6 +600,8 @@ export class Call {
             Date.parse(admission.ice_expires_at) - Date.now() - 120_000,
           ),
         );
+    } catch (error) {
+      if (!this.ended && generation === this.generation) throw error;
     } finally {
       this.joining = false;
     }
@@ -524,7 +621,9 @@ export class Call {
     if (this.ended) return;
     if (event.type === "connection.lost") {
       this.generation++;
+      this.resetStateSynchronization();
       this.transport?.close();
+      this.transport = undefined;
       this.change({
         status: "reconnecting",
         remote: [],
@@ -561,7 +660,11 @@ export class Call {
   }
   private reconnect(error = "Reconnecting the call…") {
     if (this.ended || this.retry) return;
-    this.change({ status: "reconnecting", error });
+    this.generation++;
+    this.resetStateSynchronization();
+    this.transport?.close();
+    this.transport = undefined;
+    this.change({ status: "reconnecting", error, remote: [] });
     if (this.client.snapshot.status !== "online") return;
     if (this.failures++ >= 4) {
       void this.end(
@@ -583,6 +686,20 @@ export class Call {
     );
   }
   private updateLocal() {
+    for (const track of this.tracks.values()) this.observeTrack(track);
+    for (const track of this.microphoneStream?.getTracks() ?? [])
+      this.observeTrack(track);
+    for (const [track, off] of this.observedTracks) {
+      if (
+        [
+          ...this.tracks.values(),
+          ...(this.microphoneStream?.getTracks() ?? []),
+        ].includes(track)
+      )
+        continue;
+      off();
+      this.observedTracks.delete(track);
+    }
     this.change({
       local: [...this.tracks].map(([purpose, track]) => ({
         purpose,
@@ -590,38 +707,118 @@ export class Call {
       })),
     });
   }
-  async setState(patch: Partial<MediaState>) {
-    const state = { ...this.snapshot.state, ...patch };
-    if (this.snapshot.status !== "connected") return;
-    await this.client.command(
-      { type: "media.state", state },
-      "media.state.accepted",
-    );
-    this.tracks.get("audio")!.enabled = !state.muted;
-    this.microphone?.setMuted(state.muted);
-    this.transport?.state(state);
-    this.change({ state });
+  private observeTrack(track: MediaStreamTrack) {
+    if (this.observedTracks.has(track)) return;
+    const changed = () => {
+      if (this.ended) return;
+      this.change();
+      this.synchronizeStateInBackground();
+    };
+    for (const event of ["mute", "unmute", "ended"])
+      track.addEventListener(event, changed);
+    this.observedTracks.set(track, () => {
+      for (const event of ["mute", "unmute", "ended"])
+        track.removeEventListener(event, changed);
+    });
   }
-  setMicrophoneMonitoring(listening: boolean) {
-    this.monitoringTask = this.monitoringTask
+  private resetStateSynchronization() {
+    this.stateSession++;
+    this.stateReady = false;
+    this.synchronizedState = undefined;
+    this.stateTask = undefined;
+  }
+  private synchronizeStateInBackground() {
+    const session = this.stateSession;
+    void this.synchronizeState().catch((error: Error) => {
+      if (!this.ended && session === this.stateSession)
+        this.reconnect(`Could not synchronize call controls: ${error.message}`);
+    });
+  }
+  private synchronizeState(): Promise<void> {
+    if (!this.stateReady || this.ended) return Promise.resolve();
+    if (this.stateTask) return this.stateTask;
+    const session = this.stateSession;
+    const task = (async () => {
+      while (!this.ended && this.stateReady && session === this.stateSession) {
+        const state = this.snapshot.state;
+        if (
+          this.synchronizedState &&
+          sameMediaState(state, this.synchronizedState)
+        )
+          return;
+        await this.client.command(
+          { type: "media.state", state },
+          "media.state.accepted",
+        );
+        if (session !== this.stateSession) return;
+        this.synchronizedState = state;
+      }
+    })();
+    this.stateTask = task;
+    const finished = (success: boolean) => {
+      if (this.stateTask === task) this.stateTask = undefined;
+      if (
+        success &&
+        session === this.stateSession &&
+        this.synchronizedState &&
+        !sameMediaState(this.snapshot.state, this.synchronizedState)
+      )
+        this.synchronizeStateInBackground();
+    };
+    void task.then(
+      () => finished(true),
+      () => finished(false),
+    );
+    return task;
+  }
+  async setState(patch: Partial<VoiceIntent>) {
+    if (
+      Object.entries(patch).some(
+        ([key, value]) =>
+          !["muted", "deafened"].includes(key) || typeof value !== "boolean",
+      )
+    )
+      throw Error(
+        "Only microphone and deafen intent can be set directly. Camera and screen state follow their active sources.",
+      );
+    if (this.ended) return;
+    this.voiceIntent = { ...this.voiceIntent, ...patch };
+    this.change();
+    const session = this.stateSession;
+    try {
+      await this.synchronizeState();
+    } catch (error) {
+      if (session === this.stateSession)
+        this.reconnect("Could not synchronize call controls. Reconnecting…");
+      throw error;
+    }
+  }
+  private publishTracks() {
+    const transport = this.transport;
+    const task = this.publication
       .catch(() => {})
       .then(async () => {
-        if (this.ended || this.snapshot.status !== "connected") return;
-        if (listening) {
-          if (this.monitoringState) return;
-          this.monitoringState = { ...this.snapshot.state };
-          await this.setState({ muted: true, deafened: true });
-        } else if (this.monitoringState) {
-          const state = this.monitoringState;
-          this.monitoringState = undefined;
-          await this.setState({ muted: state.muted, deafened: state.deafened });
-        }
+        if (!transport || transport !== this.transport || this.ended) return;
+        await transport.publish(new Map(this.tracks));
       });
-    return this.monitoringTask;
+    this.publication = task;
+    return task;
+  }
+  private stopVideo(purpose: "camera" | "screen") {
+    const track = this.tracks.get(purpose);
+    if (!track) return;
+    this.tracks.delete(purpose);
+    track.onended = null;
+    nativeCaptures.get(track)?.close();
+    track.stop();
+    const audioPurpose = purpose === "camera" ? "camera_audio" : "screen_audio";
+    this.tracks.get(audioPurpose)?.stop();
+    this.tracks.delete(audioPurpose);
   }
   async toggleVideo(purpose: "camera" | "screen") {
     if (this.snapshot.busy || this.snapshot.status !== "connected") return;
     this.change({ busy: true });
+    let changed = false;
     try {
       const audioPurpose =
         purpose === "camera" ? "camera_audio" : "screen_audio";
@@ -631,12 +828,8 @@ export class Call {
         ) ?? false;
       const old = this.tracks.get(purpose);
       if (old) {
-        nativeCaptures.get(old)?.close();
-        old.onended = null;
-        old.stop();
-        this.tracks.delete(purpose);
-        this.tracks.get(audioPurpose)?.stop();
-        this.tracks.delete(audioPurpose);
+        this.stopVideo(purpose);
+        changed = true;
       } else {
         const native = nativeCaptureAvailable()
           ? await NativeCapture.open(purpose, sourceAudio)
@@ -687,33 +880,43 @@ export class Call {
         }
         const track = stream.getVideoTracks()[0];
         if (!track) {
+          native?.close();
           stream.getTracks().forEach((t) => t.stop());
           throw Error("No video source was selected.");
         }
         this.tracks.set(purpose, track);
+        changed = true;
         const audio = stream.getAudioTracks()[0];
         if (audio) this.tracks.set(audioPurpose, audio);
         const ended = () => {
           if (this.ended || this.tracks.get(purpose) !== track) return;
-          if (this.snapshot.busy) {
-            setTimeout(ended, 100);
-            return;
-          }
-          void this.toggleVideo(purpose).catch((error) =>
-            this.reconnect(error.message),
-          );
+          this.stopVideo(purpose);
+          this.updateLocal();
+          this.synchronizeStateInBackground();
+          const generation = this.generation;
+          void this.publishTracks().catch((error) => {
+            if (generation === this.generation) this.reconnect(error.message);
+          });
         };
         track.onended = ended;
         if (native) native.onended = () => ended();
       }
-      await this.setState({
-        [purpose === "camera" ? "camera_off" : "screen_off"]:
-          !this.tracks.has(purpose),
-      });
       this.updateLocal();
-      await this.transport?.publish(this.tracks);
+      await this.synchronizeState();
+      await this.publishTracks();
       // The encoded relay permits one reconfiguration/second (with a small burst).
       await new Promise((resolve) => setTimeout(resolve, 1000));
+    } catch (error) {
+      if (changed && !this.ended) {
+        this.stopVideo(purpose);
+        this.updateLocal();
+        this.reconnect(
+          error instanceof Error
+            ? error.message
+            : "Could not update the video source.",
+        );
+      }
+      throw error;
     } finally {
       this.change({ busy: false });
     }
@@ -721,6 +924,8 @@ export class Call {
   async end(error?: string) {
     if (this.ended) return;
     this.ended = true;
+    this.offLoopback();
+    this.resetStateSynchronization();
     this.generation++;
     clearTimeout(this.retry);
     clearTimeout(this.renewal);
@@ -737,7 +942,11 @@ export class Call {
     this.microphoneStream?.getAudioTracks().forEach((track) => {
       track.onended = null;
     });
-    this.microphone?.close();
+    for (const microphone of this.microphones) microphone.close();
+    this.microphones.clear();
+    for (const stream of this.pendingMicrophones)
+      stream.getTracks().forEach((track) => track.stop());
+    this.pendingMicrophones.clear();
     this.microphone = undefined;
     this.microphoneStream?.getTracks().forEach((track) => track.stop());
     this.microphoneStream = undefined;
@@ -748,6 +957,8 @@ export class Call {
       track.stop();
     }
     this.tracks.clear();
+    for (const off of this.observedTracks.values()) off();
+    this.observedTracks.clear();
     this.change({
       status: "ended",
       error,

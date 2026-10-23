@@ -148,6 +148,98 @@ export async function checkMicrophoneSelection(
       await expect.poll(() => speechPeak(receiver)).toBeGreaterThan(0.01);
       const initial = (await activeInputs())[0].id;
 
+      // Deafen must shut off both capture and incoming playback immediately.
+      await expect.poll(() => speechPeak(sender)).toBeGreaterThan(0.01);
+      await control("Deafen");
+      await expectInput(selected.id, false);
+      await expect(
+        sender
+          .locator(".call-dock")
+          .getByRole("button", { name: "Unmute microphone", exact: true }),
+      ).toBeDisabled();
+      await expect.poll(() => speechPeak(receiver)).toBeLessThan(0.001);
+      await expect.poll(() => speechPeak(sender)).toBeLessThan(0.001);
+      await control("Deafen");
+      await expectInput(selected.id);
+      await expect.poll(() => speechPeak(receiver)).toBeGreaterThan(0.01);
+
+      // Both preview surfaces run through the same shared safety state.
+      for (const tab of ["Devices", "Server audio plugins"]) {
+        await settings();
+        if (tab !== "Devices")
+          await sender.getByRole("button", { name: tab, exact: true }).click();
+        const listen = sender.getByRole("button", {
+          name: "Listen to microphone",
+          exact: true,
+        });
+        await expect(listen).toBeEnabled();
+        // An unstarted meter must not mute the call.
+        await expect.poll(() => speechPeak(receiver)).toBeGreaterThan(0.01);
+        await listen.click();
+        const dock = sender.locator(".call-dock");
+        await expect(
+          dock.getByRole("button", { name: "Deafen", exact: true }),
+        ).toHaveAttribute("aria-pressed", "true");
+        await expect(
+          dock.getByRole("button", { name: "Deafen", exact: true }),
+        ).toBeDisabled();
+        await expect(
+          dock.getByRole("button", { name: "Unmute microphone", exact: true }),
+        ).toBeDisabled();
+        await expect.poll(() => speechPeak(receiver)).toBeLessThan(0.001);
+        await expect.poll(() => speechPeak(sender)).toBeLessThan(0.001);
+        // Preview remains audible while the independent call microphone is disabled.
+        await expect
+          .poll(() =>
+            sender
+              .getByLabel("Microphone playback test", { exact: true })
+              .evaluate(
+                (el) =>
+                  !el.paused &&
+                  el.srcObject
+                    .getAudioTracks()
+                    .every(
+                      (track) => track.enabled && track.readyState === "live",
+                    ),
+              ),
+          )
+          .toBe(true);
+        assert.equal(
+          (await activeInputs()).find((track) => track.id === initial).enabled,
+          false,
+        );
+        if (tab === "Devices") {
+          await sender
+            .getByRole("button", { name: "Stop listening", exact: true })
+            .click();
+          await expect(
+            dock.getByRole("button", { name: "Deafen", exact: true }),
+          ).toHaveAttribute("aria-pressed", "false");
+          await expect.poll(() => speechPeak(receiver)).toBeGreaterThan(0.01);
+        }
+        // Closing while playing must release loopback ownership too.
+        await closeSettings();
+        await expectInput(selected.id);
+        await expect.poll(() => speechPeak(receiver)).toBeGreaterThan(0.01);
+      }
+
+      // Stopping a preview preserves an existing manual mute.
+      await control("Mute microphone");
+      await settings();
+      await sender
+        .getByRole("button", { name: "Listen to microphone", exact: true })
+        .click();
+      await closeSettings();
+      await expectInput(selected.id, false);
+      await expect(
+        sender
+          .locator(".call-dock")
+          .getByRole("button", { name: "Deafen", exact: true }),
+      ).toHaveAttribute("aria-pressed", "false");
+      await expect.poll(() => speechPeak(receiver)).toBeLessThan(0.001);
+      await control("Unmute microphone");
+      await expectInput(selected.id);
+
       // DSP changes must retain the selected raw input and remain audible.
       await settings();
       await sender.getByLabel("Automatic gain", { exact: true }).uncheck();
@@ -254,7 +346,7 @@ export async function checkMicrophoneSelection(
       await leave(receiver);
       await expect.poll(activeInputs).toEqual([]);
       console.log(
-        `PASS ${label} ${server.name}: selected ${selected.label}, switched ${first.label}, default ${defaultDevice}, DSP, muted switch, devicechange, unavailable saved input and rejoin; received audio verified`,
+        `PASS ${label} ${server.name}: selected ${selected.label}, switched ${first.label}, default ${defaultDevice}, DSP, deafen, both loopback surfaces, preview cleanup, manual mute restoration, muted switch, devicechange, unavailable saved input and rejoin; received audio verified`,
       );
     } catch (error) {
       console.error("Microphone check failed", error);

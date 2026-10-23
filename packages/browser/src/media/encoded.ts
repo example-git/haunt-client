@@ -13,6 +13,7 @@ import { pack, unpack } from "./framing";
 import { KeyframeRequests } from "./keyframes";
 import { audioBitrate } from "./audio-quality";
 import { nativeCaptures } from "./native-capture";
+import { publicationBlocked } from "./state";
 import captureWorklet from "./capture-worklet.js?url";
 type Chunk = EncodedAudioChunk | EncodedVideoChunk;
 type Publisher = {
@@ -27,6 +28,7 @@ type Receiver = {
   revision: number;
   decode: (chunk: ReturnType<typeof unpack>) => void;
   close: () => void;
+  deafen?: (deafened: boolean) => void;
 };
 const base64 = (buffer: AllowSharedBufferSource) => {
   const bytes = ArrayBuffer.isView(buffer)
@@ -143,6 +145,7 @@ export class EncodedTransport implements MediaTransport {
   private send(chunk: Chunk, purpose: Purpose, publisher: Publisher) {
     if (
       this.closed ||
+      publicationBlocked(this.stateValue, purpose) ||
       !publisher.revision ||
       this.socket?.readyState !== WebSocket.OPEN
     )
@@ -223,7 +226,9 @@ export class EncodedTransport implements MediaTransport {
         publisher.config.description = base64(
           metadata.decoderConfig.description,
         );
-      if (!publisher.revision) {
+      if (publicationBlocked(this.stateValue, purpose)) {
+        publisher.key = true;
+      } else if (!publisher.revision) {
         if (publisher.pending.length < 8) publisher.pending.push(chunk);
         else publisher.key = true;
       } else this.send(chunk, purpose, publisher);
@@ -452,15 +457,36 @@ export class EncodedTransport implements MediaTransport {
             this.context.failed(Error("Audio decoding was interrupted"));
         },
       });
-      decoder.configure({
+      const decoderConfig: AudioDecoderConfig = {
         codec: config.codec!,
         sampleRate: config.sample_rate!,
         numberOfChannels: config.channels!,
         description: description(config.description),
+      };
+      decoder.configure(decoderConfig);
+      destination.stream.getAudioTracks().forEach((track) => {
+        track.enabled = !this.stateValue.deafened;
       });
       this.context.remote(id, purpose, destination.stream);
       this.receivers.set(key, {
         revision: config.revision!,
+        deafen: (deafened) => {
+          destination.stream.getAudioTracks().forEach((track) => {
+            track.enabled = !deafened;
+          });
+          if (!deafened) return;
+          // Discard buffered playback as well as packets arriving after deafen.
+          for (const source of sources) {
+            source.stop();
+            source.disconnect();
+          }
+          sources.clear();
+          next = context.currentTime;
+          if (decoder.state !== "closed") {
+            decoder.reset();
+            decoder.configure(decoderConfig);
+          }
+        },
         decode: (packet) => {
           if (decoder.state === "configured" && decoder.decodeQueueSize < 8)
             decoder.decode(
@@ -534,7 +560,17 @@ export class EncodedTransport implements MediaTransport {
   }
   event(_event: WireEvent) {}
   state(state: MediaState) {
+    const wasDeafened = this.stateValue.deafened;
     this.stateValue = state;
+    for (const [purpose, publisher] of this.publishers) {
+      if (publicationBlocked(state, purpose)) {
+        publisher.pending = [];
+        publisher.key = true;
+      }
+    }
+    if (state.deafened !== wasDeafened)
+      for (const receiver of this.receivers.values())
+        receiver.deafen?.(state.deafened);
   }
   close() {
     this.closed = true;

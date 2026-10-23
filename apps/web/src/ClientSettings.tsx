@@ -826,9 +826,6 @@ export function ClientSettingsContent({
                   <>
                     <MicrophoneMeter
                       onAccessGranted={microphoneGranted}
-                      onListeningChange={(listening) =>
-                        call?.setMicrophoneMonitoring(listening)
-                      }
                       device={prefs.microphone}
                       noiseSuppression={
                         audioPlugins.length > 0 && prefs.noiseSuppression

@@ -1,5 +1,6 @@
 import type { LocalTracks, TransportContext } from "./types";
-import { isAudioPurpose } from "@haunt/core";
+import { isAudioPurpose, type MediaState } from "@haunt/core";
+import { publicationBlocked } from "./state";
 import { nativeCaptures } from "./native-capture";
 import { audioBitrate } from "./audio-quality";
 import captureWorklet from "./capture-worklet.js?url";
@@ -13,7 +14,10 @@ export class NativePublisher {
   private off?: () => void;
   private audio?: AudioContext;
   private cleanup: (() => void)[] = [];
-  constructor(private context: TransportContext) {}
+  constructor(
+    private context: TransportContext,
+    private state: () => MediaState,
+  ) {}
   async publish(tracks: LocalTracks) {
     const mapping: Record<string, string> = {};
     const configs = [...tracks].map(([purpose, track]) => {
@@ -72,7 +76,8 @@ export class NativePublisher {
         if (this.closed) return;
         const encoder = new AudioEncoder({
           output: (chunk) => {
-            if (this.closed) return;
+            if (this.closed || publicationBlocked(this.state(), purpose))
+              return;
             const data = new Uint8Array(chunk.byteLength);
             chunk.copyTo(data);
             this.bridge.nativeAudio(

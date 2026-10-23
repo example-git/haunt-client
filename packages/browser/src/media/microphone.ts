@@ -332,10 +332,10 @@ export class MicrophoneCapture {
     }
   }
   setMuted(muted: boolean) {
-    if (muted === this.muted) return;
-    this.muted = muted;
     this.track.enabled = !muted;
     this.raw.getAudioTracks()[0].enabled = !muted;
+    if (muted === this.muted) return;
+    this.muted = muted;
     this.state();
     if (muted) this.scores?.(undefined);
   }

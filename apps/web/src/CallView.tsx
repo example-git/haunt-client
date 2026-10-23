@@ -456,6 +456,7 @@ export function CallPanel({
       userID(id) === call.client.account.login.user.id ? (
         <>
           <MenuAction
+            disabled={state.state.deafened}
             onClick={() => action(call.setState({ muted: !state.state.muted }))}
           >
             {state.state.muted ? "Unmute microphone" : "Mute microphone"}
@@ -742,7 +743,12 @@ function CallControls({
         className={state.state.muted ? "toggled" : ""}
         aria-label={state.state.muted ? "Unmute microphone" : "Mute microphone"}
         aria-pressed={state.state.muted}
-        disabled={state.status !== "connected"}
+        disabled={state.status !== "connected" || state.state.deafened}
+        title={
+          state.state.deafened
+            ? "Undeafen before enabling your microphone"
+            : undefined
+        }
         onClick={() => action(call.setState({ muted: !state.state.muted }))}
       >
         {state.state.muted ? <MicOff size={18} /> : <Mic size={18} />}
@@ -751,7 +757,12 @@ function CallControls({
         className={state.state.deafened ? "toggled" : ""}
         aria-label="Deafen"
         aria-pressed={state.state.deafened}
-        disabled={state.status !== "connected"}
+        disabled={state.status !== "connected" || state.microphoneMonitoring}
+        title={
+          state.microphoneMonitoring
+            ? "Stop microphone playback before undeafening"
+            : undefined
+        }
         onClick={() =>
           action(call.setState({ deafened: !state.state.deafened }))
         }

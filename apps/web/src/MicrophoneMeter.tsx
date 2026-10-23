@@ -12,6 +12,7 @@ import {
 
 import type { PluginSelection } from "@haunt/browser/audio-plugins/contract";
 import { openMicrophone } from "@haunt/browser/media/microphone-input";
+import { microphoneLoopbacks } from "@haunt/browser/media/state";
 
 /** Local processed-mic monitor. Playback is explicit and never published. */
 export function MicrophoneMeter({
@@ -21,7 +22,6 @@ export function MicrophoneMeter({
   automaticGain,
   noiseOptions,
   onAccessGranted,
-  onListeningChange,
   showDiagnostics = false,
 }: {
   device: string;
@@ -30,7 +30,6 @@ export function MicrophoneMeter({
   automaticGain: boolean;
   noiseOptions?: PluginSelection;
   onAccessGranted: () => void;
-  onListeningChange?: (listening: boolean) => void | Promise<void>;
   showDiagnostics?: boolean;
 }) {
   const meter = useRef<HTMLDivElement>(null);
@@ -41,11 +40,13 @@ export function MicrophoneMeter({
   const [listening, setListening] = useState(false);
   const [playbackError, setPlaybackError] = useState("");
   const playbackGeneration = useRef(0);
+  const releaseLoopback = useRef<(() => void) | undefined>(undefined);
   const stopListening = () => {
     playbackGeneration.current++;
     playback.current?.pause();
     setListening(false);
-    onListeningChange?.(false);
+    releaseLoopback.current?.();
+    releaseLoopback.current = undefined;
   };
   useEffect(() => {
     let output = getPreferences().audioOutput;
@@ -248,7 +249,15 @@ export function MicrophoneMeter({
   }, [device, attempt, onAccessGranted, showDiagnostics]);
   return (
     <div className="microphone-monitor" data-noise-suppression={noise}>
-      <audio ref={playback} aria-label="Microphone playback test" />
+      <audio
+        ref={playback}
+        aria-label="Microphone playback test"
+        onPause={() => {
+          if (playback.current?.paused) stopListening();
+        }}
+        onEnded={stopListening}
+        onError={stopListening}
+      />
       <div
         ref={meter}
         className="microphone-meter"
@@ -295,33 +304,29 @@ export function MicrophoneMeter({
           disabled={!ready}
           aria-pressed={listening}
           onClick={() => {
-            if (listening) {
+            if (releaseLoopback.current) {
               stopListening();
               return;
             }
             const version = ++playbackGeneration.current;
             setPlaybackError("");
+            releaseLoopback.current = microphoneLoopbacks.acquire();
             setListening(true);
-            void Promise.resolve(onListeningChange?.(true))
-              .then(() => {
-                if (version !== playbackGeneration.current) return;
-                return playback.current!.play();
-              })
-              .catch(() => {
-                if (version !== playbackGeneration.current) return;
-                setListening(false);
-                onListeningChange?.(false);
-                setPlaybackError(
-                  "Could not play your microphone. Check the output device and try again.",
-                );
-              });
+            void playback.current!.play().catch(() => {
+              if (version !== playbackGeneration.current) return;
+              stopListening();
+              setPlaybackError(
+                "Could not play your microphone. Check the output device and try again.",
+              );
+            });
           }}
         >
           {listening ? "Stop listening" : "Listen to microphone"}
         </button>
         <small className="muted">
           Hear your microphone after noise suppression and gain. Use headphones
-          to avoid feedback. Stops when you leave these settings.
+          to avoid feedback. Mutes and deafens your call while listening. Stops
+          when you leave these settings.
         </small>
         {playbackError && <small role="status">{playbackError}</small>}
       </div>
