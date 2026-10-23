@@ -1,7 +1,7 @@
 {
   "name": "haunt",
   "productName": "Haunt",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "private": true,
   "license": "BSD-3-Clause",
   "description": "Haunt — self-hosted community messaging and calls",
