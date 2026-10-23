@@ -1,3 +1,4 @@
+import { UserName } from "./UserName";
 import { DMInfo } from "./DMStorage";
 import { PeopleSearch } from "./PeopleSearch";
 import { useAccountDirectory } from "./useAccountDirectory";
@@ -166,7 +167,7 @@ function DMEntry({
                       openProfile(entry.instance, user.id);
                     }}
                   >
-                    {user.display_name || user.username}
+                    <UserName instance={entry.instance} user={user} />
                   </button>
                 </span>
               ))}
@@ -438,7 +439,7 @@ export function DirectMessageView({
                   className="user-name"
                   onClick={() => openProfile(entry.instance, user.id)}
                 >
-                  {user.display_name || user.username}
+                  <UserName instance={entry.instance} user={user} />
                 </button>
               </span>
             ))}{" "}

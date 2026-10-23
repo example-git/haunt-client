@@ -1,5 +1,6 @@
 import { VideoPlayback } from "./video-playback";
 import { getPreferences } from "../preferences";
+import { selectedCameraMode, type VideoMode } from "./video-settings";
 import type {
   NativeBridge,
   NativeEvent,
@@ -20,6 +21,7 @@ export class NativeCapture {
   private closed = false;
   private off: () => void;
   private listeners = new Set<(packet: NativeEvent) => void>();
+  private frames = new Set<(frame: VideoFrame) => void>();
   private audio?: AudioContext;
   private audioNode?: AudioWorkletNode;
   private audioReady?: Promise<void>;
@@ -31,6 +33,9 @@ export class NativeCapture {
     this.playback = new VideoPlayback(
       () => {},
       (error) => this.fail(error),
+      (frame) => {
+        for (const listener of this.frames) listener(frame);
+      },
     );
     this.stream = this.playback.stream;
     this.track = this.playback.track;
@@ -43,10 +48,20 @@ export class NativeCapture {
       }
     });
   }
-  static async open(purpose: "camera" | "screen", sourceAudio: boolean) {
+  static async open(
+    purpose: "camera" | "screen",
+    sourceAudio: boolean,
+    prefs = getPreferences(),
+  ) {
     const capture = new NativeCapture(window.hauntDesktop!);
-    const prefs = getPreferences();
     try {
+      const mode =
+        purpose === "camera"
+          ? await selectedCameraMode(
+              prefs.camera,
+              prefs.cameraModes[prefs.camera],
+            )
+          : prefs.screenMode;
       // Chromium labels are only needed to migrate an old saved device ID.
       // Native IDs and the system default must not depend on Chromium discovery.
       const legacy = [prefs.camera, sourceAudio ? prefs.cameraAudio : ""].some(
@@ -59,6 +74,7 @@ export class NativeCapture {
         id: capture.id,
         purpose,
         audio: sourceAudio,
+        ...mode,
         device: prefs.camera,
         deviceLabel: devices.find((d) => d.deviceId === prefs.camera)?.label,
         audioDevice: sourceAudio ? prefs.cameraAudio : undefined,
@@ -92,6 +108,10 @@ export class NativeCapture {
       codedWidth: config.width,
       codedHeight: config.height,
     });
+  }
+  async setMode(mode: VideoMode) {
+    const result = await this.bridge.nativeConfigure(this.id, mode);
+    await this.configure(result.video);
   }
   private async ensureAudio() {
     if (this.audioReady) return this.audioReady;
@@ -158,6 +178,12 @@ export class NativeCapture {
       this.listeners.delete(fn);
     };
   }
+  decoded(fn: (frame: VideoFrame) => void) {
+    this.frames.add(fn);
+    return () => {
+      this.frames.delete(fn);
+    };
+  }
   private fail(error: Error) {
     this.error = error;
     this.onended?.(error);
@@ -168,6 +194,7 @@ export class NativeCapture {
     this.closed = true;
     this.off();
     this.listeners.clear();
+    this.frames.clear();
     nativeCaptures.delete(this.track);
     this.playback.close();
     this.audioNode?.port.close();

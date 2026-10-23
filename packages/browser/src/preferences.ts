@@ -1,5 +1,10 @@
 import { normalizeSavedThemes, type SavedTheme } from "./saved-themes";
 import {
+  defaultScreenMode,
+  validVideoMode,
+  type VideoMode,
+} from "./media/video-settings";
+import {
   defaultTheme,
   normalizeTheme,
   restoreTheme,
@@ -35,6 +40,8 @@ export interface ClientPreferences extends NotificationPolicy {
   audioOutput: string;
   camera: string;
   cameraAudio: string;
+  cameraModes: Record<string, VideoMode>;
+  screenMode: VideoMode;
   noiseSuppression: boolean;
   noiseSuppressionNoticeShown: boolean;
   automaticGainControl: boolean;
@@ -73,6 +80,8 @@ const defaults: ClientPreferences = {
   audioOutput: "",
   camera: "",
   cameraAudio: "",
+  cameraModes: {},
+  screenMode: defaultScreenMode,
   noiseSuppression: true,
   noiseSuppressionNoticeShown: false,
   automaticGainControl: true,
@@ -135,6 +144,17 @@ function read(): ClientPreferences {
     if (raw.chatDisplay === "compact") next.chatDisplay = "compact";
     next.theme = restoreTheme(raw.theme);
     next.savedThemes = normalizeSavedThemes(raw.savedThemes);
+    if (
+      raw.cameraModes &&
+      typeof raw.cameraModes === "object" &&
+      !Array.isArray(raw.cameraModes)
+    )
+      next.cameraModes = Object.fromEntries(
+        Object.entries(raw.cameraModes).filter(
+          ([key, mode]) => key.length <= 256 && validVideoMode(mode),
+        ),
+      ) as Record<string, VideoMode>;
+    if (validVideoMode(raw.screenMode)) next.screenMode = raw.screenMode;
     for (const field of [
       "enabled",
       "mentions",
@@ -189,6 +209,13 @@ export const subscribePreferences = (fn: () => void) => {
   };
 };
 export function setPreferences(patch: Partial<ClientPreferences>) {
+  if (patch.screenMode && !validVideoMode(patch.screenMode))
+    throw Error("Invalid screen-share video setting.");
+  if (
+    patch.cameraModes &&
+    Object.values(patch.cameraModes).some((mode) => !validVideoMode(mode))
+  )
+    throw Error("Invalid camera video setting.");
   if (
     "chatDisplay" in patch &&
     patch.chatDisplay !== "default" &&

@@ -21,6 +21,7 @@ type Publisher = {
   revision: number;
   sequence: number;
   key: boolean;
+  needsKey: boolean;
   pending: Chunk[];
   close: () => void;
 };
@@ -152,8 +153,11 @@ export class EncodedTransport implements MediaTransport {
       return;
     if (this.socket.bufferedAmount > 512_000) {
       publisher.key = true;
+      publisher.needsKey = true;
       return;
     }
+    if (!isAudioPurpose(purpose) && publisher.needsKey && chunk.type !== "key")
+      return;
     const data = new Uint8Array(chunk.byteLength);
     chunk.copyTo(data);
     try {
@@ -168,9 +172,20 @@ export class EncodedTransport implements MediaTransport {
           data,
         }) as Uint8Array<ArrayBuffer>,
       );
+      publisher.needsKey = false;
       publisher.sequence = (publisher.sequence + 1) >>> 0;
-    } catch {
+    } catch (error) {
       publisher.key = true;
+      publisher.needsKey = true;
+      this.context.failed(
+        new Error(
+          error instanceof Error && error.message === "Media packet too large"
+            ? "The selected video settings exceed this server's frame size limit. Choose a lower resolution or frame rate."
+            : error instanceof Error
+              ? error.message
+              : "Could not send media.",
+        ),
+      );
     }
   }
   async publish(tracks: LocalTracks) {
@@ -214,6 +229,7 @@ export class EncodedTransport implements MediaTransport {
       revision: 0,
       sequence: 0,
       key: true,
+      needsKey: true,
       pending: [],
       close: () => {},
     };
@@ -230,7 +246,11 @@ export class EncodedTransport implements MediaTransport {
         publisher.key = true;
       } else if (!publisher.revision) {
         if (publisher.pending.length < 8) publisher.pending.push(chunk);
-        else publisher.key = true;
+        else {
+          publisher.pending = [];
+          publisher.key = true;
+          publisher.needsKey = true;
+        }
       } else this.send(chunk, purpose, publisher);
       first();
     };
@@ -310,25 +330,22 @@ export class EncodedTransport implements MediaTransport {
       video.playsInline = true;
       video.srcObject = new MediaStream([track]);
       await video.play();
-      const settings = track.getSettings(),
-        scale = Math.min(1, 1280 / (settings.width || 1280));
+      const settings = track.getSettings();
+      const fps = settings.frameRate || 60;
       const width = Math.max(
         2,
-        Math.round(((settings.width || video.videoWidth || 640) * scale) / 2) *
-          2,
+        Math.round((settings.width || video.videoWidth || 640) / 2) * 2,
       );
       const height = Math.max(
         2,
-        Math.round(
-          ((settings.height || video.videoHeight || 480) * scale) / 2,
-        ) * 2,
+        Math.round((settings.height || video.videoHeight || 480) / 2) * 2,
       );
       const config: VideoEncoderConfig = {
         codec: "vp8",
         width,
         height,
-        bitrate: purpose === "camera" ? 900_000 : 1_500_000,
-        framerate: 24,
+        bitrate: Math.max(500_000, Math.round(width * height * fps * 0.07)),
+        framerate: fps,
         latencyMode: "realtime",
       };
       if (!(await VideoEncoder.isConfigSupported(config)).supported)
@@ -352,13 +369,13 @@ export class EncodedTransport implements MediaTransport {
         draw.drawImage(video, 0, 0, width, height);
         const frame = new VideoFrame(canvas, {
           timestamp: Math.round((performance.now() - started) * 1000),
-          duration: 41_667,
+          duration: Math.round(1_000_000 / fps),
         });
-        const keyFrame = publisher.key || tick++ % 48 === 0;
+        const keyFrame = publisher.key || tick++ % Math.round(fps * 2) === 0;
         publisher.key = false;
         encoder.encode(frame, { keyFrame });
         frame.close();
-      }, 1000 / 24);
+      }, 1000 / fps);
       publisher.close = () => {
         clearInterval(timer);
         video.pause();

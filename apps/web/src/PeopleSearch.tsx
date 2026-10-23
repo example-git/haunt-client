@@ -1,3 +1,4 @@
+import { UserName } from "./UserName";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import {
@@ -109,7 +110,9 @@ export function PeopleSearch({
               >
                 <Avatar instance={entry.instance} user={entry.user} />
                 <span>
-                  <strong>{displayName(entry.user)}</strong>
+                  <strong>
+                    <UserName instance={entry.instance} user={entry.user} />
+                  </strong>
                   <small className="account-address">
                     {entry.address}
                     {!entry.online && " · Disconnected"}

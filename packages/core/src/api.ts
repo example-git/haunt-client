@@ -148,6 +148,8 @@ export function friendlyError(error: unknown): string {
     forbidden: "You do not have permission for this action.",
     invalid_invitation: "That invitation is invalid, expired, or already used.",
     invalid_request: "Check the fields and try again.",
+    media_quality_unavailable:
+      "This source does not offer the selected viewing quality.",
     not_found: "This item is no longer available.",
     conflict: "This conflicts with an existing item.",
     session_limit_reached:

@@ -1,4 +1,11 @@
-import { createElement, useMemo, useState, type ReactNode } from "react";
+import {
+  createElement,
+  memo,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import type { InstanceClient } from "@haunt/core";
 import {
   emojiOnlyMessage,
@@ -92,7 +99,7 @@ function renderNodes(
     );
   });
 }
-export default function MessageText({
+const MessageText = memo(function MessageText({
   text,
   instance,
 }: {
@@ -100,9 +107,12 @@ export default function MessageText({
   instance: InstanceClient;
 }) {
   const tree = useMemo(() => parseMessageMarkdown(text), [text]);
+  const emojiNames = useSyncExternalStore(instance.subscribe, () =>
+    instance.snapshot.emojis.map((emoji) => emoji.name).join("\0"),
+  );
   const names = useMemo(
-    () => new Set(instance.snapshot.emojis.map((emoji) => emoji.name)),
-    [instance.snapshot.emojis],
+    () => new Set(emojiNames ? emojiNames.split("\0") : []),
+    [emojiNames],
   );
   const large = useMemo(() => emojiOnlyMessage(text, names), [text, names]);
   return (
@@ -110,4 +120,5 @@ export default function MessageText({
       {renderNodes(tree, instance)}
     </div>
   );
-}
+});
+export default MessageText;

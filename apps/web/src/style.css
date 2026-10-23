@@ -618,7 +618,6 @@ input[type="checkbox"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text);
   font-size: inherit;
   font-weight: 600;
 }
@@ -4618,10 +4617,14 @@ dialog,
   letter-spacing: 0.06em;
   margin: 14px 10px 8px;
 }
-.member-section[aria-label="Offline"] .member-row {
+.member-section[aria-label="Offline"]
+  .member-row
+  :is(.avatar, .user-status, small) {
   opacity: 0.65;
 }
-.member-section[aria-label="Offline"] .member-row:hover {
+.member-section[aria-label="Offline"]
+  .member-row:hover
+  :is(.avatar, .user-status, small) {
   opacity: 1;
 }
 
@@ -4634,6 +4637,29 @@ dialog,
   background: transparent;
   cursor: pointer;
   text-align: inherit;
+}
+.profile-user-name {
+  color: var(--name-color);
+  -webkit-text-fill-color: var(--name-color);
+  -webkit-text-stroke: 0 transparent;
+  paint-order: stroke fill;
+  padding: 0 0.15em;
+  border-radius: 3px;
+  background: transparent;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.profile-user-name[data-name-treatment="outline"] {
+  -webkit-text-stroke: 1.5px var(--name-edge);
+}
+.profile-user-name[data-name-treatment="backing"] {
+  background: var(--name-edge);
+}
+button:disabled:has(.profile-user-name) {
+  opacity: 1;
+}
+button:disabled:has(.profile-user-name) :is(.avatar, svg, .account-address) {
+  opacity: 0.45;
 }
 .user-name:hover {
   text-decoration: underline;
@@ -5097,6 +5123,24 @@ button.mention {
 
 /* One connected shell: tinted edge layers, opaque content, and shared seams.
    Rounded outlines belong to controls and overlays, not the main panes. */
+:root,
+.theme-preview {
+  --glass-grain: none;
+  --glass-frost: none;
+}
+:is(:root, .theme-preview)[data-window-effect="transparent"] {
+  --glass-grain: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22384%22%20height%3D%22256%22%3E%3Cfilter%20id%3D%22texture%22%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.78%22%20numOctaves%3D%223%22%20seed%3D%2217%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22%2F%3E%3CfeComponentTransfer%3E%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220%22%20intercept%3D%220.045%22%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23texture%29%22%2F%3E%3C%2Fsvg%3E")
+    0 0 / 180px 180px repeat;
+  --glass-frost: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22384%22%20height%3D%22256%22%3E%3Cfilter%20id%3D%22texture%22%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.018%20.027%22%20numOctaves%3D%223%22%20seed%3D%2229%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20values%3D%220%200%200%200%201%200%200%200%200%201%200%200%200%200%201%20.333%20.333%20.333%200%200%22%2F%3E%3CfeComponentTransfer%3E%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.1%22%20intercept%3D%22-.025%22%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23texture%29%22%2F%3E%3C%2Fsvg%3E")
+    0 0 / 384px 256px repeat;
+}
+:is(:root, .theme-preview)[data-window-effect="material"] {
+  --glass-grain: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22384%22%20height%3D%22256%22%3E%3Cfilter%20id%3D%22texture%22%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.78%22%20numOctaves%3D%223%22%20seed%3D%2217%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22%2F%3E%3CfeComponentTransfer%3E%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220%22%20intercept%3D%220.075%22%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23texture%29%22%2F%3E%3C%2Fsvg%3E")
+    0 0 / 180px 180px repeat;
+  --glass-frost: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22384%22%20height%3D%22256%22%3E%3Cfilter%20id%3D%22texture%22%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%25%22%20height%3D%22100%25%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.018%20.027%22%20numOctaves%3D%223%22%20seed%3D%2229%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20values%3D%220%200%200%200%201%200%200%200%200%201%200%200%200%200%201%20.333%20.333%20.333%200%200%22%2F%3E%3CfeComponentTransfer%3E%3CfeFuncA%20type%3D%22linear%22%20slope%3D%220.2%22%20intercept%3D%22-.025%22%2F%3E%3C%2FfeComponentTransfer%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23texture%29%22%2F%3E%3C%2Fsvg%3E")
+    0 0 / 384px 256px repeat;
+}
+
 :root:is([data-window-effect="transparent"], [data-window-effect="material"])
   .app {
   --line: var(--glass-divider);
@@ -5131,36 +5175,34 @@ button.mention {
 :root:is([data-window-effect="transparent"], [data-window-effect="material"])
   .sidebar {
   background:
+    var(--glass-grain),
     linear-gradient(145deg, var(--glass-glaze), transparent 55%),
     var(--sidebar-background);
 }
 :root:is([data-window-effect="transparent"], [data-window-effect="material"])
   .server-rail {
   background:
+    var(--glass-grain),
     linear-gradient(145deg, var(--glass-glaze), transparent 55%),
     var(--rail-background);
 }
 :root:is([data-window-effect="transparent"], [data-window-effect="material"])
   :is(.member-panel, .dm-directory) {
   background:
+    var(--glass-grain),
     linear-gradient(145deg, var(--glass-glaze), transparent 55%),
     var(--sidebar-surface);
 }
 :root:is([data-window-effect="transparent"], [data-window-effect="material"])
   .app-titlebar {
   background:
+    var(--glass-grain), var(--glass-frost),
     linear-gradient(145deg, var(--glass-glaze), transparent 55%),
     var(--titlebar-background);
   box-shadow: inset 0 1px 0 var(--glass-highlight);
 }
 :root:is([data-window-effect="transparent"], [data-window-effect="material"])
-  :is(
-    .composer,
-    .call-panel.mini,
-    .dm-search input,
-    .channel.active,
-    .channel.voice-connected
-  ) {
+  :is(.composer, .call-panel.mini, .dm-search input) {
   background:
     linear-gradient(145deg, var(--glass-glaze), transparent 60%),
     var(--glass-control-background);
@@ -5292,7 +5334,14 @@ button.mention {
   --layer-success: var(--sidebar-success);
   --layer-warning: var(--sidebar-warning);
 }
-:is(.app-titlebar, .dialog-head, .voice-chat > header, .profile) {
+:is(
+  .app-titlebar,
+  .dialog-head,
+  .voice-chat > header,
+  .profile,
+  .call-dock,
+  .conversation-head
+) {
   --layer-fill: var(--chrome-fill);
   --layer-text: var(--chrome-text);
   --layer-muted: var(--chrome-muted);
@@ -5316,7 +5365,9 @@ button.mention {
   .app-titlebar,
   .dialog-head,
   .voice-chat > header,
-  .profile
+  .profile,
+  .call-dock,
+  .conversation-head
 ) {
   --text: var(--layer-text);
   --muted: var(--layer-muted);
@@ -5788,4 +5839,80 @@ button:disabled:hover {
     white-space: normal;
     line-height: 16px;
   }
+}
+.voice-reconnect-banner {
+  position: fixed;
+  top: calc(var(--titlebar-height, 44px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--haunt-surface);
+  color: var(--text);
+  box-shadow: 0 4px 20px #0006;
+}
+.capture-settings-menu {
+  position: relative;
+}
+.capture-settings-menu > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 6px 2px;
+}
+.capture-settings-menu > .video-settings {
+  position: absolute;
+  bottom: 36px;
+  right: 0;
+  width: 280px;
+  z-index: 20;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--haunt-surface);
+  color: var(--text);
+  box-shadow: 0 5px 24px #0006;
+}
+.video-settings {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.video-settings label {
+  display: grid;
+  gap: 4px;
+}
+.video-settings select {
+  width: 100%;
+}
+.video-settings output {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+:root:is([data-window-effect="transparent"], [data-window-effect="material"])
+  :is(
+    .profile,
+    .call-dock,
+    .dialog-head,
+    .voice-chat > header,
+    .conversation-head
+  ) {
+  background:
+    var(--glass-grain), var(--glass-frost),
+    linear-gradient(145deg, var(--glass-glaze), transparent 55%),
+    var(--titlebar-background);
+  color: var(--chrome-text);
+}
+:root:is([data-window-effect="transparent"], [data-window-effect="material"])
+  .settings-nav {
+  background:
+    var(--glass-grain),
+    linear-gradient(145deg, var(--glass-glaze), transparent 55%),
+    var(--sidebar-background);
 }

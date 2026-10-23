@@ -18,7 +18,7 @@ under active development and does not implement every Discord feature.
 - Multiple independently authenticated servers.
 - Text channels, direct messages, profiles, and notifications.
 - Client-side encrypted DMs, images, and client backups.
-- Voice and video calls, screen sharing, and audio controls.
+- [Voice and video calls](docs/calls.md), screen sharing, and audio controls.
 - Themes, audio plugins, and optional text to speech.
 - Native desktop integrations and signed application updates.
 

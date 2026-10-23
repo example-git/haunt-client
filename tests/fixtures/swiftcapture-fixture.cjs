@@ -3,6 +3,11 @@
 // never claims to exercise ScreenCaptureKit, VideoToolbox, or macOS permissions.
 const fs = require("node:fs");
 const path = require("node:path");
+const catalog = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "frames.json"), "utf8"),
+);
+const modes = catalog.modes ?? [catalog];
+let frames = modes[0];
 if (process.argv.includes("--list-sources")) {
   process.stdout.write(
     JSON.stringify({
@@ -11,7 +16,7 @@ if (process.argv.includes("--list-sources")) {
           {
             electronSourceId: "screen:1:0",
             name: "Fixture display",
-            frame: { width: 1920, height: 1080 },
+            frame: { width: frames.width, height: frames.height },
           },
         ],
         applications: [
@@ -22,7 +27,7 @@ if (process.argv.includes("--list-sources")) {
                 electronSourceId: "window:123:0",
                 title: "Fixture window",
                 isOnScreen: true,
-                frame: { width: 1280, height: 720 },
+                frame: { width: frames.width, height: frames.height },
               },
             ],
           },
@@ -33,6 +38,12 @@ if (process.argv.includes("--list-sources")) {
           uniqueID: "fixture-camera",
           name: "Fixture capture card",
           connected: true,
+          formats: modes.map((mode) => ({
+            width: mode.width,
+            height: mode.height,
+            minFPS: mode.fps,
+            maxFPS: mode.fps,
+          })),
         },
       ],
       audio: {
@@ -44,9 +55,16 @@ if (process.argv.includes("--list-sources")) {
   );
   process.exit(0);
 }
-const frames = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "frames.json"), "utf8"),
+const webcam = process.argv.includes("--webcam-video-fd");
+const arg = (flag) => Number(process.argv[process.argv.indexOf(flag) + 1]);
+const width = arg(webcam ? "--webcam-width" : "--output-width");
+const height = arg(webcam ? "--webcam-height" : "--output-height");
+const fps = arg(webcam ? "--webcam-fps" : "--fps");
+frames = modes.find(
+  (mode) => mode.width === width && mode.height === height && mode.fps === fps,
 );
+if (!frames)
+  throw Error(`Unsupported fixture capture mode ${width}x${height}@${fps}`);
 function packet(fd, type, data, pts = 0, key = false) {
   const header = Buffer.alloc(24);
   header.write("SCAP");

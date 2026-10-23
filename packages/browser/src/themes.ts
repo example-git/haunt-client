@@ -366,10 +366,75 @@ export function contrast(a: string, b: string) {
     y = luminance(b);
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
+export function mixColor(a: string, b: string, amount: number) {
+  return (
+    "#" +
+    [1, 3, 5]
+      .map((i) =>
+        Math.round(
+          parseInt(a.slice(i, i + 2), 16) * amount +
+            parseInt(b.slice(i, i + 2), 16) * (1 - amount),
+        )
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")
+  );
+}
+export function resolvedThemeColors(
+  colors: ThemeColors,
+  accent: string,
+  effect: WindowEffect,
+): ThemeColors {
+  if (effect === "solid") return colors;
+  const next = { ...colors };
+  const distinct = (value: string, others: string[]) =>
+    others.every((other) => contrast(value, other) >= 1.2);
+  if (next.sidebar === next.surface) {
+    const end = luminance(next.surface) < 0.35 ? "#ffffff" : "#000000";
+    for (let amount = 0.12; amount <= 1; amount += 0.04) {
+      next.sidebar = mixColor(end, next.surface, amount);
+      if (distinct(next.sidebar, [next.surface])) break;
+    }
+  }
+  if (next.chrome === next.surface || next.chrome === next.sidebar) {
+    next.chrome = accent;
+    const end = luminance(next.surface) < 0.35 ? "#ffffff" : "#000000";
+    for (let amount = 0; amount <= 1; amount += 0.04) {
+      next.chrome = mixColor(end, accent, amount);
+      if (distinct(next.chrome, [next.surface, next.sidebar])) break;
+    }
+  }
+  return next;
+}
 export function accentText(color: string) {
   return contrast(color, "#161616") >= contrast(color, "#ffffff")
     ? "#161616"
     : "#ffffff";
+}
+export function glassLayerColor(
+  color: string,
+  content: string,
+  opacity: number,
+) {
+  if (opacity >= 100) return color;
+  const dark = luminance(content) < 0.35;
+  const backing = dark ? "#000000" : "#ffffff";
+  const lighter = luminance(color) > luminance(content);
+  const separated = (value: string) => {
+    const composite = mixColor(value, backing, opacity / 100);
+    return (
+      luminance(composite) > luminance(content) === lighter &&
+      contrast(composite, content) >= 1.2
+    );
+  };
+  if (separated(color)) return color;
+  const end = lighter ? "#ffffff" : "#000000";
+  for (let amount = 0.02; amount <= 1; amount += 0.02) {
+    const candidate = mixColor(end, color, amount);
+    if (separated(candidate)) return candidate;
+  }
+  return color;
 }
 
 export function normalizeGradient(value: unknown): ThemeGradient | null {
@@ -398,7 +463,7 @@ export function themeBackground(
       ? color
       : `color-mix(in srgb, ${color} ${opacity}%, transparent)`;
   return theme.gradient
-    ? `linear-gradient(${theme.gradient.angle}deg, ${theme.gradient.colors.map(tint).join(", ")})`
+    ? `linear-gradient(${theme.gradient.angle}deg, ${theme.gradient.colors.map((color) => tint(`color-mix(in srgb, ${theme.colors.background} 88%, ${color})`)).join(", ")})`
     : tint(theme.colors.background);
 }
 

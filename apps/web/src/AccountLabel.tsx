@@ -1,9 +1,24 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { UserName } from "./UserName";
 import { userAddress, type InstanceClient } from "@haunt/core";
 import { openProfile } from "./Profile";
 import { displayName } from "./People";
 
-function AccountLine({ text, className }: { text: string; className: string }) {
+function AccountLine({
+  text,
+  className,
+  children,
+}: {
+  text: string;
+  className: string;
+  children?: ReactNode;
+}) {
   const ref = useRef<HTMLSpanElement>(null);
   const [overflow, setOverflow] = useState(0);
   useLayoutEffect(() => {
@@ -34,7 +49,7 @@ function AccountLine({ text, className }: { text: string; className: string }) {
         } as CSSProperties
       }
     >
-      <span>{text}</span>
+      <span>{children ?? text}</span>
     </span>
   );
 }
@@ -46,7 +61,9 @@ export function AccountLabel({ instance }: { instance: InstanceClient }) {
       className="user-name account-label"
       onClick={() => openProfile(instance, user.id)}
     >
-      <AccountLine className="account-display-name" text={displayName(user)} />
+      <AccountLine className="account-display-name" text={displayName(user)}>
+        <UserName instance={instance} user={user} />
+      </AccountLine>
       <AccountLine
         className="account-address"
         text={userAddress(instance, user)}

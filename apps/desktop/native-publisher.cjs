@@ -8,9 +8,18 @@ class NativePublisher extends EventEmitter {
     this.closed = false;
     this.ready = false;
     this.waiters = new Map();
-    this.needKey = new Set(["camera", "screen"]);
+    this.needKey = new Set([
+      "camera:h",
+      "screen:h",
+      "camera:m",
+      "screen:m",
+      "camera:l",
+      "screen:l",
+    ]);
     this.bindings = [];
-    this.child = spawn(binary, [], { stdio: ["pipe", "pipe", "pipe", "pipe"] });
+    this.child = spawn(binary, [], {
+      stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
+    });
     let output = "";
     this.child.stdout.on("data", (chunk) => {
       output += chunk.toString();
@@ -28,7 +37,11 @@ class NativePublisher extends EventEmitter {
       }
     });
     this.child.stderr.resume();
-    for (const stream of [this.child.stdin, this.child.stdio[3]])
+    for (const stream of [
+      this.child.stdin,
+      this.child.stdio[3],
+      this.child.stdio[4],
+    ])
       stream.on("error", (error) => this.fail(error));
     this.child.on("error", (error) => this.fail(error));
     this.child.once("close", () => {
@@ -37,6 +50,7 @@ class NativePublisher extends EventEmitter {
     });
   }
   message(message) {
+    if (message.type === "keyframe") this.emit("keyframe", message);
     if (message.type === "error") return this.fail(Error(message.message));
     if (
       message.type === "state" &&
@@ -70,22 +84,23 @@ class NativePublisher extends EventEmitter {
     capture.on("video", send);
     this.bindings.push(() => capture.removeListener("video", send));
   }
-  packet(purpose, bytes, timestamp, key = true) {
+  packet(purpose, bytes, timestamp, key = true, layer = "h") {
     if (this.closed || !this.ready) return;
     const video = purpose === "camera" || purpose === "screen";
-    const pipe = this.child.stdio[3];
-    if (pipe.writableLength > 512 * 1024) {
-      if (video) this.needKey.add(purpose);
+    const pipe = this.child.stdio[layer === "h" ? 3 : 4];
+    const stream = `${purpose}:${layer}`;
+    if (pipe.writableLength > (layer === "h" ? 512 : 256) * 1024) {
+      if (video) this.needKey.add(stream);
       return;
     }
-    if (video && this.needKey.has(purpose)) {
+    if (video && this.needKey.has(stream)) {
       if (!key) return;
-      this.needKey.delete(purpose);
+      this.needKey.delete(stream);
     }
     const data = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const frame = Buffer.allocUnsafe(14 + data.length);
     frame.writeUInt32BE(10 + data.length, 0);
-    frame[4] = purposes.indexOf(purpose);
+    frame[4] = purposes.indexOf(purpose) + ["h", "m", "l"].indexOf(layer) * 16;
     frame[5] = key ? 1 : 0;
     frame.writeBigUInt64BE(BigInt(Math.max(0, Math.round(timestamp))), 6);
     data.copy(frame, 14);
@@ -104,6 +119,7 @@ class NativePublisher extends EventEmitter {
       waiter.reject(Error("Native publisher closed"));
     this.child.stdin.end();
     this.child.stdio[3].end();
+    this.child.stdio[4].end();
     this.killTimer = setTimeout(() => {
       if (this.child.exitCode === null && this.child.signalCode === null)
         this.child.kill("SIGKILL");

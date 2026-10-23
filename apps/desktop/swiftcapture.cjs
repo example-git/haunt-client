@@ -54,9 +54,12 @@ function videoConfig(value) {
     !Number.isInteger(value.width) ||
     !Number.isInteger(value.height) ||
     value.width < 1 ||
-    value.width > 4096 ||
+    value.width > 8192 ||
     value.height < 1 ||
-    value.height > 4096
+    value.height > 8192 ||
+    !Number.isFinite(value.fps) ||
+    value.fps <= 0 ||
+    value.fps > 1000
   )
     throw Error("Unsupported SwiftCapture video format");
   const sps = (value.parameterSets ?? [])
@@ -68,7 +71,7 @@ function videoConfig(value) {
     codec: `avc1.${sps.subarray(1, 4).toString("hex")}`,
     width: value.width,
     height: value.height,
-    fps: value.fps || 60,
+    fps: value.fps,
     fmtp: `level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=${sps.subarray(1, 4).toString("hex")}`,
   };
 }
@@ -172,7 +175,28 @@ function sourceCatalog(catalog) {
     cameras: (catalog.webcams ?? [])
       .filter((d) => d.connected !== false)
       .slice(0, 100)
-      .map((d) => ({ id: d.uniqueID, label: d.name })),
+      .map((d) => ({
+        id: d.uniqueID,
+        label: d.name,
+        formats: (d.formats ?? [])
+          .filter(
+            (f) =>
+              Number.isInteger(f.width) &&
+              Number.isInteger(f.height) &&
+              f.width > 0 &&
+              f.height > 0 &&
+              Number.isFinite(f.minFPS) &&
+              Number.isFinite(f.maxFPS) &&
+              f.minFPS > 0 &&
+              f.maxFPS >= f.minFPS,
+          )
+          .map(({ width, height, minFPS, maxFPS }) => ({
+            width,
+            height,
+            minFPS,
+            maxFPS,
+          })),
+      })),
     audio: (catalog.audio?.inputDevices ?? [])
       .filter((d) => d.connected !== false)
       .slice(0, 100)
@@ -189,11 +213,11 @@ function argumentsFor(options) {
       "--webcam-video-fd",
       "3",
       "--webcam-fps",
-      "60",
+      String(options.fps ?? 60),
       "--webcam-width",
-      "1920",
+      String(options.width ?? 1920),
       "--webcam-height",
-      "1080",
+      String(options.height ?? 1080),
     );
     if (options.device) args.push("--webcam-device-id", options.device);
     if (options.audioDevice)
@@ -213,11 +237,21 @@ function argumentsFor(options) {
       "--video-fd",
       "3",
       "--fps",
-      "60",
+      String(options.fps ?? 60),
       "--bitrate",
-      "6000000",
+      String(
+        Math.max(
+          1_000_000,
+          Math.round(
+            (options.width ?? 1920) *
+              (options.height ?? 1080) *
+              (options.fps ?? 60) *
+              0.07,
+          ),
+        ),
+      ),
       "--keyframe-interval",
-      "60",
+      String(options.fps ?? 60),
       "--show-cursor",
     );
     if (options.width && options.height)

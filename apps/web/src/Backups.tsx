@@ -4,6 +4,7 @@ import {
   validateDMRecovery,
 } from "@haunt/browser/dm-crypto/backup";
 import { useState } from "react";
+import { UserName } from "./UserName";
 import { multiServerClient } from "@haunt/browser/client-context";
 import {
   backupPreference,
@@ -173,7 +174,18 @@ export function Backups() {
               await file.text(),
               String(form.get("password")),
             );
-            if (!multiServerClient() && (value.accounts.some(account => account.origin !== location.origin) || value.servers.some(server => server.origin !== location.origin))) throw Error("This backup includes another server. Install Haunt desktop to restore multiple servers.");
+            if (
+              !multiServerClient() &&
+              (value.accounts.some(
+                (account) => account.origin !== location.origin,
+              ) ||
+                value.servers.some(
+                  (server) => server.origin !== location.origin,
+                ))
+            )
+              throw Error(
+                "This backup includes another server. Install Haunt desktop to restore multiple servers.",
+              );
             if (value.dmRecovery) await validateDMRecovery(value.dmRecovery);
             setPreview(value);
           });
@@ -207,7 +219,10 @@ export function Backups() {
           <ul>
             {preview.accounts.map((a) => (
               <li key={a.instance.instance_id}>
-                {a.origin} · @{a.login.user.username}
+                {a.origin} ·{" "}
+                <UserName user={a.login.user}>
+                  @{a.login.user.username}
+                </UserName>
               </li>
             ))}
           </ul>

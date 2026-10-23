@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -24,7 +25,15 @@ func mediaFrame(purpose byte, key bool, timestamp uint64, data []byte) []byte {
 }
 
 func TestNativePublisherRTC(t *testing.T) {
-	p, err := newPublisher(command{Tracks: []trackConfig{{Purpose: "audio"}, {Purpose: "camera", FMTP: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e02a"}, {Purpose: "screen", FMTP: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e02a"}, {Purpose: "camera_audio"}, {Purpose: "screen_audio"}}}, &output{writer: io.Discard})
+	t.Run("single", func(t *testing.T) { testNativePublisherRTC(t, false) })
+	t.Run("layered", func(t *testing.T) { testNativePublisherRTC(t, true) })
+}
+func testNativePublisherRTC(t *testing.T, layered bool) {
+	var layers []string
+	if layered {
+		layers = []string{"h", "m", "l"}
+	}
+	p, err := newPublisher(command{Tracks: []trackConfig{{Purpose: "audio"}, {Purpose: "camera", FMTP: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e02a", Layers: layers}, {Purpose: "screen", FMTP: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e02a", Layers: layers}, {Purpose: "camera_audio"}, {Purpose: "screen_audio"}}}, &output{writer: io.Discard})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +47,16 @@ func TestNativePublisherRTC(t *testing.T) {
 	}
 	settings := webrtc.SettingEngine{}
 	settings.SetIncludeLoopbackCandidate(true)
-	receiver, err := webrtc.NewAPI(webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
+	media := &webrtc.MediaEngine{}
+	if err := media.RegisterDefaultCodecs(); err != nil {
+		t.Fatal(err)
+	}
+	for _, uri := range []string{sdp.SDESMidURI, sdp.SDESRTPStreamIDURI} {
+		if err := media.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: uri}, webrtc.RTPCodecTypeVideo); err != nil {
+			t.Fatal(err)
+		}
+	}
+	receiver, err := webrtc.NewAPI(webrtc.WithMediaEngine(media), webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +73,7 @@ func TestNativePublisherRTC(t *testing.T) {
 			if err != nil {
 				return
 			}
-			packets <- received{track.ID(), packet.Timestamp, packet.Payload}
+			packets <- received{track.ID() + track.RID(), packet.Timestamp, packet.Payload}
 		}
 	})
 	if err = receiver.SetRemoteDescription(offer); err != nil {
@@ -88,9 +106,9 @@ func TestNativePublisherRTC(t *testing.T) {
 	// Deltas before the first keyframe must not leak; all five tracks remain
 	// separate, with a camera timestamp gap preserved instead of sped up.
 	input.Write(mediaFrame(1, false, 0, []byte{0, 0, 0, 1, 0x41, 1}))
-	for i := range purposes {
+	for i, track := range p.tracks {
 		data := []byte{0xf8, 0xff, 0xfe} // valid Opus silence
-		if i == 1 || i == 2 {
+		if track.video {
 			data = []byte{0, 0, 0, 1, 0x65, 0x88, 0x80}
 		}
 		input.Write(mediaFrame(byte(i), true, 1_000_000, data))
@@ -100,7 +118,7 @@ func TestNativePublisherRTC(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen := map[string][]uint32{}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < len(p.tracks)*2; i++ {
 		select {
 		case packet := <-packets:
 			seen[packet.id] = append(seen[packet.id], packet.timestamp)
@@ -111,9 +129,10 @@ func TestNativePublisherRTC(t *testing.T) {
 			t.Fatalf("missing track packets: %v", seen)
 		}
 	}
-	for i, purpose := range purposes {
+	for _, track := range p.tracks {
+		purpose := track.local.ID() + track.local.RID()
 		delta := uint32(4800)
-		if i == 1 || i == 2 {
+		if track.video {
 			delta = 9000
 		}
 		if got := seen[purpose]; len(got) != 2 || got[1]-got[0] != delta {

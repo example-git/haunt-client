@@ -1,4 +1,5 @@
 import { copyText } from "./clipboard";
+import { UserName } from "./UserName";
 import { useEffect, useState } from "react";
 import {
   api,
@@ -176,10 +177,19 @@ export function MemberActions({
         >
           <strong>
             {choice === "password"
-              ? `Reset password for @${member.username}?`
+              ? "Reset password for "
               : choice === "delete"
-                ? `Permanently delete @${member.username}?`
-                : `Confirm ${choice} for @${member.username}`}
+                ? "Permanently delete "
+                : `Confirm ${choice} for `}
+            <UserName
+              instance={instance}
+              user={instance.snapshot.users.find(
+                (user) => user.id === member.id,
+              )}
+            >
+              @{member.username}
+            </UserName>
+            {choice === "password" || choice === "delete" ? "?" : ""}
           </strong>
           <p className="muted">
             {choice === "password"
@@ -229,8 +239,17 @@ export function MemberActions({
             />
           </label>
           <p className="muted">
-            Share this privately with @{member.username}. It is shown only here
-            and stops working when they choose a new password.
+            Share this privately with{" "}
+            <UserName
+              instance={instance}
+              user={instance.snapshot.users.find(
+                (user) => user.id === member.id,
+              )}
+            >
+              @{member.username}
+            </UserName>
+            . It is shown only here and stops working when they choose a new
+            password.
           </p>
           <button
             className="secondary"
@@ -392,10 +411,19 @@ export function BanManager({ instance }: { instance: InstanceClient }) {
           <div key={b.id}>
             <strong>
               {b.network ??
-                (b.user_id
-                  ? (instance.snapshot.users.find((u) => u.id === b.user_id)
-                      ?.username ?? b.user_id)
-                  : "IP ban")}
+                (b.user_id ? (
+                  <UserName
+                    instance={instance}
+                    user={instance.snapshot.users.find(
+                      (u) => u.id === b.user_id,
+                    )}
+                  >
+                    {instance.snapshot.users.find((u) => u.id === b.user_id)
+                      ?.username ?? b.user_id}
+                  </UserName>
+                ) : (
+                  "IP ban"
+                ))}
             </strong>
             <p>{b.reason}</p>
             <small>{new Date(b.created_at).toLocaleString()}</small>
@@ -514,6 +542,10 @@ export function BanManager({ instance }: { instance: InstanceClient }) {
   );
 }
 const auditLabels: Record<string, string> = {
+  "voice.mute": "Voice member muted",
+  "voice.unmute": "Moderator mute removed",
+  "voice.deafen": "Voice member deafened",
+  "voice.undeafen": "Moderator deafen removed",
   "member.kick": "Member kicked",
   "member.ban": "Account banned",
   "member.delete": "Account deleted",
@@ -580,15 +612,27 @@ export function AuditLog({ instance }: { instance: InstanceClient }) {
             <strong>{auditLabels[e.action] ?? e.action}</strong>
             <small>
               {new Date(e.created_at).toLocaleString()} ·{" "}
-              {instance.snapshot.users.find((u) => u.id === e.actor_id)
-                ?.username ??
-                (e.actor_id ? "Deleted member" : "Unauthenticated")}
+              <UserName
+                instance={instance}
+                user={instance.snapshot.users.find((u) => u.id === e.actor_id)}
+              >
+                {instance.snapshot.users.find((u) => u.id === e.actor_id)
+                  ?.username ??
+                  (e.actor_id ? "Deleted member" : "Unauthenticated")}
+              </UserName>
             </small>
             {e.target_id && (
               <span>
                 Target:{" "}
-                {instance.snapshot.users.find((u) => u.id === e.target_id)
-                  ?.username ?? e.target_id}
+                <UserName
+                  instance={instance}
+                  user={instance.snapshot.users.find(
+                    (u) => u.id === e.target_id,
+                  )}
+                >
+                  {instance.snapshot.users.find((u) => u.id === e.target_id)
+                    ?.username ?? e.target_id}
+                </UserName>
               </span>
             )}
             {e.reason && <p className="plain-text">{e.reason}</p>}

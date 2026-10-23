@@ -6,23 +6,36 @@ import {
   microphoneLoopbacks,
 } from "../packages/browser/src/media/state";
 
-const hardware = vi.hoisted(() => ({ open: vi.fn(), preferences: vi.fn() }));
+const hardware = vi.hoisted(() => ({
+  open: vi.fn(),
+  preferences: vi.fn(),
+  savePreferences: vi.fn(),
+  videoMode: vi.fn(),
+}));
 vi.mock("../packages/browser/src/media/microphone", () => ({
   MicrophoneCapture: { open: hardware.open },
 }));
 vi.mock("../packages/browser/src/preferences", () => ({
   getPreferences: () => ({
     microphone: "",
+    camera: "",
+    cameraModes: {},
+    screenMode: { width: 1920, height: 1080, fps: 60 },
     microphoneGain: 100,
     automaticGainControl: false,
     noiseSuppression: false,
     ...hardware.preferences(),
   }),
   subscribePreferences: () => () => {},
+  setPreferences: hardware.savePreferences,
 }));
 vi.mock("../packages/browser/src/audio-plugins/cache", () => ({
   ensureAudioPlugins: async () => {},
   subscribePlugins: () => () => {},
+}));
+vi.mock("../packages/browser/src/media/video-settings", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  selectedCameraMode: hardware.videoMode,
 }));
 vi.mock("../packages/browser/src/audio-plugins/preferences", () => ({
   pluginSelection: () => undefined,
@@ -64,8 +77,14 @@ class Track extends EventTarget {
     super();
   }
   getSettings() {
+    return this.kind === "video"
+      ? { width: 1920, height: 1080, frameRate: 60 }
+      : {};
+  }
+  getConstraints() {
     return {};
   }
+  async applyConstraints() {}
   stop() {
     this.readyState = "ended";
   }
@@ -103,6 +122,10 @@ const cleanup: (() => void | Promise<void>)[] = [];
 beforeEach(() => {
   transports.items = [];
   hardware.preferences.mockReset();
+  hardware.savePreferences.mockReset();
+  hardware.videoMode
+    .mockReset()
+    .mockResolvedValue({ width: 1920, height: 1080, fps: 60 });
   vi.stubGlobal("MediaStream", Stream);
   vi.stubGlobal("window", {});
   const devices = Object.assign(new EventTarget(), {
@@ -133,7 +156,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
-async function connected() {
+async function connected(participants: any[] = []) {
   let held = false;
   const acknowledgements: ReturnType<typeof deferred>[] = [];
   const sent: MediaState[] = [];
@@ -170,7 +193,7 @@ async function connected() {
         response: { ok: true },
         data: { transport: "webrtc", admission_id: "test" },
       }),
-      GET: async () => ({ response: { ok: true }, data: { participants: [] } }),
+      GET: async () => ({ response: { ok: true }, data: { participants } }),
     },
   } as unknown as InstanceClient;
   const call = new Call(client, "room");
@@ -406,6 +429,62 @@ describe("reactive call safety", () => {
     expect(raw.enabled).toBe(true);
   });
 
+  it("retains applied capture settings and reconnects when republishing fails", async () => {
+    const { call, transport } = await connected();
+    const video = new Track("video"),
+      audio = new Track();
+    Object.assign(navigator.mediaDevices, {
+      getDisplayMedia: async () => new Stream([video, audio]),
+    });
+    await call.toggleVideo("screen");
+    vi.spyOn(video, "getSettings").mockReturnValue({
+      width: 1280,
+      height: 720,
+      frameRate: 30,
+    });
+    transport.publish.mockRejectedValueOnce(Error("publication failed"));
+    const mode = { width: 1280, height: 720, fps: 30 };
+    await expect(call.setVideoMode("screen", mode)).rejects.toThrow(
+      "publication failed",
+    );
+    expect(call.snapshot.status).toBe("reconnecting");
+    expect(call.videoSettings("screen")).toEqual(mode);
+    expect(hardware.savePreferences).toHaveBeenCalledWith({ screenMode: mode });
+    expect([video.readyState, audio.readyState]).toEqual(["live", "live"]);
+  });
+
+  it("opens the probed camera even when device preferences change during the probe", async () => {
+    const { call } = await connected();
+    const probe = deferred();
+    hardware.preferences.mockReturnValue({
+      camera: "camera-a",
+      cameraAudio: "audio-a",
+    });
+    hardware.videoMode.mockImplementationOnce(async () => {
+      await probe.promise;
+      return { width: 1920, height: 1080, fps: 60 };
+    });
+    const capture = vi.fn(
+      async () => new Stream([new Track("video"), new Track()]),
+    );
+    Object.assign(navigator.mediaDevices, { getUserMedia: capture });
+    const opening = call.toggleVideo("camera");
+    expect(hardware.videoMode).toHaveBeenCalledWith("camera-a", undefined);
+    hardware.preferences.mockReturnValue({
+      camera: "camera-b",
+      cameraAudio: "audio-b",
+    });
+    probe.resolve();
+    await opening;
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        video: expect.objectContaining({ deviceId: { exact: "camera-a" } }),
+        audio: expect.objectContaining({ deviceId: { exact: "audio-a" } }),
+      }),
+    );
+    expect(call.cameraSettingsDevice()).toBe("camera-a");
+  });
+
   it("releases independent monitor ownership idempotently", () => {
     const loopbacks = new MicrophoneLoopbacks(),
       listener = vi.fn();
@@ -422,4 +501,126 @@ describe("reactive call safety", () => {
     loopbacks.acquire();
     expect(listener).toHaveBeenCalledTimes(4);
   });
+});
+
+it("keeps fixed viewing quality across a transport reconnect and forgets departed publishers", async () => {
+  const { call, transport, wire } = await connected([
+    { participant_id: "other", user_id: "them", state: {}, tracks: [] },
+  ]);
+  const quality = {
+    mode: "l",
+    current: "l",
+    layers: [{ id: "l", width: 640, height: 360, fps: 15 }],
+  };
+  transport.context.quality("other", "camera", quality);
+  vi.useFakeTimers();
+  wire({ type: "media.reconnect_required" });
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(call.snapshot.status).toBe("connected");
+  const next = transports.items.at(-1)!;
+  expect(next).not.toBe(transport);
+  expect(next.context.viewingQuality("other", "camera")).toEqual(quality);
+  transport.context.quality("other", "camera", { ...quality, mode: "auto" });
+  expect(next.context.viewingQuality("other", "camera").mode).toBe("l");
+  wire({ type: "media.participant.left", participant_id: "other" });
+  expect(next.context.viewingQuality("other", "camera")).toBeUndefined();
+});
+
+it("keeps newer moderation and departure events when the initial roster arrives late", async () => {
+  const { call, wire } = await connected();
+  const response = deferred();
+  const stale = [
+    {
+      participant_id: "self",
+      user_id: "me",
+      state: {},
+      restriction: { muted: false, deafened: false },
+    },
+    { participant_id: "gone", user_id: "them", state: {}, tracks: [] },
+  ];
+  const get = vi.spyOn(call.client.http, "GET").mockImplementation(async () => {
+    await response.promise;
+    return { response: { ok: true }, data: { participants: stale } } as any;
+  });
+  vi.useFakeTimers();
+  wire({ type: "media.reconnect_required" });
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(get).toHaveBeenCalledOnce();
+  wire({
+    type: "media.participant.state",
+    participant: {
+      ...stale[0],
+      restriction: { muted: true, deafened: true },
+    },
+  });
+  wire({ type: "media.participant.left", participant_id: "gone" });
+  wire({
+    type: "media.participant.joined",
+    participant: {
+      participant_id: "new",
+      user_id: "new-user",
+      state: {},
+      tracks: [],
+    },
+  });
+  response.resolve();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(call.snapshot.status).toBe("connected");
+  expect(call.snapshot.restriction).toEqual({ muted: true, deafened: true });
+  expect(call.snapshot.state).toMatchObject({ muted: true, deafened: true });
+  expect(
+    call.snapshot.participants.map((p) => p.participant_id).sort(),
+  ).toEqual(["new", "self"]);
+});
+
+it("does not mark a superseded join connected after subscriber setup fails", async () => {
+  const { call, wire } = await connected();
+  vi.spyOn(call.client.http, "GET").mockImplementation(async () => {
+    const transport = transports.items.at(-1)!;
+    transport.participant = () =>
+      transport.context.failed(Error("Receiver setup failed"));
+    return {
+      response: { ok: true },
+      data: {
+        participants: [
+          { participant_id: "other", user_id: "them", state: {}, tracks: [] },
+        ],
+      },
+    } as any;
+  });
+  vi.useFakeTimers();
+  wire({ type: "media.reconnect_required" });
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(call.snapshot.status).toBe("reconnecting");
+  expect(call.snapshot.error).toBe("Receiver setup failed");
+});
+
+it("keeps moderation received before the join acknowledgement", async () => {
+  const { call, wire } = await connected();
+  const original = vi.mocked(call.client.command).getMockImplementation()!;
+  vi.spyOn(call.client, "command").mockImplementation(
+    async (message, ...rest) => {
+      if (message.type !== "media.join") return original(message, ...rest);
+      const participant = {
+        participant_id: "next-self",
+        user_id: "me",
+        state: {},
+        restriction: { muted: false, deafened: false },
+      };
+      wire({
+        type: "media.participant.state",
+        participant: {
+          ...participant,
+          restriction: { muted: true, deafened: true },
+        },
+      });
+      return { type: "media.joined", participant };
+    },
+  );
+  vi.useFakeTimers();
+  wire({ type: "media.reconnect_required" });
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(call.snapshot.status).toBe("connected");
+  expect(call.snapshot.restriction).toEqual({ muted: true, deafened: true });
+  expect(call.snapshot.state).toMatchObject({ muted: true, deafened: true });
 });

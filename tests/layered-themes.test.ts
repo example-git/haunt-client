@@ -5,10 +5,21 @@ import {
   normalizeTheme,
   restoreTheme,
   themePresets,
+  glassLayerColor,
+  mixColor,
 } from "../packages/browser/src/themes";
 import { exportTheme, importTheme } from "../packages/browser/src/saved-themes";
 
 const ids = ["rose-slate", "mint-ink", "peach-noir", "lilac-carbon"];
+it("keeps dark glass side panels distinct from content at low opacity", () => {
+  for (const opacity of [30, 50, 82, 100]) {
+    const tint = glassLayerColor("#323232", "#242424", opacity);
+    expect(
+      contrast(mixColor(tint, "#000000", opacity / 100), "#242424"),
+    ).toBeGreaterThanOrEqual(1.2);
+  }
+  expect(glassLayerColor("#323232", "#242424", 100)).toBe("#323232");
+});
 for (const id of ids) {
   it(`${id} separates three layers, reverses buttons and survives sharing`, () => {
     const preset = themePresets.find((p) => p.id === id)!;

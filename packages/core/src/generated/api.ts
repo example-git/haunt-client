@@ -1508,6 +1508,38 @@ export interface APIContract {
       patch?: never;
       trace?: never;
     };
+    "/api/v1/voice/{id}/restrictions": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationVoiceRestrictions;
+      put?: never;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/voice/{id}/restrictions/{user}": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get?: never;
+      put?: never;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch: OperationSetVoiceRestriction;
+      trace?: never;
+    };
     "/healthz": {
       parameters: {
         query?: never;
@@ -1646,6 +1678,7 @@ export interface APIContract {
       HttpapiTemporaryPasswordRequest: HttpapiTemporaryPasswordRequest;
       HttpapiUnavailableResponse: HttpapiUnavailableResponse;
       HttpapiUsersResponse: HttpapiUsersResponse;
+      HttpapiVoiceRestrictionRequest: HttpapiVoiceRestrictionRequest;
       IdentityAppeal: IdentityAppeal;
       IdentityAuditEntry: IdentityAuditEntry;
       IdentityBan: IdentityBan;
@@ -1667,6 +1700,8 @@ export interface APIContract {
       IdentitySession: IdentitySession;
       IdentityTemporaryPassword: IdentityTemporaryPassword;
       IdentityUser: IdentityUser;
+      IdentityVoiceRestriction: IdentityVoiceRestriction;
+      IdentityVoiceRestrictionMember: IdentityVoiceRestrictionMember;
       ServerextensionConfiguration: ServerextensionConfiguration;
       ServerextensionExtension: ServerextensionExtension;
       ServerextensionField: ServerextensionField;
@@ -1684,6 +1719,7 @@ export interface APIContract {
       VoiceSnapshot: VoiceSnapshot;
       VoiceState: VoiceState;
       VoiceTrack: VoiceTrack;
+      VoiceVideoLayer: VoiceVideoLayer;
     };
   };
   operations: {
@@ -1804,6 +1840,8 @@ export interface APIContract {
     getVoiceRoom: OperationGetVoiceRoom;
     admitVoice: OperationAdmitVoice;
     getICE: OperationGetICE;
+    voiceRestrictions: OperationVoiceRestrictions;
+    setVoiceRestriction: OperationSetVoiceRestriction;
     health: OperationHealth;
     readiness: OperationReadiness;
   };
@@ -6251,6 +6289,8 @@ export interface VoiceSnapshot {
   encoded_tracks?: VoiceEncodedTrack[];
   joined_at: string;
   participant_id: string;
+  restriction?: IdentityVoiceRestriction;
+  self_state?: VoiceState;
   state: VoiceState;
   tracks: VoiceTrack[] | null;
   user_id: string;
@@ -6265,6 +6305,11 @@ export interface VoiceEncodedTrack {
   sample_rate?: number;
   width?: number;
 }
+export interface IdentityVoiceRestriction {
+  deafened: boolean;
+  muted: boolean;
+  user_id: string;
+}
 export interface VoiceState {
   camera_off: boolean;
   deafened: boolean;
@@ -6273,6 +6318,7 @@ export interface VoiceState {
 }
 export interface VoiceTrack {
   codec: V4RTPCodecCapability;
+  layers?: VoiceVideoLayer[];
   purpose: string;
   track_id: string;
 }
@@ -6287,6 +6333,12 @@ export interface V4RTPCodecCapability {
       }[]
     | null;
   SDPFmtpLine: string;
+}
+export interface VoiceVideoLayer {
+  fps: number;
+  height: number;
+  id: string;
+  width: number;
 }
 export interface OperationAdmitVoice {
   parameters: {
@@ -6365,6 +6417,84 @@ export interface HttpapiIceResponse {
   expires_at: null | string;
   ice_servers: ConfigICEServer[] | null;
   ice_transport_policy: string;
+}
+export interface OperationVoiceRestrictions {
+  parameters: {
+    query?: {
+      /**
+       * Exclusive UUID cursor; up to 100 results.
+       */
+      after?: string;
+    };
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": IdentityVoiceRestrictionMember[];
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface IdentityVoiceRestrictionMember {
+  deafened: boolean;
+  muted: boolean;
+  user: IdentityUser;
+  user_id: string;
+}
+export interface OperationSetVoiceRestriction {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+      user: string;
+    };
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/json": HttpapiVoiceRestrictionRequest;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": IdentityVoiceRestriction;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface HttpapiVoiceRestrictionRequest {
+  deafened?: null | boolean;
+  muted?: null | boolean;
 }
 export interface OperationHealth {
   parameters: {
@@ -6448,8 +6578,16 @@ export interface HttpapiEventCommand {
   candidate?: V4ICECandidateInit;
   conversations?: string[];
   enabled?: null | boolean;
+  layer?: string;
+  layers?: {
+    [k: string]: VoiceVideoLayer[];
+  };
   peer_id?: string;
   publisher_id?: string;
+  purpose?: string;
+  qualities?: {
+    [k: string]: string;
+  };
   sdp?: V4SessionDescription;
   state?: VoiceState;
   token?: string;
@@ -6487,6 +6625,7 @@ export interface IdentityDisplayRole2 {
 export interface VoicePresenceMember {
   joined_at: string;
   participant_id: string;
+  restriction?: IdentityVoiceRestriction;
   state: VoiceState;
   user_id: string;
 }

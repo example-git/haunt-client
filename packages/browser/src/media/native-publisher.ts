@@ -4,9 +4,8 @@ import { publicationBlocked } from "./state";
 import { nativeCaptures } from "./native-capture";
 import { audioBitrate } from "./audio-quality";
 import captureWorklet from "./capture-worklet.js?url";
+import { videoLayers, type VideoLayer } from "./quality";
 
-// Video stays in Electron's private worker pipe. Only processed microphone and
-// source-audio Opus packets cross renderer IPC. Receiving remains standard RTC.
 export class NativePublisher {
   private id = crypto.randomUUID();
   private closed = false;
@@ -14,20 +13,35 @@ export class NativePublisher {
   private off?: () => void;
   private audio?: AudioContext;
   private cleanup: (() => void)[] = [];
+  private keyframes = new Set<string>();
   constructor(
     private context: TransportContext,
     private state: () => MediaState,
   ) {}
   async publish(tracks: LocalTracks) {
     const mapping: Record<string, string> = {};
+    const layers: Record<string, VideoLayer[]> = {};
     const configs = [...tracks].map(([purpose, track]) => {
       mapping[purpose] = purpose;
       const capture = nativeCaptures.get(track);
       if (!isAudioPurpose(purpose) && !capture)
         throw Error("Native publisher requires native video sources");
-      return { purpose, capture: capture?.id };
+      if (
+        capture &&
+        this.context.client.account.instance.capabilities?.includes(
+          "media.layers.v1",
+        )
+      )
+        layers[purpose] = videoLayers({
+          width: capture.config.width,
+          height: capture.config.height,
+          fps: capture.config.fps,
+        });
+      return { purpose, capture: capture?.id, layers: layers[purpose] };
     });
     this.off = this.bridge.onNativeEvent((event) => {
+      if (event.id === this.id && event.kind === "keyframe")
+        this.keyframes.add(`${event.purpose}:${event.layer}`);
       if (event.id === this.id && event.kind === "error" && !this.closed)
         this.context.failed(Error(event.message));
     });
@@ -45,7 +59,7 @@ export class NativePublisher {
       });
       if (this.closed) return;
       const answer = await this.context.client.command(
-        { type: "media.publish", tracks: mapping, sdp },
+        { type: "media.publish", tracks: mapping, layers, sdp },
         "media.answer",
         (e) => !e.publisher_id,
       );
@@ -55,6 +69,91 @@ export class NativePublisher {
         answer.sdp as RTCSessionDescriptionInit,
       );
       if (this.closed) return;
+      for (const [purpose, track] of tracks) {
+        const capture = nativeCaptures.get(track);
+        if (!capture) continue;
+        for (const layer of layers[purpose]?.slice(1) ?? []) {
+          const config: VideoEncoderConfig = {
+            codec: capture.config.codec,
+            width: layer.width,
+            height: layer.height,
+            bitrate: Math.max(
+              150_000,
+              Math.round(layer.width * layer.height * layer.fps * 0.07),
+            ),
+            framerate: layer.fps,
+            latencyMode: "realtime",
+            avc: { format: "annexb" },
+          };
+          if (!(await VideoEncoder.isConfigSupported(config)).supported)
+            throw Error(
+              `H.264 encoding is unavailable for the ${layer.height}p viewing layer.`,
+            );
+          if (this.closed) return;
+          const key = `${purpose}:${layer.id}`;
+          let pending = 0,
+            last = -Infinity,
+            keyAt = -Infinity,
+            needsKey = true;
+          const encoder = new VideoEncoder({
+            output: (chunk) => {
+              if (this.closed || publicationBlocked(this.state(), purpose))
+                return;
+              if (pending >= 2) {
+                needsKey = true;
+                this.keyframes.add(key);
+                return;
+              }
+              if (needsKey && chunk.type !== "key") return;
+              needsKey = false;
+              const data = new Uint8Array(chunk.byteLength);
+              chunk.copyTo(data);
+              pending++;
+              void this.bridge
+                .nativeVideo(
+                  this.id,
+                  purpose,
+                  layer.id,
+                  data,
+                  Math.max(0, chunk.timestamp),
+                  chunk.type === "key",
+                )
+                .catch((error) => {
+                  if (!this.closed) this.context.failed(error);
+                })
+                .finally(() => {
+                  pending--;
+                });
+            },
+            error: (error) => {
+              if (!this.closed) this.context.failed(error);
+            },
+          });
+          let off: (() => void) | undefined;
+          this.cleanup.push(() => {
+            off?.();
+            if (encoder.state !== "closed") encoder.close();
+          });
+          encoder.configure(config);
+          off = capture.decoded((frame) => {
+            if (
+              this.closed ||
+              encoder.state !== "configured" ||
+              encoder.encodeQueueSize >= 2 ||
+              pending >= 2 ||
+              publicationBlocked(this.state(), purpose) ||
+              frame.timestamp - last < 1_000_000 / layer.fps - 500
+            )
+              return;
+            last = frame.timestamp;
+            const keyFrame =
+              this.keyframes.delete(key) ||
+              frame.timestamp - keyAt >= 1_000_000;
+            if (keyFrame) keyAt = frame.timestamp;
+            encoder.encode(frame, { keyFrame });
+          });
+        }
+      }
       this.audio = new AudioContext({
         sampleRate: 48000,
         latencyHint: "interactive",
@@ -91,11 +190,20 @@ export class NativePublisher {
             if (!this.closed) this.context.failed(error);
           },
         });
+        let source: MediaStreamAudioSourceNode | undefined;
+        let node: AudioWorkletNode | undefined;
+        this.cleanup.push(() => {
+          if (node) {
+            node.port.onmessage = null;
+            node.port.close();
+            node.disconnect();
+          }
+          source?.disconnect();
+          if (encoder.state !== "closed") encoder.close();
+        });
         encoder.configure(config);
-        const source = this.audio.createMediaStreamSource(
-          new MediaStream([track]),
-        );
-        const node = new AudioWorkletNode(this.audio, "haunt-capture", {
+        source = this.audio.createMediaStreamSource(new MediaStream([track]));
+        node = new AudioWorkletNode(this.audio, "haunt-capture", {
           channelCount: channels,
           channelCountMode: "explicit",
           processorOptions: { channels },
@@ -117,13 +225,6 @@ export class NativePublisher {
           encoder.encode(frame);
           frame.close();
         };
-        this.cleanup.push(() => {
-          node.port.onmessage = null;
-          node.port.close();
-          node.disconnect();
-          source.disconnect();
-          if (encoder.state !== "closed") encoder.close();
-        });
       }
     } catch (error) {
       this.close();

@@ -48,11 +48,29 @@ both tabs. Arrow keys move between tabs, and importing opens the Saved tab.
 Electron adds Solid, native material and Transparent sidebar modes. Windows uses
 Mica on Windows 11 22H2 or later; macOS uses vibrancy (shown as Frosted glass).
 Linux offers plain transparency, whose result depends on the compositor. Browser
-clients keep opaque surfaces. Only the sidebars/title bar expose the background;
-chat (including popped-out voice chat) remains opaque. The channel sidebar uses
-the chosen opacity; the server icon rail is 15 percentage points more opaque,
-capped at 100%. Frosted glass/Mica has a 30% minimum; plain transparency has a
+clients keep opaque surfaces. Side panels and chrome expose the background; chat (including popped-out
+voice chat) remains opaque. The channel sidebar uses
+the chosen opacity; the server icon rail and chrome become denser as opacity
+decreases. Frosted glass/Mica has a 30% minimum; plain transparency has a
 50% minimum. Theme changes and selection colors propagate to an open call window.
+
+Both glass modes retain three color roles: chrome for headers/account controls,
+side panels for navigation/member lists/DM directories, and content for chat.
+Existing separated palettes retain their colors. Coincident colors gain display
+separation derived from the selected accent and content shade, without changing
+saved values. Each layer generates its own gradient and control palette; low
+opacity tinting maintains separation. Transparent glass keeps clear surfaces,
+while frosted glass adds blur and stronger highlights. Fine grain sits above the
+glass tint, with softly uneven frosting on chrome. Frosted mode uses a stronger
+texture; text and controls stay above it. Previews use the same palette, tint,
+and texture.
+
+Names retain the exact profile accent color. On known solid surfaces, sufficient
+contrast leaves the name plain. Otherwise a thin black or white outline is
+painted beneath the fill when it contrasts with both the name and surface.
+Gradients, transparent or image surfaces, and insufficient outline contrast use
+a tight opaque black/white backing around the name. The treatment follows the
+viewer's theme and applied window effect, including call popouts.
 
 A change requiring a different native transparent-window construction is saved for
 next launch. The UI says when a restart is needed; it never interrupts a call to

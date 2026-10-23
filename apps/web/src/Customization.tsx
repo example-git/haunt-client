@@ -1,4 +1,5 @@
 import { Permission } from "./Permissions";
+import { UserName } from "./UserName";
 import { AudioPluginsAdmin } from "./AudioPluginsAdmin";
 import { ServerExtensionsAdmin } from "./ServerExtensionsAdmin";
 import { SettingsNavigation } from "./SettingsNavigation";
@@ -41,6 +42,8 @@ const permissions = [
   [64, "Manage lower-ranked roles"],
   [128, "Kick members"],
   [256, "Ban members & review appeals"],
+  [Permission.MuteMembers, "Mute members"],
+  [Permission.DeafenMembers, "Deafen members"],
   [512, "Delete accounts"],
   [1024, "View audit log"],
   [2048, "View member IPs & manage IP bans"],
@@ -313,7 +316,11 @@ export function ProfileEditor({ instance }: { instance: InstanceClient }) {
           />
         </label>
         <p className="muted small">
-          Your sign-in username is @{user.username}.
+          Your sign-in username is{" "}
+          <UserName instance={instance} user={user}>
+            @{user.username}
+          </UserName>
+          .
         </p>
         <Status action={action} />
         <button className="primary" disabled={action.busy}>
@@ -1250,9 +1257,13 @@ function MemberManager({
               >
                 <Avatar instance={instance} user={user} />
                 <span>
-                  <strong>{displayName(user)}</strong>
+                  <strong>
+                    <UserName instance={instance} user={user} />
+                  </strong>
                   <small>
-                    @{m.username}
+                    <UserName instance={instance} user={user}>
+                      @{m.username}
+                    </UserName>
                     {m.disabled ? " · Disabled" : ""}
                   </small>
                 </span>
@@ -1267,7 +1278,17 @@ function MemberManager({
       </div>
       {selected && (
         <div className="member-role-editor">
-          <h3>Roles for @{selected.username}</h3>
+          <h3>
+            Roles for{" "}
+            <UserName
+              instance={instance}
+              user={instance.snapshot.users.find(
+                (user) => user.id === selected.id,
+              )}
+            >
+              @{selected.username}
+            </UserName>
+          </h3>
           {selected.is_owner ? (
             <p className="muted">The server owner has all permissions.</p>
           ) : can(instance, 64) &&

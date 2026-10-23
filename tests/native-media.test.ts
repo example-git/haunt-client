@@ -15,7 +15,16 @@ it("uses SwiftCapture catalogs for screens, windows and busy connected cameras",
   const frame = { width: 1920, height: 1080 };
   const catalog = sourceCatalog({
     webcams: [
-      { uniqueID: "busy", name: "Capture card", connected: true, inUse: true },
+      {
+        uniqueID: "busy",
+        name: "Capture card",
+        connected: true,
+        inUse: true,
+        formats: [
+          { width: 1920, height: 1080, minFPS: 15, maxFPS: 120 },
+          { width: 1280, height: 720, minFPS: 30, maxFPS: 240 },
+        ],
+      },
       { uniqueID: "gone", connected: false },
     ],
     video: {
@@ -38,7 +47,16 @@ it("uses SwiftCapture catalogs for screens, windows and busy connected cameras",
       ],
     },
   });
-  expect(catalog.cameras).toEqual([{ id: "busy", label: "Capture card" }]);
+  expect(catalog.cameras).toEqual([
+    {
+      id: "busy",
+      label: "Capture card",
+      formats: [
+        { width: 1920, height: 1080, minFPS: 15, maxFPS: 120 },
+        { width: 1280, height: 720, minFPS: 30, maxFPS: 240 },
+      ],
+    },
+  ]);
   expect(catalog.screens).toEqual([
     { id: "screen:1:0", name: "Display", width: 1920, height: 1080 },
     { id: "window:12:0", name: "App — Sharing", width: 1920, height: 1080 },
@@ -166,6 +184,7 @@ it("uses the actual SPS codec and maps native screen/window/device IDs without s
       format: "annexb",
       width: 1920,
       height: 1080,
+      fps: 60,
       parameterSets: [Buffer.from([0x67, 0x42, 0xe0, 0x2a]).toString("base64")],
     }).codec,
   ).toBe("avc1.42e02a");

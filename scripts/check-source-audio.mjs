@@ -82,10 +82,19 @@ export async function checkSourceAudio(browser, fixtures) {
       ]) {
         page.setDefaultTimeout(20000);
         page.on("pageerror", (e) => errors.push(e.message));
-        await page.goto(server.url);
-        await page
-          .getByRole("button", { name: "Add server", exact: true })
-          .click();
+        await page.goto(
+          process.env.HAUNT_CLIENT_BUILD === "dist-standalone"
+            ? "http://127.0.0.1:5173"
+            : server.url,
+        );
+        if (process.env.HAUNT_CLIENT_BUILD === "dist-standalone")
+          await expect(
+            page.getByRole("dialog", { name: "Connect to a server" }),
+          ).toBeVisible();
+        else
+          await page
+            .getByRole("button", { name: "Add server", exact: true })
+            .click();
         await fillSignin(page, server.url, username);
         await page
           .getByLabel("Password", { exact: true })
@@ -129,7 +138,15 @@ export async function checkSourceAudio(browser, fixtures) {
         );
         window.sourceConstraints = [];
         window.sourceFixtures = [];
-        const source = async (frequency, rate) => {
+        window.sourceEncoderConfigs = [];
+        const Encoder = VideoEncoder;
+        window.VideoEncoder = class extends Encoder {
+          configure(config) {
+            window.sourceEncoderConfigs.push(config);
+            return super.configure(config);
+          }
+        };
+        const source = async (frequency, rate, fps) => {
           const context = new AudioContext({ sampleRate: rate });
           const oscillator = context.createOscillator();
           oscillator.frequency.value = frequency;
@@ -147,8 +164,8 @@ export async function checkSourceAudio(browser, fixtures) {
             const draw = canvas.getContext("2d");
             draw.fillStyle = tick++ % 2 ? "#f80" : "#08f";
             draw.fillRect(0, 0, 320, 180);
-          }, 80);
-          const stream = canvas.captureStream(12);
+          }, 1000 / fps);
+          const stream = canvas.captureStream(fps);
           stream.addTrack(destination.stream.getAudioTracks()[0]);
           window.sourceFixtures.push({ context, timer, stream });
           return stream;
@@ -156,11 +173,18 @@ export async function checkSourceAudio(browser, fixtures) {
         navigator.mediaDevices.getUserMedia = async (constraints) => {
           if (!constraints.video) return get(constraints);
           window.sourceConstraints.push(constraints);
-          return source(660, 44100);
+          const stream = await source(660, 44100, 12);
+          if (constraints.audio === false) {
+            stream.getAudioTracks().forEach((track) => {
+              stream.removeTrack(track);
+              track.stop();
+            });
+          }
+          return stream;
         };
         navigator.mediaDevices.getDisplayMedia = async (constraints) => {
           window.sourceConstraints.push(constraints);
-          return source(1320, 48000);
+          return source(1320, 48000, 60);
         };
       });
       await receiver.evaluate(() => {
@@ -285,6 +309,19 @@ export async function checkSourceAudio(browser, fixtures) {
       };
       await control(sender, "Turn on camera");
       await control(sender, "Share screen");
+      if (mode === "ws")
+        await expect
+          .poll(() =>
+            sender.evaluate(() =>
+              window.sourceEncoderConfigs.some(
+                (config) =>
+                  config.width === 320 &&
+                  config.height === 180 &&
+                  config.framerate === 60,
+              ),
+            ),
+          )
+          .toBe(true);
       await expect(receiver.locator(".call-panel audio")).toHaveCount(3);
       await expect
         .poll(() =>
@@ -411,11 +448,56 @@ export async function checkSourceAudio(browser, fixtures) {
       }
       assert(
         await sender.evaluate(() =>
-          window.sourceConstraints.every(
-            (c) => c.audio && c.audio.echoCancellation === false,
-          ),
+          window.sourceConstraints
+            .filter((c) => c.audio !== false)
+            .every((c) => c.audio && c.audio.echoCancellation === false),
         ),
       );
+      const activeSources = () =>
+        sender.evaluate(() =>
+          window.sourceFixtures.flatMap(({ stream }) =>
+            stream
+              .getTracks()
+              .filter((track) => track.readyState === "live")
+              .map((track) => track.id),
+          ),
+        );
+      const originalSources = await activeSources();
+      const screenControl = sender
+        .locator(".call-dock")
+        .getByLabel("Screen-share capture settings", { exact: true });
+      await screenControl.click();
+      const screenSettings = sender
+        .locator(".call-dock .video-settings")
+        .nth(1);
+      await screenSettings
+        .getByLabel("Screen share frame rate", { exact: true })
+        .selectOption("30");
+      await expect(screenSettings.locator("output")).toContainText("30 FPS");
+      assert.deepEqual(await activeSources(), originalSources);
+      if (mode === "ws")
+        await expect
+          .poll(() =>
+            sender.evaluate(() =>
+              window.sourceEncoderConfigs.some(
+                (config) =>
+                  config.width === 320 &&
+                  config.height === 180 &&
+                  config.framerate === 30,
+              ),
+            ),
+          )
+          .toBe(true);
+      await expect
+        .poll(
+          async () =>
+            (await measurePlayback(receiver)).filter(
+              (item) =>
+                /(?:camera|screen)_audio$/.test(item.label) && item.peak > 0.05,
+            ).length,
+        )
+        .toBe(2);
+      await screenControl.click();
       const meter = (page, source) =>
         page.getByRole("meter", {
           name: `alice ${source} level`,
@@ -541,6 +623,10 @@ export async function checkSourceAudio(browser, fixtures) {
       popup.on("pageerror", (error) => errors.push(error.message));
       await expect(receiver.locator(".call-panel.mini")).toBeHidden();
       await expect(popup.locator(".video-tile")).toHaveCount(2);
+      for (const name of await popup
+        .locator(".video-tile .profile-user-name")
+        .all())
+        await expect(name).toHaveAttribute("data-name-treatment", "backing");
       await checkChatToggle(popup, "popout");
       assert(
         (await measurePlayback(receiver)).every(

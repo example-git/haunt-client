@@ -1,4 +1,9 @@
+import { UserName } from "./UserName";
 import { PanelResize, usePanelWidths } from "./PanelResize";
+import { VoiceReconnectBanner } from "./VoiceReconnect";
+import { VoiceRestrictions, canModerateVoice } from "./VoiceModeration";
+import { clearVoiceReconnect } from "@haunt/browser/media/reconnect";
+import type { VoiceIntent } from "@haunt/browser/media/state";
 import {
   messageDay,
   messageDayLabel,
@@ -406,6 +411,7 @@ export function App() {
   const [pendingJoin, setPendingJoin] = useState<{
     instance: InstanceClient;
     room: string;
+    intent?: VoiceIntent;
   }>();
   const joiningCall = useRef(false);
 
@@ -414,7 +420,9 @@ export function App() {
   const [clientSettings, setClientSettings] = useState(false);
   const [view, setView] = useState<"home" | "server" | "dm">("home");
   const [direct, setDirect] = useState<{ scope: string; id: string }>();
-  const [instances, setInstances] = useState(() => [...client.instances.values()]);
+  const [instances, setInstances] = useState(() => [
+    ...client.instances.values(),
+  ]);
   const refreshInstances = () =>
     setInstances((previous) => {
       const next = [...client.instances.values()];
@@ -590,6 +598,7 @@ export function App() {
     setConnect(false);
   };
   const logout = async (instance: InstanceClient) => {
+    clearVoiceReconnect(instance);
     if (call?.client === instance) {
       await call.end();
       setCall(undefined);
@@ -608,6 +617,7 @@ export function App() {
     instance: InstanceClient,
     room: string,
     waitForPlugin: boolean,
+    intent?: VoiceIntent,
   ) => {
     if (joiningCall.current) return;
     if (
@@ -619,7 +629,7 @@ export function App() {
     joiningCall.current = true;
     setPendingJoin(undefined);
     await call?.end();
-    const next = new Call(instance, room);
+    const next = new Call(instance, room, intent);
     setCall(next);
     joiningCall.current = false;
     try {
@@ -628,7 +638,11 @@ export function App() {
       setError(friendlyError(e));
     }
   };
-  const joinCall = async (instance: InstanceClient, room: string) => {
+  const joinCall = async (
+    instance: InstanceClient,
+    room: string,
+    intent?: VoiceIntent,
+  ) => {
     if (
       call?.client === instance &&
       call.room === room &&
@@ -651,8 +665,8 @@ export function App() {
       instance.account.instance.capabilities?.includes("audio.plugins.v1") &&
       !ready
     )
-      setPendingJoin({ instance, room });
-    else await startCall(instance, room, true);
+      setPendingJoin({ instance, room, intent });
+    else await startCall(instance, room, true, intent);
   };
   return (
     <div
@@ -693,6 +707,12 @@ export function App() {
           }}
         />
       </Titlebar>
+      <VoiceReconnectBanner
+        instances={instances}
+        restoring={restoring}
+        active={!!call && call.snapshot.status !== "ended"}
+        join={joinCall}
+      />
       <SyncHealthNotice />
       <ModerationHost />
       <ProfileHost
@@ -859,7 +879,12 @@ export function App() {
           {...pendingJoin}
           onClose={() => setPendingJoin(undefined)}
           onJoin={(wait) =>
-            void startCall(pendingJoin.instance, pendingJoin.room, wait)
+            void startCall(
+              pendingJoin.instance,
+              pendingJoin.room,
+              wait,
+              pendingJoin.intent,
+            )
           }
         />
       )}
@@ -1000,6 +1025,7 @@ function Workspace({
   const [serverTab, setServerTab] = useState("overview");
   const [notificationServer, setNotificationServer] = useState(false);
   const [notificationChannel, setNotificationChannel] = useState<string>();
+  const [restrictionChannel, setRestrictionChannel] = useState<string>();
   const [menuPoint, setMenuPoint] = useState<{ x: number; y: number }>();
   const channelMenuElement = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
@@ -1257,6 +1283,17 @@ function Workspace({
             <button role="menuitem" onClick={() => setChannelMenu(undefined)}>
               Close menu
             </button>
+            {c.kind === "voice" && canModerateVoice(instance) && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setRestrictionChannel(c.id);
+                  setChannelMenu(undefined);
+                }}
+              >
+                Voice restrictions
+              </button>
+            )}
           </div>,
           document.body,
         )}
@@ -1714,6 +1751,13 @@ function Workspace({
           call={activeCall}
           logout={logout}
           onClose={() => setModal(undefined)}
+        />
+      )}
+      {restrictionChannel && (
+        <VoiceRestrictions
+          instance={instance}
+          channel={restrictionChannel}
+          onClose={() => setRestrictionChannel(undefined)}
         />
       )}
     </>
@@ -2271,7 +2315,9 @@ function MessageRow({
                   user={replyUser}
                   size="reply-avatar"
                 />
-                <strong>{displayName(replyUser)}</strong>
+                <strong>
+                  <UserName instance={instance} user={replyUser} />
+                </strong>
                 <span className="reply-preview">
                   {reply.deleted
                     ? "Message deleted"
@@ -2295,7 +2341,7 @@ function MessageRow({
                 className="user-name"
                 onClick={() => openProfile(instance, user.id)}
               >
-                {displayName(user)}
+                <UserName instance={instance} user={user} />
               </button>
             ) : (
               <strong>Deleted user</strong>
@@ -2623,8 +2669,12 @@ function Composer({
             >
               <Avatar instance={instance} user={user} />
               <span>
-                {displayName(user)}
-                <small>@{user.username}</small>
+                <UserName instance={instance} user={user} />
+                <small>
+                  <UserName instance={instance} user={user}>
+                    @{user.username}
+                  </UserName>
+                </small>
               </span>
             </button>
           ))}
@@ -2636,11 +2686,12 @@ function Composer({
           <div>
             <span>Replying to</span>
             <strong>
-              {displayName(
-                instance.snapshot.users.find(
+              <UserName
+                instance={instance}
+                user={instance.snapshot.users.find(
                   (user) => user.id === replyTo.author_id,
-                ),
-              )}
+                )}
+              />
             </strong>
             <small>{replyTo.body || "Attachment message"}</small>
           </div>
@@ -2917,7 +2968,7 @@ export function NewDM({
           <label key={entry.key}>
             <Avatar instance={entry.instance} user={entry.user} />
             <span>
-              {displayName(entry.user)}{" "}
+              <UserName instance={entry.instance} user={entry.user} />{" "}
               <small className="muted account-address">
                 {entry.address}
                 {!entry.online && " · Disconnected"}

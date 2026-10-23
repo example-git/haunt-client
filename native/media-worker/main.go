@@ -16,16 +16,19 @@ import (
 	"time"
 
 	"github.com/pion/interceptor"
+	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
+	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
 )
 
 var purposes = []string{"audio", "camera", "screen", "camera_audio", "screen_audio"}
 
 type trackConfig struct {
-	Purpose string `json:"purpose"`
-	FMTP    string `json:"fmtp,omitempty"`
+	Purpose string   `json:"purpose"`
+	FMTP    string   `json:"fmtp,omitempty"`
+	Layers  []string `json:"layers,omitempty"`
 }
 type command struct {
 	Type   string                    `json:"type"`
@@ -47,6 +50,7 @@ func (o *output) send(v any) {
 
 type mediaTrack struct {
 	local     *webrtc.TrackLocalStaticRTP
+	sender    *webrtc.RTPSender
 	payloader rtp.Payloader
 	clock     uint64
 	sequence  uint16
@@ -75,6 +79,11 @@ func newPublisher(c command, out *output) (*publisher, error) {
 		return nil, err
 	}
 	r := &interceptor.Registry{}
+	for _, uri := range []string{sdp.SDESMidURI, sdp.SDESRTPStreamIDURI, sdp.SDESRepairRTPStreamIDURI} {
+		if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: uri}, webrtc.RTPCodecTypeVideo); err != nil {
+			return nil, err
+		}
+	}
 	if err := webrtc.RegisterDefaultInterceptors(m, r); err != nil {
 		return nil, err
 	}
@@ -115,25 +124,65 @@ func newPublisher(c command, out *output) (*publisher, error) {
 			codec = webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000, SDPFmtpLine: config.FMTP, RTCPFeedback: []webrtc.RTCPFeedback{{Type: "nack"}, {Type: "nack", Parameter: "pli"}, {Type: "ccm", Parameter: "fir"}}}
 			payloader = &codecs.H264Payloader{}
 		}
-		local, err := webrtc.NewTrackLocalStaticRTP(codec, config.Purpose, "haunt-native")
-		if err != nil {
-			return nil, err
+		layers := config.Layers
+		if len(layers) == 0 {
+			layers = []string{""}
 		}
-		sender, err := pc.AddTrack(local)
-		if err != nil {
-			return nil, err
+		if len(layers) > 3 || (len(config.Layers) > 0 && (!video || layers[0] != "h")) {
+			return nil, errors.New("invalid video layers")
 		}
-		p.tracks[byte(index)] = &mediaTrack{local: local, payloader: payloader, clock: uint64(codec.ClockRate), video: video}
-		// Reading RTCP is necessary for the NACK interceptor. SwiftCapture emits
-		// periodic IDRs; it does not expose a force-keyframe control command.
-		go func() {
-			b := make([]byte, 1500)
-			for {
-				if _, _, err := sender.Read(b); err != nil {
-					return
-				}
+		var sender *webrtc.RTPSender
+		for layerIndex, rid := range layers {
+			slot := 0
+			switch rid {
+			case "", "h":
+			case "m":
+				slot = 16
+			case "l":
+				slot = 32
+			default:
+				return nil, errors.New("invalid layer ID")
 			}
-		}()
+			if p.tracks[byte(index+slot)] != nil {
+				return nil, errors.New("duplicate layer")
+			}
+			local, err := webrtc.NewTrackLocalStaticRTP(codec, config.Purpose, "haunt-native", webrtc.WithRTPStreamID(rid))
+			if err != nil {
+				return nil, err
+			}
+			if layerIndex == 0 {
+				sender, err = pc.AddTrack(local)
+			} else {
+				err = sender.AddEncoding(local)
+			}
+			if err != nil {
+				return nil, err
+			}
+			if video {
+				payloader = &codecs.H264Payloader{}
+			}
+			p.tracks[byte(index+slot)] = &mediaTrack{local: local, sender: sender, payloader: payloader, clock: uint64(codec.ClockRate), video: video}
+			go func(sender *webrtc.RTPSender, purpose, rid string, primary bool) {
+				for {
+					var packets []rtcp.Packet
+					var err error
+					if primary {
+						packets, _, err = sender.ReadRTCP()
+					} else {
+						packets, _, err = sender.ReadSimulcastRTCP(rid)
+					}
+					if err != nil {
+						return
+					}
+					for _, packet := range packets {
+						switch packet.(type) {
+						case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+							out.send(map[string]any{"type": "keyframe", "purpose": purpose, "layer": rid})
+						}
+					}
+				}
+			}(sender, config.Purpose, rid, layerIndex == 0)
+		}
 	}
 	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		p.connected.Store(s == webrtc.PeerConnectionStateConnected)
@@ -202,6 +251,35 @@ func (p *publisher) media(reader io.Reader) error {
 		for i, payload := range payloads {
 			track.sequence++
 			packet := &rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: track.sequence, Timestamp: timestamp, Marker: i == len(payloads)-1}, Payload: payload}
+			if rid := track.local.RID(); rid != "" {
+				mid := ""
+				for _, transceiver := range p.pc.GetTransceivers() {
+					if transceiver.Sender() == track.sender {
+						mid = transceiver.Mid()
+						break
+					}
+				}
+				midSet, ridSet := false, false
+				for _, extension := range track.sender.GetParameters().HeaderExtensions {
+					value := ""
+					switch extension.URI {
+					case sdp.SDESMidURI:
+						value = mid
+						midSet = true
+					case sdp.SDESRTPStreamIDURI:
+						value = rid
+						ridSet = true
+					}
+					if value != "" {
+						if err := packet.SetExtension(uint8(extension.ID), []byte(value)); err != nil {
+							return err
+						}
+					}
+				}
+				if mid == "" || !midSet || !ridSet {
+					return errors.New("native video layers require negotiated MID and RID extensions")
+				}
+			}
 			if err := track.local.WriteRTP(packet); err != nil {
 				return err
 			}
@@ -209,7 +287,7 @@ func (p *publisher) media(reader io.Reader) error {
 	}
 }
 
-func run(input io.Reader, media io.Reader, writer io.Writer) error {
+func run(input io.Reader, media io.Reader, writer io.Writer, lower ...io.Reader) error {
 	out := &output{writer: writer}
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 4096), 128*1024)
@@ -254,6 +332,13 @@ func run(input io.Reader, media io.Reader, writer io.Writer) error {
 					out.send(map[string]any{"type": "error", "message": err.Error()})
 				}
 			}()
+			if len(lower) > 0 {
+				go func() {
+					if err := p.media(lower[0]); err != nil && !errors.Is(err, io.EOF) {
+						out.send(map[string]any{"type": "error", "message": err.Error()})
+					}
+				}()
+			}
 		case "close":
 			return nil
 		default:
@@ -265,7 +350,9 @@ func run(input io.Reader, media io.Reader, writer io.Writer) error {
 func main() {
 	fd := os.NewFile(3, "media")
 	defer fd.Close()
-	if err := run(os.Stdin, fd, os.Stdout); err != nil {
+	lower := os.NewFile(4, "lower-video")
+	defer lower.Close()
+	if err := run(os.Stdin, fd, os.Stdout, lower); err != nil {
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "error", "message": err.Error()})
 		fmt.Fprintln(os.Stderr, "Media publisher stopped:", err)
 		os.Exit(1)

@@ -34,80 +34,93 @@ async function fixture(root) {
     ["build", "-o", path.join(directory, "HauntMediaWorker"), "."],
     { cwd: "native/media-worker" },
   );
-  const video = execFileSync(
-    "ffmpeg",
-    [
-      "-v",
-      "error",
-      "-f",
-      "lavfi",
-      "-i",
-      `testsrc2=size=${videoWidth}x${videoHeight}:rate=${videoFPS}`,
-      "-frames:v",
-      String(videoFPS * 2),
-      "-c:v",
-      "libx264",
-      "-threads",
-      "1",
-      "-profile:v",
-      "baseline",
-      "-pix_fmt",
-      "yuv420p",
-      "-x264-params",
-      `aud=1:keyint=${videoFPS}:scenecut=0:bframes=0`,
-      "-f",
-      "h264",
-      "pipe:1",
-    ],
-    { maxBuffer: 4 * 1024 * 1024 },
-  );
-  const starts = [];
-  for (let i = 0; i < video.length - 4; i++)
-    if (
-      video[i] === 0 &&
-      video[i + 1] === 0 &&
-      video[i + 2] === 0 &&
-      video[i + 3] === 1 &&
-      (video[i + 4] & 31) === 9
-    )
-      starts.push(i);
-  const frames = starts.map((start, i) => {
-    const data = video.subarray(start, starts[i + 1] ?? video.length);
-    let key = false;
-    for (let n = 0; n < data.length - 3; n++)
+  const modes = [];
+  for (const mode of [
+    { width: videoWidth, height: videoHeight, fps: videoFPS },
+    ...(!audioOnly
+      ? [
+          { width: 1280, height: 720, fps: 30 },
+          { width: 640, height: 360, fps: 30 },
+        ]
+      : []),
+  ]) {
+    const { width: videoWidth, height: videoHeight, fps: videoFPS } = mode;
+    const video = execFileSync(
+      "ffmpeg",
+      [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `testsrc2=size=${videoWidth}x${videoHeight}:rate=${videoFPS}`,
+        "-frames:v",
+        String(videoFPS * 2),
+        "-c:v",
+        "libx264",
+        "-threads",
+        "1",
+        "-profile:v",
+        "baseline",
+        "-pix_fmt",
+        "yuv420p",
+        "-x264-params",
+        `aud=1:keyint=${videoFPS}:scenecut=0:bframes=0`,
+        "-f",
+        "h264",
+        "pipe:1",
+      ],
+      { maxBuffer: 4 * 1024 * 1024 },
+    );
+    const starts = [];
+    for (let i = 0; i < video.length - 4; i++)
       if (
-        data[n] === 0 &&
-        data[n + 1] === 0 &&
-        data[n + 2] === 1 &&
-        (data[n + 3] & 31) === 5
+        video[i] === 0 &&
+        video[i + 1] === 0 &&
+        video[i + 2] === 0 &&
+        video[i + 3] === 1 &&
+        (video[i + 4] & 31) === 9
       )
-        key = true;
-    return { data: data.toString("base64"), key };
-  });
-  const nals = [];
-  for (let i = 0; i < video.length - 3; i++)
-    if (video[i] === 0 && video[i + 1] === 0 && video[i + 2] === 1)
-      nals.push(i + 3);
-  const parameterSets = nals
-    .filter((i) => [7, 8].includes(video[i] & 31))
-    .slice(0, 2)
-    .map((i) => {
-      let end = nals[nals.indexOf(i) + 1] - 3;
-      while (video[end - 1] === 0) end--;
-      return video.subarray(i, end).toString("base64");
+        starts.push(i);
+    const frames = starts.map((start, i) => {
+      const data = video.subarray(start, starts[i + 1] ?? video.length);
+      let key = false;
+      for (let n = 0; n < data.length - 3; n++)
+        if (
+          data[n] === 0 &&
+          data[n + 1] === 0 &&
+          data[n + 2] === 1 &&
+          (data[n + 3] & 31) === 5
+        )
+          key = true;
+      return { data: data.toString("base64"), key };
     });
-  assert.equal(frames.filter((f) => f.key).length, 2);
-  assert.equal(frames.length, videoFPS * 2);
-  assert.equal(parameterSets.length, 2);
-  await fs.writeFile(
-    path.join(directory, "frames.json"),
-    JSON.stringify({
+    const nals = [];
+    for (let i = 0; i < video.length - 3; i++)
+      if (video[i] === 0 && video[i + 1] === 0 && video[i + 2] === 1)
+        nals.push(i + 3);
+    const parameterSets = nals
+      .filter((i) => [7, 8].includes(video[i] & 31))
+      .slice(0, 2)
+      .map((i) => {
+        let end = nals[nals.indexOf(i) + 1] - 3;
+        while (video[end - 1] === 0) end--;
+        return video.subarray(i, end).toString("base64");
+      });
+    assert.equal(frames.filter((f) => f.key).length, 2);
+    assert.equal(frames.length, videoFPS * 2);
+    assert.equal(parameterSets.length, 2);
+    modes.push({
       frames,
       parameterSets,
       width: videoWidth,
       height: videoHeight,
       fps: videoFPS,
-    }),
+    });
+  }
+  await fs.writeFile(
+    path.join(directory, "frames.json"),
+    JSON.stringify({ modes }),
   );
 }
 
@@ -128,7 +141,7 @@ async function attachNativeShell(page, root) {
   const socketServer = new WebSocketServer({
     host: "127.0.0.1",
     port: 0,
-    maxPayload: 16384,
+    maxPayload: 2 * 1024 * 1024,
   });
   await once(socketServer, "listening");
   let socket;
@@ -138,9 +151,29 @@ async function attachNativeShell(page, root) {
       return;
     }
     socket = client;
-    client.on("message", (raw) => {
-      const message = JSON.parse(raw.toString());
+    client.on("message", async (raw, binary) => {
       const event = { sender: contents, senderFrame: contents.mainFrame };
+      if (binary) {
+        const length = raw.readUInt32BE(0);
+        const message = JSON.parse(raw.subarray(4, 4 + length).toString());
+        let error;
+        try {
+          await handlers.get("native:video")(
+            event,
+            message.id,
+            message.purpose,
+            message.layer,
+            new Uint8Array(raw.subarray(4 + length)),
+            message.timestamp,
+            message.key,
+          );
+        } catch (failure) {
+          error = failure.message;
+        }
+        client.send(JSON.stringify({ reply: message.request, error }));
+        return;
+      }
+      const message = JSON.parse(raw.toString());
       if (message.type === "ack")
         listeners.get("native:ack")(event, message.id, message.kind);
       if (message.type === "audio")
@@ -186,6 +219,7 @@ async function attachNativeShell(page, root) {
   const Base = localRequire("./native-publisher.cjs").NativePublisher;
   const captureModule = localRequire("./swiftcapture.cjs");
   const activeCaptures = new Map();
+  const captureOptions = [];
   class CheckedCapture extends captureModule.Capture {
     constructor(binary, options) {
       const previous = activeCaptures.get(options.purpose);
@@ -197,6 +231,7 @@ async function attachNativeShell(page, root) {
       );
       super(binary, options);
       activeCaptures.set(options.purpose, this);
+      captureOptions.push({ ...options });
     }
   }
   class DebugPublisher extends Base {
@@ -251,6 +286,7 @@ async function attachNativeShell(page, root) {
   const event = { sender: contents, senderFrame: contents.mainFrame };
   await page.exposeFunction("nativeInvoke", async (name, args) => {
     try {
+      if (name === "native:video") args[3] = Uint8Array.from(args[3]);
       return await handlers.get(name)(event, ...args);
     } catch (e) {
       console.error("invoke error", name, e.message);
@@ -265,8 +301,18 @@ async function attachNativeShell(page, root) {
       socket.onerror = reject;
     });
     const callbacks = new Set();
+    const requests = new Map();
+    let sequence = 0;
     const text = new TextDecoder();
     socket.onmessage = ({ data }) => {
+      if (typeof data === "string") {
+        const message = JSON.parse(data);
+        const pending = requests.get(message.reply);
+        requests.delete(message.reply);
+        if (message.error) pending?.reject(Error(message.error));
+        else pending?.resolve();
+        return;
+      }
       const headerLength = new DataView(data).getUint32(0);
       const event = JSON.parse(
         text.decode(new Uint8Array(data, 4, headerLength)),
@@ -288,6 +334,7 @@ async function attachNativeShell(page, root) {
       }
     };
     window.nativeVideoEncodes = 0;
+    window.nativeVideoSizes = [];
     window.nativeRTCVideoTracks = 0;
     const Peer = RTCPeerConnection;
     window.RTCPeerConnection = class extends Peer {
@@ -300,6 +347,10 @@ async function attachNativeShell(page, root) {
     window.VideoEncoder = class extends Encoder {
       encode(...args) {
         window.nativeVideoEncodes++;
+        window.nativeVideoSizes.push([
+          args[0].displayWidth,
+          args[0].displayHeight,
+        ]);
         return super.encode(...args);
       }
     };
@@ -309,6 +360,28 @@ async function attachNativeShell(page, root) {
       nativeDevices: (permission) =>
         window.nativeInvoke("native:devices", [permission]),
       nativeStart: (value) => window.nativeInvoke("native:start", [value]),
+      nativeConfigure: (id, mode) =>
+        window.nativeInvoke("native:configure", [id, mode]),
+      nativeVideo: (id, purpose, layer, data, timestamp, key) =>
+        new Promise((resolve, reject) => {
+          const request = ++sequence;
+          const header = new TextEncoder().encode(
+            JSON.stringify({
+              request,
+              id,
+              purpose,
+              layer,
+              timestamp,
+              key,
+            }),
+          );
+          const packet = new Uint8Array(4 + header.length + data.length);
+          new DataView(packet.buffer).setUint32(0, header.length);
+          packet.set(header, 4);
+          packet.set(data, 4 + header.length);
+          requests.set(request, { resolve, reject });
+          socket.send(packet);
+        }),
       nativeStop: (id) => window.nativeInvoke("native:stop", [id]),
       onNativeEvent: (callback) => {
         callbacks.add(callback);
@@ -343,17 +416,24 @@ async function attachNativeShell(page, root) {
   }, socketServer.address().port);
   return {
     failures,
+    captureOptions,
     checkRestart: async () => {
       const first = randomUUID(),
         second = randomUUID();
       await handlers.get("native:start")(event, {
         id: first,
         purpose: "camera",
+        width: videoWidth,
+        height: videoHeight,
+        fps: videoFPS,
       });
       const stopped = handlers.get("native:stop")(event, first);
       await handlers.get("native:start")(event, {
         id: second,
         purpose: "camera",
+        width: videoWidth,
+        height: videoHeight,
+        fps: videoFPS,
       });
       await stopped;
       await handlers.get("native:stop")(event, second);
@@ -468,6 +548,7 @@ export async function checkNativeMedia(browser, fixtures) {
       ]);
       let host;
       const errors = [];
+      const performanceFailures = [];
       try {
         const [sender, receiver] = await Promise.all(
           contexts.map((c) => c.newPage()),
@@ -476,6 +557,55 @@ export async function checkNativeMedia(browser, fixtures) {
           page.setDefaultTimeout(25000);
           page.on("pageerror", (e) => errors.push(e.message));
           await page.addInitScript(() => {
+            window.nativeMediaTrace = [];
+            let peers = 0;
+            const record = (event) => {
+              window.nativeMediaTrace.push({
+                time: performance.now(),
+                ...event,
+              });
+              if (window.nativeMediaTrace.length > 100)
+                window.nativeMediaTrace.shift();
+            };
+            const Socket = WebSocket,
+              Peer = RTCPeerConnection;
+            window.WebSocket = class extends Socket {
+              constructor(...args) {
+                super(...args);
+                if (String(args[0]).includes("/api/v1/events"))
+                  this.addEventListener("message", ({ data }) => {
+                    if (typeof data !== "string") return;
+                    const event = JSON.parse(data);
+                    if (
+                      event.type.startsWith("media.") ||
+                      event.type === "error"
+                    )
+                      record({
+                        type: event.type,
+                        error: event.error,
+                        layer: event.layer,
+                        id:
+                          event.participant?.participant_id ??
+                          event.publisher_id,
+                        tracks: event.participant?.tracks?.map(
+                          ({ purpose, layers }) => ({ purpose, layers }),
+                        ),
+                      });
+                  });
+              }
+            };
+            window.RTCPeerConnection = class extends Peer {
+              constructor(...args) {
+                super(...args);
+                const id = ++peers;
+                this.addEventListener("connectionstatechange", () =>
+                  record({ type: "peer", id, state: this.connectionState }),
+                );
+                this.addEventListener("track", ({ track }) =>
+                  record({ type: "track", id, kind: track.kind }),
+                );
+              }
+            };
             window.videoSupportProbes = [];
             window.videoDecoderConfigs = [];
             const Decoder = VideoDecoder;
@@ -496,9 +626,14 @@ export async function checkNativeMedia(browser, fixtures) {
           [receiver, "bob"],
         ]) {
           await page.goto("http://127.0.0.1:5173");
-          await page
-            .getByRole("button", { name: "Add server", exact: true })
-            .click();
+          if (process.env.HAUNT_CLIENT_BUILD === "dist-standalone")
+            await expect(
+              page.getByRole("dialog", { name: "Connect to a server" }),
+            ).toBeVisible();
+          else
+            await page
+              .getByRole("button", { name: "Add server", exact: true })
+              .click();
           await fillSignin(page, server.url, user);
           await page
             .getByLabel("Password", { exact: true })
@@ -570,10 +705,26 @@ export async function checkNativeMedia(browser, fixtures) {
             .locator(`[data-channel-id="${server.voice}"] button.channel`)
             .click();
         await expect(sender.locator(".call-dock")).toBeVisible();
+        const selectHigh = async (count) => {
+          if (mode !== "rtc" || audioOnly) return;
+          const started = performance.now();
+          const tiles = receiver.locator(".video-tile");
+          await expect(tiles).toHaveCount(count);
+          for (const tile of await tiles.all()) {
+            const quality = tile.getByRole("combobox");
+            await expect(quality.locator('option[value="h"]')).toBeAttached();
+            await quality.selectOption("h");
+            await expect(quality).toHaveValue("h");
+          }
+          console.log(
+            `Native ${mode}: ${count} video subscriptions ready in ${Math.round(performance.now() - started)} ms`,
+          );
+        };
         await sender
           .locator(".call-dock")
           .getByRole("button", { name: "Turn on camera", exact: true })
           .click();
+        await selectHigh(1);
         await expect
           .poll(
             () =>
@@ -621,28 +772,38 @@ export async function checkNativeMedia(browser, fixtures) {
         );
         await expect(sourceAudio).toHaveCount(1);
         await checkAudioPitch(sourceAudio, `${mode} 44.1 kHz camera`);
-        await sender
-          .locator(".call-dock")
-          .getByRole("button", { name: "Share screen", exact: true })
-          .click();
-        await expect
-          .poll(
-            () =>
-              receiver
-                .locator(".call-panel video")
-                .evaluateAll(
-                  (videos, size) =>
-                    videos.filter(
-                      (v) =>
-                        v.videoWidth === size.width &&
-                        v.videoHeight === size.height &&
-                        v.readyState >= 2,
-                    ).length,
-                  { width: videoWidth, height: videoHeight },
-                ),
-            { timeout: 20000 },
-          )
-          .toBeGreaterThanOrEqual(2);
+        for (let replacement = 0; replacement < 3; replacement++) {
+          if (replacement) {
+            await sender
+              .locator(".call-dock")
+              .getByRole("button", { name: "Stop sharing screen", exact: true })
+              .click();
+            await selectHigh(1);
+          }
+          await sender
+            .locator(".call-dock")
+            .getByRole("button", { name: "Share screen", exact: true })
+            .click();
+          await selectHigh(2);
+          await expect
+            .poll(
+              () =>
+                receiver
+                  .locator(".call-panel video")
+                  .evaluateAll(
+                    (videos, size) =>
+                      videos.filter(
+                        (v) =>
+                          v.videoWidth === size.width &&
+                          v.videoHeight === size.height &&
+                          v.readyState >= 2,
+                      ).length,
+                    { width: videoWidth, height: videoHeight },
+                  ),
+              { timeout: 20000 },
+            )
+            .toBeGreaterThanOrEqual(2);
+        }
         await expect(
           receiver.locator('.call-panel audio[aria-label$=" · screen_audio"]'),
         ).toHaveCount(1);
@@ -697,31 +858,65 @@ export async function checkNativeMedia(browser, fixtures) {
             // This shared Linux host measures presentation, not Apple hardware
             // decode throughput. Catch a 30 fps cap without requiring every feed
             // to sustain 60 fps under concurrent host load.
-            assert(
-              rates.every((fps) => fps > 35),
-              "Both local and remote feeds must exceed the former 30 fps limit",
-            );
+            if (!rates.every((fps) => fps > 35))
+              performanceFailures.push(
+                `Both local and remote feeds must exceed the former 30 fps limit: ${JSON.stringify(rates)}`,
+              );
           }
         }
         await sender.bringToFront();
         const captureDiagnostics = await sender.evaluate(() => ({
           chromiumCameraRequests: window.nativeChromiumCameraRequests,
           videoEncodes: window.nativeVideoEncodes,
+          videoSizes: window.nativeVideoSizes,
           rtcVideoTracks: window.nativeRTCVideoTracks,
           hardwareRequested: window.videoSupportProbes.some(
             (c) => c.hardwareAcceleration === "prefer-hardware",
           ),
         }));
-        assert.deepEqual(
-          captureDiagnostics,
-          {
-            chromiumCameraRequests: 0,
-            videoEncodes: 0,
-            rtcVideoTracks: 0,
-            hardwareRequested: true,
-          },
-          "Native capture avoids Chromium camera opens and a second encode, and prefers hardware decoding",
-        );
+        assert.equal(captureDiagnostics.chromiumCameraRequests, 0);
+        assert.equal(captureDiagnostics.rtcVideoTracks, 0);
+        assert.equal(captureDiagnostics.hardwareRequested, true);
+        if (mode === "rtc" && !audioOnly) {
+          assert(captureDiagnostics.videoEncodes > 0);
+          assert(
+            captureDiagnostics.videoSizes.every(
+              ([width, height]) => width <= 1280 && height <= 720,
+            ),
+          );
+          const tiles = receiver.locator(".video-tile");
+          for (const tile of await tiles.all()) {
+            await tile.getByRole("combobox").selectOption("l");
+            await expect
+              .poll(
+                () =>
+                  tile.locator("video").evaluate((video) => video.videoHeight),
+                { timeout: 20000 },
+              )
+              .toBe(360);
+          }
+          assert.deepEqual(
+            await sender
+              .locator(".video-tile video")
+              .evaluateAll((videos) =>
+                videos.map((video) => video.videoHeight),
+              ),
+            [720, 720],
+          );
+          for (const tile of await tiles.all()) {
+            await tile.getByRole("combobox").selectOption("h");
+            await expect
+              .poll(
+                () =>
+                  tile.locator("video").evaluate((video) => video.videoHeight),
+                { timeout: 20000 },
+              )
+              .toBe(720);
+          }
+          console.log(
+            "Native H.264 viewer layers switch 720p → 360p → 720p for camera and screen; local sources remain 720p.",
+          );
+        } else assert.equal(captureDiagnostics.videoEncodes, 0);
         if (mode === "ws")
           assert(
             await receiver.evaluate(() =>
@@ -737,6 +932,100 @@ export async function checkNativeMedia(browser, fixtures) {
             .getByRole("button", { name, exact: true })
             .click();
         };
+        if (!audioOnly) {
+          const trackIDs = () =>
+            sender
+              .locator(".video-tile video")
+              .evaluateAll((videos) =>
+                videos.map((video) => video.srcObject.getVideoTracks()[0].id),
+              );
+          const originalTracks = await trackIDs();
+          const originalCamera = host.captureOptions.findLast(
+            (options) => options.purpose === "camera",
+          );
+          const originalScreen = host.captureOptions.findLast(
+            (options) => options.purpose === "screen",
+          );
+          for (const purpose of ["camera", "screen"]) {
+            await sender
+              .locator(".call-dock")
+              .getByLabel(
+                purpose === "camera"
+                  ? "Camera capture settings"
+                  : "Screen-share capture settings",
+                { exact: true },
+              )
+              .click();
+            const settings = sender
+              .locator(".call-dock .video-settings")
+              .nth(purpose === "camera" ? 0 : 1);
+            if (purpose === "camera") {
+              await settings
+                .getByRole("button", {
+                  name: "Check camera modes",
+                  exact: true,
+                })
+                .click();
+              await settings
+                .getByLabel("Camera resolution", { exact: true })
+                .selectOption("640x360");
+            } else {
+              await settings
+                .getByLabel("Screen share frame rate", { exact: true })
+                .selectOption("30");
+            }
+            await expect(settings.locator("output")).toContainText("30 FPS");
+            await expect(settings.getByRole("combobox").first()).toBeEnabled();
+            await sender
+              .locator(".call-dock")
+              .getByLabel(
+                purpose === "camera"
+                  ? "Camera capture settings"
+                  : "Screen-share capture settings",
+                { exact: true },
+              )
+              .click();
+          }
+          assert.deepEqual(await trackIDs(), originalTracks);
+          const currentCamera = host.captureOptions.findLast(
+            (options) => options.purpose === "camera",
+          );
+          const currentScreen = host.captureOptions.findLast(
+            (options) => options.purpose === "screen",
+          );
+          assert.equal(currentCamera.device, originalCamera.device);
+          assert.equal(currentCamera.audioDevice, originalCamera.audioDevice);
+          assert.equal(currentScreen.source, originalScreen.source);
+          assert.equal(currentScreen.audio, originalScreen.audio);
+          assert.equal(currentCamera.height, 360);
+          assert.equal(currentScreen.fps, 30);
+          await expect
+            .poll(
+              () =>
+                receiver
+                  .locator(".video-tile video")
+                  .evaluateAll((videos) =>
+                    videos
+                      .map((video) => video.videoHeight)
+                      .sort((a, b) => a - b),
+                  ),
+              { timeout: 30000 },
+            )
+            .toEqual([360, 720]);
+          await checkAudioPitch(
+            sourceAudio,
+            `${mode} camera after active settings change`,
+          );
+          await checkAudioPitch(
+            receiver.locator(
+              '.call-panel audio[aria-label$=" · screen_audio"]',
+            ),
+            `${mode} screen after active settings change`,
+          );
+          console.log(
+            `Native ${mode}: active camera 720p60 → 360p30 and screen 60 → 30 FPS retained source identity, preview tracks and stereo source audio.`,
+          );
+        }
         console.log(`Native ${mode}: stopping camera`);
         await clickControl("Turn off camera");
         await expect(
@@ -755,9 +1044,15 @@ export async function checkNativeMedia(browser, fixtures) {
         console.log(
           `Native ${mode}: camera + screen H.264, source audio, unmodified video, stop/reconfigure passed.`,
         );
+        assert.deepEqual(
+          performanceFailures,
+          [],
+          "Native presentation throughput",
+        );
       } catch (error) {
         console.error(`Native ${mode} failure:`, error);
         console.error("Native errors:", errors, host?.failures, host?.counts);
+        await new Promise((resolve) => setTimeout(resolve, 6000));
         for (const context of contexts)
           for (const page of context.pages()) {
             console.error(
@@ -766,6 +1061,14 @@ export async function checkNativeMedia(browser, fixtures) {
                 page
                   .evaluate(() => ({
                     dock: document.querySelector(".call-dock")?.textContent,
+                    trace: window.nativeMediaTrace,
+                    videos: [...document.querySelectorAll("video")].map(
+                      (video) => ({
+                        width: video.videoWidth,
+                        height: video.videoHeight,
+                        state: video.readyState,
+                      }),
+                    ),
                     meters: [
                       ...document.querySelectorAll('[role="meter"]'),
                     ].map((e) => ({

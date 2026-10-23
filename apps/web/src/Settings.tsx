@@ -1,3 +1,4 @@
+import { UserName } from "./UserName";
 import { DMStorageMeter } from "./DMStorage";
 import { NoiseControls, useAudioPlugins } from "./NoiseControls";
 import { copyText } from "./clipboard";
@@ -136,7 +137,12 @@ export function AccountSettings({
                   user={instance.account.login.user}
                 />
                 <div>
-                  <strong>{displayName(instance.account.login.user)}</strong>
+                  <strong>
+                    <UserName
+                      instance={instance}
+                      user={instance.account.login.user}
+                    />
+                  </strong>
                   <small>{instance.origin}</small>
                 </div>
               </div>

@@ -408,10 +408,10 @@ dialog.settings-dialog {
 }
 .preview-header {
   grid-column: 1 / -1;
-  background: var(--preview-chrome);
+  background: var(--glass-grain), var(--glass-frost), var(--preview-chrome);
 }
 .preview-rail {
-  background: var(--preview-rail);
+  background: var(--glass-grain), var(--preview-rail);
   padding: 5px 2px;
 }
 .preview-rail i {
@@ -424,7 +424,7 @@ dialog.settings-dialog {
 }
 .preview-sidebar {
   position: relative;
-  background: var(--preview-sidebar);
+  background: var(--glass-grain), var(--preview-sidebar);
   padding: 6px 3px;
 }
 .preview-sidebar i {
@@ -443,12 +443,12 @@ dialog.settings-dialog {
   right: 0;
   bottom: 0;
   height: 9px;
-  background: var(--preview-chrome);
+  background: var(--glass-grain), var(--glass-frost), var(--preview-chrome);
 }
 .preview-chat {
   position: relative;
   padding: 7px 5px;
-  background: color-mix(in srgb, var(--preview-chat) 88%, transparent);
+  background: var(--preview-chat);
 }
 .preview-chat i {
   display: block;

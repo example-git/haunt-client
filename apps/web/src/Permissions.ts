@@ -12,6 +12,8 @@ export const Permission = {
   ResetPasswords: 8192,
   ManageConfiguration: 16384,
   Administrator: 32768,
+  MuteMembers: 65536,
+  DeafenMembers: 131072,
 } as const;
 export function can(instance: InstanceClient, bits: number) {
   return (

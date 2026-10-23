@@ -1,3 +1,5 @@
+import { UserName } from "./UserName";
+import { VoiceModerationMenu } from "./VoiceModeration";
 import { openProfile } from "./Profile";
 import { memberGroups } from "@haunt/browser/member-groups";
 import { subscribeArt, type Art } from "@haunt/browser/art";
@@ -301,7 +303,9 @@ export function MemberList({
                   >
                     <Avatar instance={instance} user={user} />
                     <span>
-                      <strong>{displayName(user)}</strong>
+                      <strong>
+                        <UserName instance={instance} user={user} />
+                      </strong>
                       <small
                         className={
                           voice?.screen || voice?.camera
@@ -328,7 +332,9 @@ export function MemberList({
                         ) : voice ? (
                           `In ${roomName}`
                         ) : (
-                          `@${user.username}`
+                          <UserName instance={instance} user={user}>
+                            @{user.username}
+                          </UserName>
                         )}
                       </small>
                     </span>
@@ -352,7 +358,9 @@ export function MemberList({
             }
           >
             <Avatar instance={instance} user={person} size="large" />
-            <h2>{displayName(person)}</h2>
+            <h2>
+              <UserName instance={instance} user={person} />
+            </h2>
             <p className="muted account-address">
               {userAddress(instance, person)}{" "}
               {person.is_owner && "· Server owner"}
@@ -405,12 +413,18 @@ export function VoiceMembers({
   onEditProfile?: () => void;
 }) {
   const menu = useContextMenu();
+  const [error, setError] = useState("");
   const members = (instance.snapshot.voiceRooms[room] ?? []).filter((p) =>
     instance.snapshot.users.some((u) => u.id === p.user_id),
   );
   if (!members.length) return null;
   return (
     <div className="voice-members" aria-label="Voice participants">
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
       {members.map((p) => {
         const user = instance.snapshot.users.find((u) => u.id === p.user_id);
         return (
@@ -430,11 +444,19 @@ export function VoiceMembers({
                     </MenuAction>
                   )}
                 <UserVolume instance={instance} user={p.user_id} />
+                <VoiceModerationMenu
+                  instance={instance}
+                  channel={room}
+                  participant={p}
+                  onError={setError}
+                />
               </>,
             )}
           >
             <Avatar instance={instance} user={user} size="tiny" />
-            <span>{displayName(user)}</span>
+            <span>
+              <UserName instance={instance} user={user} />
+            </span>
             <CallTimer joinedAt={p.joined_at} />
             {(p.state.screen_off === false || p.state.camera_off === false) && (
               <span className="voice-media-icons">

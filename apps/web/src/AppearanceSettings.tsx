@@ -21,6 +21,8 @@ import {
   minimumSidebarOpacity,
   themePresets,
   themeBackground,
+  resolvedThemeColors,
+  glassLayerColor,
   type WindowEffect,
 } from "@haunt/browser/themes";
 const labels = {
@@ -170,80 +172,110 @@ export function AppearanceSettings() {
       </fieldset>
       <SavedThemes>
         <div className="theme-presets">
-          {themePresets.map((preset) => (
-            <button
-              type="button"
-              key={preset.id}
-              className="theme-preset"
-              aria-pressed={
-                theme.preset === preset.id &&
-                prefs.accentColor === preset.accent
-              }
-              onClick={() =>
-                setPreferences({
-                  theme: {
-                    ...theme,
-                    preset: preset.id,
-                    colors: { ...preset.colors },
-                    gradient: preset.gradient ?? null,
+          {themePresets.map((preset) => {
+            const colors = resolvedThemeColors(
+              preset.colors,
+              preset.accent,
+              theme.windowEffect,
+            );
+            const opacity =
+              theme.windowEffect === "solid"
+                ? 100
+                : Math.max(
+                    theme.sidebarOpacity,
+                    minimumSidebarOpacity(theme.windowEffect),
+                  );
+            const background = (color: string, alpha = 100) =>
+              themeBackground(
+                {
+                  ...preset,
+                  colors: {
+                    ...colors,
+                    background: glassLayerColor(color, colors.surface, alpha),
                   },
-                  accentColor: preset.accent,
-                })
-              }
-            >
-              <span
-                className="theme-preview"
-                style={
-                  {
-                    "--preview-backdrop": themeBackground(preset),
-                    "--preview-rail": themeBackground(preset),
-                    "--preview-sidebar": themeBackground({
-                      ...preset,
-                      colors: {
-                        ...preset.colors,
-                        background: preset.colors.sidebar,
-                      },
-                    }),
-                    "--preview-chrome": preset.colors.chrome,
-                    "--preview-chat": preset.colors.surface,
-                    "--preview-raised": preset.colors.raised,
-                    "--preview-accent": layerPalette(
-                      preset.colors.sidebar,
-                      preset.colors,
-                      preset.accent,
-                    ).button,
-                    "--preview-muted": preset.colors.muted,
-                  } as CSSProperties
+                },
+                alpha,
+              );
+            return (
+              <button
+                type="button"
+                key={preset.id}
+                className="theme-preset"
+                aria-pressed={
+                  theme.preset === preset.id &&
+                  prefs.accentColor === preset.accent
                 }
-                aria-hidden="true"
+                onClick={() =>
+                  setPreferences({
+                    theme: {
+                      ...theme,
+                      preset: preset.id,
+                      colors: { ...preset.colors },
+                      gradient: preset.gradient ?? null,
+                    },
+                    accentColor: preset.accent,
+                  })
+                }
               >
-                <span className="preview-header" />
-                <span className="preview-rail">
-                  <i />
-                  <i />
+                <span
+                  className="theme-preview"
+                  data-window-effect={theme.windowEffect}
+                  style={
+                    {
+                      "--preview-backdrop": background(colors.background),
+                      "--preview-rail": background(
+                        theme.windowEffect === "solid"
+                          ? colors.background
+                          : colors.sidebar,
+                        opacity +
+                          (100 - opacity) *
+                            (theme.windowEffect === "material" ? 0.25 : 0.35),
+                      ),
+                      "--preview-sidebar": background(colors.sidebar, opacity),
+                      "--preview-chrome": background(
+                        colors.chrome,
+                        opacity + (100 - opacity) * 0.45,
+                      ),
+                      "--preview-chat": background(colors.surface),
+                      "--preview-raised": colors.raised,
+                      "--preview-accent": layerPalette(
+                        colors.sidebar,
+                        colors,
+                        preset.accent,
+                      ).button,
+                      "--preview-muted": preset.colors.muted,
+                    } as CSSProperties
+                  }
+                  aria-hidden="true"
+                >
+                  <span className="preview-header" />
+                  <span className="preview-rail">
+                    <i />
+                    <i />
+                  </span>
+                  <span className="preview-sidebar">
+                    <i />
+                    <i />
+                    <span />
+                  </span>
+                  <span className="preview-chat">
+                    <i />
+                    <i />
+                    <b />
+                  </span>
                 </span>
-                <span className="preview-sidebar">
-                  <i />
-                  <i />
-                  <span />
-                </span>
-                <span className="preview-chat">
-                  <i />
-                  <i />
-                  <b />
-                </span>
-              </span>
-              {theme.preset === preset.id &&
-                prefs.accentColor === preset.accent && (
-                  <Check
-                    className="theme-selected-check"
-                    size={15}
-                    aria-hidden="true"
-                  />
-                )}
-              {preset.name}
-            </button>
-          ))}
+                {theme.preset === preset.id &&
+                  prefs.accentColor === preset.accent && (
+                    <Check
+                      className="theme-selected-check"
+                      size={15}
+                      aria-hidden="true"
+                    />
+                  )}
+                {preset.name}
+              </button>
+            );
+          })}
         </div>
       </SavedThemes>
       <fieldset>
@@ -435,13 +467,13 @@ export function AppearanceSettings() {
             </label>
           )}
           <p className="muted small">
-            The sidebar and direct-message directory use this opacity; the
-            server rail and title bar keep a denser theme tint. Chat,
-            notifications, composer, account footer, and call controls stay
-            opaque. Frosted glass adds blur and highlighted seams between
-            connected layers. All surfaces keep your theme colors and gradients.
-            Frosted glass starts at 30%; transparent mode starts at 50%. Desktop
-            effects depend on your operating system and compositor.
+            Side panels use this opacity; the server rail, headers, and account
+            controls keep a denser theme tint. Chat, notifications, and the
+            composer stay opaque. Fine grain gives the glass texture, with soft
+            frosting on chrome. Frosted glass adds blur and stronger highlights.
+            All surfaces keep your theme colors and gradients. Frosted glass
+            starts at 30%; transparent mode starts at 50%. Desktop effects
+            depend on your operating system and compositor.
           </p>
           {!desktop.appearance && (
             <p role="status">

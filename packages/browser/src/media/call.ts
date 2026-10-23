@@ -1,4 +1,6 @@
 import { pluginSelection } from "../audio-plugins/preferences";
+import { rememberVoice, clearVoiceReconnect } from "./reconnect";
+import type { ViewingQuality } from "./quality";
 import { ensureAudioPlugins, subscribePlugins } from "../audio-plugins/cache";
 import { pluginDownloads, pluginFileKey } from "../audio-plugins/progress";
 import { SpeakingActivity, audioActivityKey } from "./speaking";
@@ -14,7 +16,20 @@ import { EncodedTransport } from "./encoded";
 import { WebRTCTransport } from "./webrtc";
 import type { LocalTracks, MediaTransport } from "./types";
 import { VoiceCues } from "../sounds";
-import { getPreferences, subscribePreferences } from "../preferences";
+import {
+  getPreferences,
+  setPreferences,
+  subscribePreferences,
+} from "../preferences";
+import {
+  selectedCameraMode,
+  exactVideoConstraints,
+  matchesVideoMode,
+  applyCameraMode,
+  applyScreenMode,
+  screenFrameRates,
+  type VideoMode,
+} from "./video-settings";
 import { MicrophoneCapture, type NoiseStatus } from "./microphone";
 import { openMicrophone } from "./microphone-input";
 import {
@@ -43,8 +58,10 @@ export interface CallSnapshot {
   remote: RemoteMedia[];
   local: { purpose: Purpose; stream: MediaStream }[];
   state: Readonly<MediaState>;
+  restriction: Readonly<{ muted: boolean; deafened: boolean }>;
   microphoneMonitoring: boolean;
   busy: boolean;
+  qualities: Record<string, ViewingQuality>;
   noiseSuppression?: NoiseStatus;
 }
 export class Call {
@@ -61,6 +78,8 @@ export class Call {
   >();
   private listeners = new Set<() => void>();
   private transport?: MediaTransport;
+  private viewingQualities = new Map<string, ViewingQuality>();
+  private rosterUpdates?: Map<string, Participant | null>;
   private tracks: LocalTracks = new Map();
   private unsubscribe: () => void;
   private offConnection: () => void;
@@ -79,6 +98,7 @@ export class Call {
   private offPreferences?: () => void;
   private microphoneAbort?: AbortController;
   private microphoneDevice = "";
+  private cameraDevice?: string;
   private microphoneGeneration = 0;
   private microphoneReplacement: Promise<void> = Promise.resolve();
   private microphonePendingDevice?: string;
@@ -95,7 +115,9 @@ export class Call {
   constructor(
     readonly client: InstanceClient,
     readonly room: string,
+    intent?: VoiceIntent,
   ) {
+    if (intent) this.voiceIntent = { ...intent };
     this.cues = new VoiceCues(client.account.login.user.id);
     this.snapshotValue = Object.freeze({
       status: "joining",
@@ -103,6 +125,7 @@ export class Call {
       participants: [],
       remote: [],
       local: [],
+      restriction: { muted: false, deafened: false },
       state: effectiveMediaState(this.voiceIntent, {
         microphone: false,
         camera: false,
@@ -111,6 +134,7 @@ export class Call {
       }),
       microphoneMonitoring: microphoneLoopbacks.getSnapshot(),
       busy: false,
+      qualities: {},
     });
     this.unsubscribe = client.onWire((e) => this.event(e));
     this.offConnection = client.subscribe(() => {
@@ -137,14 +161,21 @@ export class Call {
   private change(patch: Partial<CallSnapshot> = {}) {
     const usable = (track?: MediaStreamTrack) =>
       !!track && track.readyState === "live" && !track.muted;
-    const state = effectiveMediaState(this.voiceIntent, {
-      microphone:
-        usable(this.tracks.get("audio")) &&
-        usable(this.microphoneStream?.getAudioTracks()[0]),
-      camera: usable(this.tracks.get("camera")),
-      screen: usable(this.tracks.get("screen")),
-      loopback: microphoneLoopbacks.getSnapshot(),
-    });
+    const restriction = patch.restriction ?? this.snapshot.restriction;
+    const state = effectiveMediaState(
+      {
+        muted: this.voiceIntent.muted || restriction.muted,
+        deafened: this.voiceIntent.deafened || restriction.deafened,
+      },
+      {
+        microphone:
+          usable(this.tracks.get("audio")) &&
+          usable(this.microphoneStream?.getAudioTracks()[0]),
+        camera: usable(this.tracks.get("camera")),
+        screen: usable(this.tracks.get("screen")),
+        loopback: microphoneLoopbacks.getSnapshot(),
+      },
+    );
     // Gate capture and playback before publishing a snapshot or waiting on the
     // network. UI, meters and signaling all read this same derived value.
     for (const microphone of this.microphones) microphone.setMuted(state.muted);
@@ -511,12 +542,13 @@ export class Call {
     if (this.joining || this.ended || !this.tracks.has("audio")) return;
     this.joining = true;
     const generation = ++this.generation;
+    const updates = new Map<string, Participant | null>();
     this.resetStateSynchronization();
     clearTimeout(this.renewal);
     clearTimeout(this.stable);
     this.transport?.close();
     this.transport = undefined;
-    this.change({ remote: [], participants: [] });
+    this.change({ remote: [], participants: [], qualities: {} });
     try {
       if (this.snapshot.participantId)
         await this.client
@@ -533,8 +565,16 @@ export class Call {
         "media.joined",
       );
       if (this.ended || generation !== this.generation) return;
-      const participant = joined.participant as Participant;
+      const admitted = joined.participant as Participant;
+      const participant =
+        this.snapshot.participants.find(
+          (value) => value.participant_id === admitted.participant_id,
+        ) ?? admitted;
       this.change({
+        restriction: participant.restriction ?? {
+          muted: false,
+          deafened: false,
+        },
         participantId: participant.participant_id,
         participants: [participant],
       });
@@ -542,6 +582,19 @@ export class Call {
         client: this.client,
         admission,
         participantId: participant.participant_id,
+        viewingQuality: (id: string, purpose: string) =>
+          this.viewingQualities.get(`${id}:${purpose}`),
+        quality: (id: string, purpose: string, quality: ViewingQuality) => {
+          if (generation === this.generation && !this.ended) {
+            this.viewingQualities.set(`${id}:${purpose}`, quality);
+            this.change({
+              qualities: {
+                ...this.snapshot.qualities,
+                [`${id}:${purpose}`]: quality,
+              },
+            });
+          }
+        },
         remote: (id: string, purpose: Purpose, stream: MediaStream | null) => {
           if (generation !== this.generation || this.ended) return;
           const remote = this.snapshot.remote.filter(
@@ -579,14 +632,28 @@ export class Call {
       if (this.ended || generation !== this.generation || !this.transport)
         return;
       await this.publishTracks();
+      this.rosterUpdates = updates;
       const { participants } = await unwrap(
         this.client.http.GET("/api/v1/voice/{id}", {
           params: { path: { id: this.room } },
         }),
       );
       if (this.ended || generation !== this.generation) return;
-      for (const p of participants ?? []) this.participant(p);
+      this.rosterUpdates = undefined;
+      const roster = new Map(
+        (participants ?? []).map((p) => [p.participant_id, p]),
+      );
+      for (const [id, participant] of updates)
+        if (participant) roster.set(id, participant);
+        else roster.delete(id);
+      const present = new Set(roster.keys());
+      for (const key of this.viewingQualities.keys())
+        if (!present.has(key.slice(0, key.lastIndexOf(":"))))
+          this.viewingQualities.delete(key);
+      for (const p of roster.values()) this.participant(p);
+      if (this.ended || generation !== this.generation) return;
       this.change({ status: "connected", error: undefined });
+      rememberVoice(this.client, this.room, this.voiceIntent);
       if (getPreferences().microphone !== this.microphoneDevice)
         void this.replaceMicrophone();
       this.stable = setTimeout(() => {
@@ -603,11 +670,20 @@ export class Call {
     } catch (error) {
       if (!this.ended && generation === this.generation) throw error;
     } finally {
+      if (this.rosterUpdates === updates) this.rosterUpdates = undefined;
       this.joining = false;
     }
   }
   private participant(participant: Participant) {
     this.change({
+      ...(participant.participant_id === this.snapshot.participantId
+        ? {
+            restriction: participant.restriction ?? {
+              muted: false,
+              deafened: false,
+            },
+          }
+        : {}),
       participants: [
         ...this.snapshot.participants.filter(
           (p) => p.participant_id !== participant.participant_id,
@@ -645,14 +721,25 @@ export class Call {
         "media.participant.state",
         "media.tracks",
       ].includes(event.type)
-    )
-      this.participant(event.participant as Participant);
+    ) {
+      const participant = event.participant as Participant;
+      this.rosterUpdates?.set(participant.participant_id, participant);
+      this.participant(participant);
+    }
     if (event.type === "media.participant.left") {
       const id = String(event.participant_id);
+      this.rosterUpdates?.set(id, null);
       this.transport?.remove(id);
+      for (const key of this.viewingQualities.keys())
+        if (key.startsWith(`${id}:`)) this.viewingQualities.delete(key);
       this.change({
         participants: this.snapshot.participants.filter(
           (p) => p.participant_id !== id,
+        ),
+        qualities: Object.fromEntries(
+          Object.entries(this.snapshot.qualities).filter(
+            ([key]) => !key.startsWith(`${id}:`),
+          ),
         ),
       });
     }
@@ -734,13 +821,30 @@ export class Call {
         this.reconnect(`Could not synchronize call controls: ${error.message}`);
     });
   }
+  private publicationState(): MediaState {
+    if (
+      !this.client.account.instance.capabilities?.includes(
+        "media.moderation.v1",
+      )
+    )
+      return this.snapshot.state;
+    return {
+      ...this.snapshot.state,
+      muted:
+        this.voiceIntent.muted ||
+        microphoneLoopbacks.getSnapshot() ||
+        !this.tracks.get("audio") ||
+        this.microphoneStream?.getAudioTracks()[0]?.readyState !== "live",
+      deafened: this.voiceIntent.deafened || microphoneLoopbacks.getSnapshot(),
+    };
+  }
   private synchronizeState(): Promise<void> {
     if (!this.stateReady || this.ended) return Promise.resolve();
     if (this.stateTask) return this.stateTask;
     const session = this.stateSession;
     const task = (async () => {
       while (!this.ended && this.stateReady && session === this.stateSession) {
-        const state = this.snapshot.state;
+        const state = this.publicationState();
         if (
           this.synchronizedState &&
           sameMediaState(state, this.synchronizedState)
@@ -761,7 +865,7 @@ export class Call {
         success &&
         session === this.stateSession &&
         this.synchronizedState &&
-        !sameMediaState(this.snapshot.state, this.synchronizedState)
+        !sameMediaState(this.publicationState(), this.synchronizedState)
       )
         this.synchronizeStateInBackground();
     };
@@ -782,7 +886,21 @@ export class Call {
         "Only microphone and deafen intent can be set directly. Camera and screen state follow their active sources.",
       );
     if (this.ended) return;
+    if (
+      patch.muted === false &&
+      (this.snapshot.restriction.muted || this.snapshot.restriction.deafened)
+    )
+      throw Error(
+        "A moderator has restricted your microphone in this channel.",
+      );
+    if (patch.deafened === false && this.snapshot.restriction.deafened)
+      throw Error("A moderator has deafened you in this channel.");
     this.voiceIntent = { ...this.voiceIntent, ...patch };
+    if (
+      this.snapshot.status === "connected" ||
+      this.snapshot.status === "reconnecting"
+    )
+      rememberVoice(this.client, this.room, this.voiceIntent);
     this.change();
     const session = this.stateSession;
     try {
@@ -831,8 +949,16 @@ export class Call {
         this.stopVideo(purpose);
         changed = true;
       } else {
+        const prefs = getPreferences();
+        const mode =
+          purpose === "camera"
+            ? await selectedCameraMode(
+                prefs.camera,
+                prefs.cameraModes[prefs.camera],
+              )
+            : prefs.screenMode;
         const native = nativeCaptureAvailable()
-          ? await NativeCapture.open(purpose, sourceAudio)
+          ? await NativeCapture.open(purpose, sourceAudio, prefs)
           : undefined;
         if (native === null) return;
         const stream =
@@ -840,19 +966,15 @@ export class Call {
           (purpose === "camera"
             ? await navigator.mediaDevices.getUserMedia({
                 video: {
-                  deviceId: getPreferences().camera
-                    ? { ideal: getPreferences().camera }
-                    : undefined,
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 },
-                  frameRate: { ideal: 24, max: 30 },
+                  deviceId: prefs.camera ? { exact: prefs.camera } : undefined,
+                  ...exactVideoConstraints(mode),
                 },
                 audio:
                   sourceAudio &&
-                  getPreferences().cameraAudio &&
-                  !getPreferences().cameraAudio.startsWith("swift:")
+                  prefs.cameraAudio &&
+                  !prefs.cameraAudio.startsWith("swift:")
                     ? {
-                        deviceId: { exact: getPreferences().cameraAudio },
+                        deviceId: { exact: prefs.cameraAudio },
                         echoCancellation: false,
                         noiseSuppression: false,
                         autoGainControl: false,
@@ -862,7 +984,11 @@ export class Call {
                     : false,
               })
             : await navigator.mediaDevices.getDisplayMedia({
-                video: { frameRate: { ideal: 24, max: 30 } },
+                video: {
+                  width: { max: mode.width },
+                  height: { max: mode.height },
+                  frameRate: { ideal: mode.fps, max: mode.fps },
+                },
                 audio: sourceAudio
                   ? {
                       sampleRate: { ideal: 48000 },
@@ -884,7 +1010,26 @@ export class Call {
           stream.getTracks().forEach((t) => t.stop());
           throw Error("No video source was selected.");
         }
+        if (
+          !native &&
+          purpose === "camera" &&
+          !matchesVideoMode(track.getSettings(), mode)
+        ) {
+          stream.getTracks().forEach((source) => source.stop());
+          throw Error(
+            "The camera did not provide the selected resolution and frame rate.",
+          );
+        }
+        if (!native && purpose === "screen") {
+          try {
+            await applyScreenMode(track, mode);
+          } catch (error) {
+            stream.getTracks().forEach((source) => source.stop());
+            throw error;
+          }
+        }
         this.tracks.set(purpose, track);
+        if (purpose === "camera") this.cameraDevice = prefs.camera;
         changed = true;
         const audio = stream.getAudioTracks()[0];
         if (audio) this.tracks.set(audioPurpose, audio);
@@ -921,9 +1066,87 @@ export class Call {
       this.change({ busy: false });
     }
   }
+  videoSettings(purpose: "camera" | "screen"): VideoMode | undefined {
+    const track = this.tracks.get(purpose);
+    if (!track) return;
+    const native = nativeCaptures.get(track);
+    if (native)
+      return {
+        width: native.config.width,
+        height: native.config.height,
+        fps: native.config.fps,
+      };
+    const settings = track.getSettings();
+    if (settings.width && settings.height && settings.frameRate)
+      return {
+        width: settings.width,
+        height: settings.height,
+        fps: settings.frameRate,
+      };
+  }
+  cameraSettingsDevice() {
+    return this.tracks.has("camera")
+      ? (this.cameraDevice ?? getPreferences().camera)
+      : getPreferences().camera;
+  }
+  screenFrameRates() {
+    const track = this.tracks.get("screen");
+    return screenFrameRates(
+      track && !nativeCaptures.has(track) ? track : undefined,
+    );
+  }
+  async setViewingQuality(
+    participant: string,
+    purpose: "camera" | "screen",
+    quality: string,
+  ) {
+    if (!this.transport?.setQuality)
+      throw Error(
+        "Viewer quality selection is available only for layered WebRTC video.",
+      );
+    await this.transport.setQuality(participant, purpose, quality);
+  }
+  async setVideoMode(purpose: "camera" | "screen", mode: VideoMode) {
+    if (this.snapshot.busy)
+      throw Error("Wait for the current capture change to finish.");
+    this.change({ busy: true });
+    let applied = false;
+    try {
+      const prefs = getPreferences();
+      const camera = this.cameraSettingsDevice();
+      if (purpose === "camera") await selectedCameraMode(camera, mode);
+      const track = this.tracks.get(purpose);
+      if (track) {
+        const native = nativeCaptures.get(track);
+        if (native) await native.setMode(mode);
+        else if (purpose === "camera") await applyCameraMode(track, mode);
+        else await applyScreenMode(track, mode);
+        applied = true;
+      }
+      setPreferences(
+        purpose === "camera"
+          ? { cameraModes: { ...prefs.cameraModes, [camera]: mode } }
+          : { screenMode: mode },
+      );
+      this.change();
+      if (applied) await this.publishTracks();
+    } catch (error) {
+      if (applied && !this.ended)
+        this.reconnect(
+          error instanceof Error
+            ? error.message
+            : "Could not publish the selected video settings.",
+        );
+      throw error;
+    } finally {
+      this.change({ busy: false });
+    }
+  }
   async end(error?: string) {
     if (this.ended) return;
+    clearVoiceReconnect(this.client, this.room);
     this.ended = true;
+    this.viewingQualities.clear();
     this.offLoopback();
     this.resetStateSynchronization();
     this.generation++;

@@ -4,10 +4,10 @@
   "swiftCaptureSource": "Owner-supplied watch-client/resources/swiftcapture/mac/SwiftCaptureWorker",
   "binaries": {
     "SwiftCaptureWorker": "42d09709d46fc3e2b23477b10eab2cc1741cb11631def819ec94c38b313ca1c7",
-    "HauntMediaWorker": "8e6c78075bb39cdc38812b1669e77748b8de52df34ee0182f92adffc2eba525d"
+    "HauntMediaWorker": "026b6097729cc2492d07efe33247f5aa4ceec668130f16884bb54193f825b026"
   },
   "sources": {
-    "native/media-worker/main.go": "48b96d1c0c7d5fb4d2a142c15db977ec1e83c0bf12f55cc13468c2febd106710",
+    "native/media-worker/main.go": "7f32ea2cc4c649607f0aa98e1b87bdb19dd203f17d2d308f68a03fe6c9f93f89",
     "native/media-worker/go.mod": "e037dc1affa4e9363c9aa956be21b4592237409781592450342c1bd14415830b",
     "native/media-worker/go.sum": "8097a0e668fb0a97ad0a6051290673cc08e42c9f3b88e3b61b24725a6c6a3f52"
   }

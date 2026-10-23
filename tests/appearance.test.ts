@@ -268,6 +268,24 @@ it("keeps glass content opaque, bounds edge tints and preserves the applied effe
   });
   await vi.waitFor(() => expect(dataset.windowEffect).toBe("solid"));
   expect(properties.get("--window-background")).toBe("#112233");
+  set.mockResolvedValue({
+    effect: "material",
+    restart: false,
+    supported: true,
+  });
+  prefs.setPreferences({
+    theme: { ...prefs.getPreferences().theme, windowEffect: "material" },
+  });
+  await vi.waitFor(() => expect(dataset.windowEffect).toBe("material"));
+  const appliedBackground = properties.get("--titlebar-background");
+  set.mockRejectedValue(Error("Native appearance unavailable"));
+  prefs.setPreferences({
+    theme: { ...prefs.getPreferences().theme, windowEffect: "transparent" },
+  });
+  await vi.waitFor(() => expect(dataset.appearanceSupported).toBe("false"));
+  expect(dataset.windowEffect).toBe("material");
+  expect(properties.get("--window-background")).toBe("transparent");
+  expect(properties.get("--titlebar-background")).toBe(appliedBackground);
   stop();
 });
 

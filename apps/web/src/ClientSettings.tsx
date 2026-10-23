@@ -1,4 +1,6 @@
 import { DesktopUpdates } from "./DesktopUpdates";
+import { UserName } from "./UserName";
+import { VideoSettings } from "./VideoSettings";
 import {
   NotificationSoundControl,
   SavedSoundOptions,
@@ -148,8 +150,15 @@ export function NotificationRules({
                 className="notification-rule notification-user-result"
               >
                 <label>
-                  <strong>{user.display_name || user.username}</strong>
-                  <span className="muted small">{label}</span>
+                  <strong>
+                    <UserName instance={instance} user={user} />
+                  </strong>
+                  <span className="muted small">
+                    <UserName instance={instance} user={user}>
+                      {user.username}
+                    </UserName>
+                    @{host}
+                  </span>
                   <select
                     aria-label={`Notifications for ${label}`}
                     value={prefs.users[key] ?? "inherit"}
@@ -740,6 +749,8 @@ export function ClientSettingsContent({
       )}
       {tab === "devices" && (
         <div className="form">
+          <VideoSettings purpose="camera" call={call} />
+          <VideoSettings purpose="screen" call={call} />
           {(
             [
               ["audioOutput", "audiooutput", "Output device"],
@@ -929,12 +940,10 @@ export function ClientSettingsContent({
           </div>
           <p className="muted small">
             Choose a camera audio source for a capture card; leave it at None
-            for a regular webcam. Your microphone preference applies when you
-            next join a call; your webcam preference applies when you next turn
-            on the camera. An unavailable microphone or webcam falls back to the
-            system default. A selected camera audio source must be available.
-            Screen audio is shared when the browser or desktop capture source
-            provides it.
+            for a regular webcam. Microphone changes apply during the call;
+            webcam device changes apply when you next turn on the camera.
+            Selected devices and capture modes must be available. Screen audio
+            is shared when the browser or desktop capture source provides it.
           </p>
         </div>
       )}

@@ -24,6 +24,8 @@ import { checkWebSignin } from "./check-web-signin.mjs";
 import { checkImageCache } from "./check-image-cache.mjs";
 import { checkMediaStatus } from "./check-media-status.mjs";
 import { checkNativeMedia } from "./check-native-media-runtime.mjs";
+import { checkLayeredMedia } from "./check-layered-media.mjs";
+import { checkMediaAppearance } from "./check-media-appearance.mjs";
 import { checkAudio } from "./check-audio.mjs";
 import { checkMicrophoneSelection } from "./check-microphone-selection.mjs";
 import { checkWindows } from "./check-windows.mjs";
@@ -176,6 +178,7 @@ async function audioPeak(page) {
 
 try {
   if (
+    process.env.HAUNT_CLIENT_BUILD === "dist-standalone" ||
     ![
       "demo",
       "image-viewer",
@@ -235,6 +238,10 @@ try {
     );
   } else if (process.env.HAUNT_CLIENT_CHECK === "native-media") {
     await checkNativeMedia(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "layered-media") {
+    await checkLayeredMedia(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "media-appearance") {
+    await checkMediaAppearance(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "desktop-proxy") {
     await checkScreen(
       process.env.HAUNT_PACKAGED_EXECUTABLE,

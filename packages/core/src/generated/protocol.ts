@@ -48,7 +48,10 @@ export const protocol = {
         ]
       },
       "media.publish": {
-        "description": "WebRTC only. SDP offer and purpose-to-track-ID map. Purposes: audio (microphone), camera, screen, camera_audio, screen_audio. Replaces prior publishing peer and invalidates its receiver subscriptions.",
+        "description": "WebRTC only. SDP offer and purpose-to-track-ID map. Purposes: audio (microphone), camera, screen, camera_audio, screen_audio. Replaces prior publishing peer and invalidates its receiver subscriptions. With media.layers.v1, layers maps camera/screen to at most three representations with id (h, m, l), width, height and fps; SDP RID identifies each copy. Track metadata lists available representations. Legacy publications remain single-quality.",
+        "optional": [
+          "layers"
+        ],
         "reply": "media.answer",
         "required": [
           "type",
@@ -57,7 +60,7 @@ export const protocol = {
         ]
       },
       "media.state": {
-        "description": "Replace all muted, deafened, camera_off and screen_off booleans. muted affects microphone only; deafened blocks all incoming audio and forces muted=true. camera_off and screen_off block both video and associated source audio. These gates are enforced by the server for WebRTC and encoded WebSocket media, including queued packets.",
+        "description": "Replace self-selected muted, deafened, camera_off and screen_off booleans. Persistent channel restrictions remain independent; participant self_state reports the submitted choices, restriction reports moderator flags, and state reports effective state. muted affects microphone only; deafened blocks all incoming audio and forces muted=true. camera_off and screen_off block both video and associated source audio. These gates are enforced by the server for WebRTC and encoded WebSocket media, including queued packets.",
         "reply": "media.state.accepted",
         "required": [
           "type",
@@ -65,12 +68,25 @@ export const protocol = {
         ]
       },
       "media.subscribe": {
-        "description": "WebRTC only. Receiver offer must support publisher codecs. Only publishers in the same room are accessible.",
+        "description": "WebRTC only. Receiver offer must support publisher codecs. Only publishers in the same room are accessible. Optional qualities maps each video purpose to an advertised layer ID; omitted entries initially select the highest available quality. Each subscriber owns its selection; publishing settings are unaffected.",
+        "optional": [
+          "qualities"
+        ],
         "reply": "media.answer",
         "required": [
           "type",
           "publisher_id",
           "sdp"
+        ]
+      },
+      "media.subscription.quality": {
+        "description": "Select an advertised video layer for this subscriber only. Changes take effect on a complete keyframe; media.subscription.quality.changed reports the applied layer. Unknown layers and legacy single-quality sources return media_quality_unavailable.",
+        "reply": "media.subscription.quality.accepted",
+        "required": [
+          "type",
+          "publisher_id",
+          "purpose",
+          "layer"
         ]
       },
       "presence.watch": {
@@ -180,6 +196,18 @@ export const protocol = {
       ],
       "media.state.accepted": [
         "type"
+      ],
+      "media.subscription.quality.accepted": [
+        "type",
+        "publisher_id",
+        "purpose",
+        "layer"
+      ],
+      "media.subscription.quality.changed": [
+        "type",
+        "publisher_id",
+        "purpose",
+        "layer"
       ],
       "media.tracks": [
         "type",

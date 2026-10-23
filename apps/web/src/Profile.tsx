@@ -1,3 +1,4 @@
+import { UserName } from "./UserName";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { userAddress, type InstanceClient } from "@haunt/core";
 import { Avatar, displayName, UserStatus } from "./People";
@@ -70,7 +71,9 @@ function ProfileDialog({
     <Modal title="Member profile" onClose={onClose}>
       <div className="member-profile">
         <Avatar instance={instance} user={user} size="large" />
-        <h2>{displayName(user)}</h2>
+        <h2>
+          <UserName instance={instance} user={user} />
+        </h2>
         <p className="muted account-address">
           {userAddress(instance, user)}
           {user.is_owner ? " · Server owner" : ""}

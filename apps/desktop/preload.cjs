@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld("hauntDesktop", {
   nativeDevices: (requestPermission) =>
     ipcRenderer.invoke("native:devices", requestPermission),
   nativeStart: (request) => ipcRenderer.invoke("native:start", request),
+  nativeConfigure: (id, mode) =>
+    ipcRenderer.invoke("native:configure", id, mode),
   nativeStop: (id) => ipcRenderer.invoke("native:stop", id),
   onNativeEvent: (callback) => {
     nativeListeners.add(callback);
@@ -39,6 +41,16 @@ contextBridge.exposeInMainWorld("hauntDesktop", {
   },
   nativeOffer: (request) => ipcRenderer.invoke("native:offer", request),
   nativeAnswer: (id, sdp) => ipcRenderer.invoke("native:answer", id, sdp),
+  nativeVideo: (id, purpose, layer, data, timestamp, key) =>
+    ipcRenderer.invoke(
+      "native:video",
+      id,
+      purpose,
+      layer,
+      data,
+      timestamp,
+      key,
+    ),
   nativeAudio: (id, purpose, data, timestamp) =>
     ipcRenderer.send("native:audio", id, purpose, data, timestamp),
   nativeClosePublisher: (id) =>

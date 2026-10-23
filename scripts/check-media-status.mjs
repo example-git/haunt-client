@@ -28,9 +28,17 @@ export async function checkMediaStatus(browser, fixtures, desktopPage) {
     }
     const login = async (page, username) => {
       if (page !== desktopPage) await page.goto("http://127.0.0.1:5173");
-      await page
-        .getByRole("button", { name: "Add server", exact: true })
-        .click();
+      if (
+        page !== desktopPage &&
+        process.env.HAUNT_CLIENT_BUILD === "dist-standalone"
+      )
+        await expect(
+          page.getByRole("dialog", { name: "Connect to a server" }),
+        ).toBeVisible();
+      else
+        await page
+          .getByRole("button", { name: "Add server", exact: true })
+          .click();
       await fillSignin(page, server.url, username);
       await page
         .getByLabel("Password", { exact: true })
@@ -52,7 +60,9 @@ export async function checkMediaStatus(browser, fixtures, desktopPage) {
         await observer
           .getByRole("button", { name: "Show member list", exact: true })
           .click();
-      const name = await publisher.locator(".profile strong").innerText();
+      const name = await publisher
+        .locator(".profile .profile-user-name")
+        .innerText();
       const member = observer
         .locator(".member-row")
         .filter({ has: observer.locator("strong", { hasText: name }) });
@@ -76,7 +86,7 @@ export async function checkMediaStatus(browser, fixtures, desktopPage) {
           canvas.width = 640;
           canvas.height = 360;
           canvas.getContext("2d").fillRect(0, 0, 640, 360);
-          const stream = canvas.captureStream(10);
+          const stream = canvas.captureStream(60);
           window.statusTestScreen = stream.getVideoTracks()[0];
           return stream;
         };
@@ -101,6 +111,9 @@ export async function checkMediaStatus(browser, fixtures, desktopPage) {
       await expect(screen).toBeVisible();
       await expect(camera).toBeVisible();
       await observer.reload();
+      await observer
+        .getByRole("button", { name: "Open The Common Room", exact: true })
+        .click();
       await expect(observer.locator(".connection")).toHaveText("Connected");
       if (
         await observer

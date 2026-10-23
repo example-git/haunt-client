@@ -6,6 +6,8 @@ import {
   layerPalette,
   minimumSidebarOpacity,
   themeBackground,
+  resolvedThemeColors,
+  glassLayerColor,
   type WindowEffect,
 } from "./themes";
 
@@ -20,7 +22,7 @@ export function installAppearance() {
       color = prefs.accentColor,
       theme = prefs.theme;
     const style = document.documentElement.style;
-    const colors = theme.colors;
+    const colors = resolvedThemeColors(theme.colors, color, effect);
     const dark = luminance(colors.surface) < 0.35;
     const sidebarOpacity = Math.max(
       minimumSidebarOpacity(effect),
@@ -33,13 +35,25 @@ export function installAppearance() {
       sidebarOpacity + (100 - sidebarOpacity) * amount;
     const railOpacity = denserOpacity(frosted ? 0.25 : 0.35);
     const titlebarOpacity = denserOpacity(0.45);
+    const layerBackground = (base: string, opacity: number) =>
+      themeBackground(
+        {
+          ...theme,
+          colors: {
+            ...colors,
+            background: glassLayerColor(base, colors.surface, opacity),
+          },
+        },
+        opacity,
+      );
     const tint = (color: string, opacity: number) =>
       opacity === 100
         ? color
         : `color-mix(in srgb, ${color} ${opacity}%, transparent)`;
-    const chatBackground = theme.gradient
-      ? `linear-gradient(${theme.gradient.angle}deg, ${theme.gradient.colors.map((c) => `color-mix(in srgb, ${colors.surface} 88%, ${c})`).join(", ")})`
-      : colors.surface;
+    const chatBackground = themeBackground({
+      ...theme,
+      colors: { ...colors, background: colors.surface },
+    });
     const layers = Object.fromEntries(
       ["sidebar", "chrome"].flatMap((name) => {
         const palette = layerPalette(
@@ -62,7 +76,7 @@ export function installAppearance() {
       "--sidebar-fill": colors.sidebar,
       "--brand-icon-filter": dark ? "none" : "invert(1)",
       "--identity-text-mix": dark ? "0%" : "65%",
-      "--theme-backdrop": themeBackground(theme),
+      "--theme-backdrop": themeBackground({ ...theme, colors }),
       "--chat-background": chatBackground,
       "--haunt-surface": colors.surface,
       "--haunt-raised": colors.raised,
@@ -91,28 +105,19 @@ export function installAppearance() {
               ...theme,
               colors: { ...colors, background: colors.sidebar },
             })
-          : themeBackground(
-              { ...theme, colors: { ...colors, background: colors.sidebar } },
-              sidebarOpacity,
-            ),
+          : layerBackground(colors.sidebar, sidebarOpacity),
       "--rail-background":
         effect === "solid"
           ? themeBackground(theme)
-          : themeBackground(theme, railOpacity),
+          : layerBackground(colors.sidebar, railOpacity),
       "--sidebar-surface":
         effect === "solid"
           ? colors.sidebar
-          : themeBackground(
-              { ...theme, colors: { ...colors, background: colors.sidebar } },
-              sidebarOpacity,
-            ),
+          : layerBackground(colors.sidebar, sidebarOpacity),
       "--titlebar-background":
         effect === "solid"
           ? colors.chrome
-          : themeBackground(
-              { ...theme, colors: { ...colors, background: colors.chrome } },
-              titlebarOpacity,
-            ),
+          : layerBackground(colors.chrome, titlebarOpacity),
       "--glass-content-background": chatBackground,
       "--glass-control-background": colors.raised,
       "--glass-hover-background": `color-mix(in srgb, ${colors.raised} 88%, ${colors.text})`,
@@ -128,10 +133,13 @@ export function installAppearance() {
       "--haunt-success": dark ? "#83d6b1" : "#24774e",
       "--haunt-danger": dark ? "#f28ca6" : "#b52b50",
       "--haunt-warning": dark ? "#e6c778" : "#825b10",
+      "--resolved-content": colors.surface,
     };
     for (const [key, value] of Object.entries(variables))
       style.setProperty(key, value);
     style.setProperty("color-scheme", dark ? "dark" : "light");
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new Event("haunt:palette"));
     const bridge =
       typeof window !== "undefined"
         ? window.hauntDesktop?.appearance
@@ -164,7 +172,6 @@ export function installAppearance() {
           })
           .catch(() => {
             if (stopped || current !== generation) return;
-            effect = "solid";
             document.documentElement.dataset.appearanceSupported = "false";
             window.dispatchEvent(new Event("haunt:appearance"));
             apply();

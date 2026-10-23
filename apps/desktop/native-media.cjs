@@ -84,14 +84,16 @@ function installNativeMedia(parent, validateSender) {
     if (requestPermission === true) await permission("camera");
     return sources(requestPermission === true);
   });
-  ipcMain.handle("native:start", async (event, request) => {
+  const startCapture = async (event, request, replacement) => {
     validateSender(event);
     if (
       !idOK(request?.id) ||
       !["camera", "screen"].includes(request.purpose) ||
-      captures.has(request.id) ||
+      (captures.has(request.id) && !replacement) ||
       pending.has(request.purpose) ||
-      [...captures.values()].some((c) => c.purpose === request.purpose)
+      [...captures.values()].some(
+        (c) => c.purpose === request.purpose && c !== replacement,
+      )
     )
       throw Error("Invalid or duplicate capture request");
     for (const name of ["device", "deviceLabel", "audioDevice", "audioLabel"])
@@ -100,32 +102,54 @@ function installNativeMedia(parent, validateSender) {
         (typeof request[name] !== "string" || request[name].length > 1024)
       )
         throw Error("Invalid capture device");
+    if (
+      ![request.width, request.height, request.fps].every(
+        (v) => Number.isFinite(v) && v > 0,
+      ) ||
+      !Number.isInteger(request.width) ||
+      !Number.isInteger(request.height) ||
+      request.width > 8192 ||
+      request.height > 8192 ||
+      request.fps > 1000
+    )
+      throw Error("Select an available capture resolution and frame rate.");
     const epoch = generation;
     const active = () => epoch === generation && !parent.isDestroyed();
     pending.add(request.purpose);
     try {
       await stopping.get(request.purpose);
       if (!active()) return null;
-      const options = { purpose: request.purpose };
+      const options = {
+        purpose: request.purpose,
+        width: request.width,
+        height: request.height,
+        fps: request.fps,
+      };
       if (request.purpose === "screen") {
+        if (![15, 30, 60].includes(request.fps))
+          throw Error("Screen capture supports 15, 30 or 60 FPS.");
         const list = await sources(true);
-        const chosen = await chooseCapture(parent, request.audio === true, {
-          native: true,
-          sources: list.screens,
-        });
+        const chosen = replacement
+          ? { video: replacement.source, audio: replacement.options.audio }
+          : await chooseCapture(parent, request.audio === true, {
+              native: true,
+              sources: list.screens,
+            });
         if (!chosen.video || !active()) return null;
         options.source = chosen.video.id;
         options.audio = !!chosen.audio;
         const size = chosen.video;
-        const scale = Math.min(1920 / size.width, 1080 / size.height);
+        options.sourceSize = size;
+        const scale = Math.min(
+          1,
+          request.width / size.width,
+          request.height / size.height,
+        );
         if (Number.isFinite(scale) && size.width && size.height) {
-          options.width = Math.max(
-            128,
-            Math.round((size.width * scale) / 2) * 2,
-          );
+          options.width = Math.max(2, Math.floor((size.width * scale) / 2) * 2);
           options.height = Math.max(
-            128,
-            Math.round((size.height * scale) / 2) * 2,
+            2,
+            Math.floor((size.height * scale) / 2) * 2,
           );
         }
       } else {
@@ -134,9 +158,25 @@ function installNativeMedia(parent, validateSender) {
         const list = await sources(true);
         options.device = device(
           list.cameras,
-          request.device,
+          replacement ? `swift:${replacement.options.device}` : request.device,
           request.deviceLabel,
         );
+        const camera =
+          list.cameras.find((c) => c.id === options.device) ??
+          (!options.device ? list.cameras[0] : undefined);
+        if (
+          !camera?.formats.some(
+            (f) =>
+              f.width === request.width &&
+              f.height === request.height &&
+              f.minFPS <= request.fps &&
+              f.maxFPS >= request.fps,
+          )
+        )
+          throw Error(
+            "The selected camera mode is unavailable on this device.",
+          );
+        options.device = camera.id;
         options.audioDevice = device(
           list.audio,
           request.audioDevice,
@@ -144,10 +184,17 @@ function installNativeMedia(parent, validateSender) {
         );
       }
       if (!active()) return null;
+      if (replacement) {
+        await stopCapture(replacement);
+        captures.delete(request.id);
+      }
       const capture = new Capture(worker, options);
       const entry = {
         capture,
         purpose: request.purpose,
+        options,
+        source: options.sourceSize,
+        request,
         inflight: { video: [], audio: [] },
         queuedBytes: 0,
         needKey: true,
@@ -216,6 +263,20 @@ function installNativeMedia(parent, validateSender) {
           await stopCapture(entry);
           return null;
         }
+        if (
+          capture.video.width !== options.width ||
+          capture.video.height !== options.height ||
+          Math.abs(capture.video.fps - options.fps) > 0.1
+        )
+          throw Error(
+            "The capture backend did not provide the selected resolution and frame rate.",
+          );
+        if (replacement)
+          for (const publisher of publishers.values()) {
+            for (const binding of publisher.captureBindings ?? [])
+              if (binding.capture === request.id)
+                publisher.bind(binding.purpose, capture);
+          }
         return {
           id: request.id,
           video: capture.video,
@@ -224,11 +285,31 @@ function installNativeMedia(parent, validateSender) {
       } catch (error) {
         await stopCapture(entry);
         captures.delete(request.id);
+        if (replacement)
+          send({ id: request.id, kind: "error", message: error.message });
         throw error;
       }
     } finally {
       pending.delete(request.purpose);
     }
+  };
+  ipcMain.handle("native:start", (event, request) =>
+    startCapture(event, request),
+  );
+  ipcMain.handle("native:configure", async (event, id, mode) => {
+    validateSender(event);
+    const entry = captures.get(id);
+    if (!entry) throw Error("Capture source is no longer available.");
+    return startCapture(
+      event,
+      {
+        ...entry.request,
+        width: mode?.width,
+        height: mode?.height,
+        fps: mode?.fps,
+      },
+      entry,
+    );
   });
   ipcMain.on("native:ack", (event, id, kind) => {
     try {
@@ -264,7 +345,20 @@ function installNativeMedia(parent, validateSender) {
         const c = captures.get(track.capture);
         if (!c || c.purpose !== track.purpose)
           throw Error("Unknown native capture");
-        return { purpose: track.purpose, fmtp: c.capture.video.fmtp };
+        if (
+          track.layers !== undefined &&
+          (!Array.isArray(track.layers) ||
+            track.layers.length > 3 ||
+            track.layers.some((layer) => !["h", "m", "l"].includes(layer.id)) ||
+            new Set(track.layers.map((layer) => layer.id)).size !==
+              track.layers.length)
+        )
+          throw Error("Invalid native video layers");
+        return {
+          purpose: track.purpose,
+          fmtp: c.capture.video.fmtp,
+          layers: track.layers?.map((layer) => layer.id),
+        };
       }
       if (track.capture !== undefined)
         throw Error("Invalid audio capture binding");
@@ -283,6 +377,15 @@ function installNativeMedia(parent, validateSender) {
       publishers.delete(request.id);
       send({ id: request.id, kind: "error", message: error.message });
     });
+    publisher.captureBindings = request.tracks.filter((track) => track.capture);
+    publisher.on("keyframe", (message) =>
+      send({
+        id: request.id,
+        kind: "keyframe",
+        purpose: message.purpose,
+        layer: message.layer,
+      }),
+    );
     for (const t of request.tracks)
       if (t.capture) publisher.bind(t.purpose, captures.get(t.capture).capture);
     try {
@@ -314,6 +417,30 @@ function installNativeMedia(parent, validateSender) {
     await publisher.command({ type: "answer", sdp });
     publisher.ready = true;
   });
+  ipcMain.handle(
+    "native:video",
+    (event, id, purpose, layer, data, timestamp, key) => {
+      validateSender(event);
+      const publisher = publishers.get(id);
+      if (
+        !publisher ||
+        !["camera", "screen"].includes(purpose) ||
+        !["m", "l"].includes(layer) ||
+        !(data instanceof Uint8Array) ||
+        data.byteLength > 1024 * 1024 ||
+        !Number.isSafeInteger(timestamp) ||
+        timestamp < 0 ||
+        typeof key !== "boolean" ||
+        !publisher.captureBindings?.some(
+          (track) =>
+            track.purpose === purpose &&
+            track.layers?.some((item) => item.id === layer),
+        )
+      )
+        throw Error("Invalid lower-layer video packet");
+      publisher.packet(purpose, data, timestamp, key, layer);
+    },
+  );
   ipcMain.on("native:audio", (event, id, purpose, data, timestamp) => {
     try {
       validateSender(event);

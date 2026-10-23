@@ -1,8 +1,9 @@
 import { openProfile } from "./Profile";
+import { UserName } from "./UserName";
 import { EmojiText } from "./EmojiText";
 import { ExternalLink } from "./RichContent";
 import { messageLinks, mentions, type InstanceClient } from "@haunt/core";
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 export function MentionText({
   text,
   instance,
@@ -10,6 +11,15 @@ export function MentionText({
   text: string;
   instance: InstanceClient;
 }) {
+  useSyncExternalStore(instance.subscribe, () =>
+    JSON.stringify(
+      instance.snapshot.users.map((user) => [
+        user.id,
+        user.username,
+        user.display_name,
+      ]),
+    ),
+  );
   const output: ReactNode[] = [];
   let offset = 0;
   const links = messageLinks(text);
@@ -66,7 +76,9 @@ export function MentionText({
         className={`mention ${user.id === instance.account.login.user.id ? "mention-self" : ""}`}
         title={user.display_name || user.username}
       >
-        {text.slice(mention.start, mention.end)}
+        <UserName user={user} instance={instance}>
+          {text.slice(mention.start, mention.end)}
+        </UserName>
       </button>,
     );
     offset = mention.end;

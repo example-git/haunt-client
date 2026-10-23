@@ -36,6 +36,7 @@ export class VideoPlayback {
   constructor(
     private requestKey: () => void,
     private failed: (error: Error) => void,
+    private decoded?: (frame: VideoFrame) => void,
   ) {
     const Generator = (
       globalThis as unknown as {
@@ -108,6 +109,7 @@ export class VideoPlayback {
           return;
         }
         this.diagnostics.decoded++;
+        this.decoded?.(frame);
         this.present(frame);
       },
       error: () => {

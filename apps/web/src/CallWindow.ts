@@ -49,12 +49,15 @@ export function useCallWindow() {
           const syncTheme = () => {
             popup.document.documentElement.style.cssText =
               document.documentElement.style.cssText;
+            popup.document.documentElement.dataset.windowEffect =
+              document.documentElement.dataset.windowEffect;
+            popup.dispatchEvent(new Event("haunt:palette"));
           };
           syncTheme();
           observer.current = new MutationObserver(syncTheme);
           observer.current.observe(document.documentElement, {
             attributes: true,
-            attributeFilter: ["style"],
+            attributeFilter: ["style", "data-window-effect"],
           });
           setDestination(popup.document.getElementById("call-root")!);
           return;

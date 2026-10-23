@@ -1,4 +1,7 @@
 import { openProfile } from "./Profile";
+import { UserName } from "./UserName";
+import { VideoSettings } from "./VideoSettings";
+import { VoiceModerationMenu, VoiceRestrictions } from "./VoiceModeration";
 import { createPortal } from "react-dom";
 import { Titlebar } from "./Titlebar";
 import { useCallWindow } from "./CallWindow";
@@ -193,6 +196,9 @@ function CallTile({
   const user = call.client.snapshot.users.find((u) => u.id === tile.user);
   const name = displayName(user);
   const label = tile.purpose === "screen" ? `${name} · screen` : name;
+  const quality =
+    call.snapshot.qualities[`${tile.participant}:${tile.purpose}`];
+  const [qualityError, setQualityError] = useState("");
   return (
     <div
       className={`call-tile ${tile.stream ? "video-tile" : "avatar-tile"} ${focused ? "focused" : ""} ${speaking ? "speaking" : ""}`}
@@ -234,9 +240,56 @@ function CallTile({
               openProfile(call.client, tile.user);
             }}
           >
-            {label}
+            <UserName instance={call.client} user={user} />
+            {tile.purpose === "screen" ? " · screen" : ""}
           </button>
           <CallTimer joinedAt={tile.joinedAt} />
+          {!tile.local &&
+            tile.stream &&
+            (quality?.layers.length ? (
+              <label
+                className="viewing-quality"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <span className="sr-only">Viewing quality for {label}</span>
+                <select
+                  aria-label={`Viewing quality for ${label}`}
+                  value={quality.mode}
+                  onChange={(event) => {
+                    setQualityError("");
+                    void call
+                      .setViewingQuality(
+                        tile.participant,
+                        tile.purpose,
+                        event.target.value,
+                      )
+                      .catch((error) => setQualityError(friendlyError(error)));
+                  }}
+                >
+                  <option value="auto">
+                    Auto
+                    {quality.current
+                      ? ` · ${quality.layers.find((layer) => layer.id === quality.current)?.height ?? ""}p`
+                      : ""}
+                  </option>
+                  {quality.mode !== "auto" &&
+                    !quality.layers.some(
+                      (layer) => layer.id === quality.mode,
+                    ) && (
+                      <option value={quality.mode} disabled>
+                        Selected quality unavailable
+                      </option>
+                    )}
+                  {quality.layers.map((layer) => (
+                    <option key={layer.id} value={layer.id}>
+                      {layer.width} × {layer.height} · {layer.fps} FPS
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <small>Single quality</small>
+            ))}
           {tile.muted ? (
             <MicOff size={13} aria-label="Muted" />
           ) : speaking ? (
@@ -244,6 +297,11 @@ function CallTile({
           ) : null}
         </div>
       </div>
+      {(qualityError || quality?.error) && (
+        <p className="error" role="alert">
+          {qualityError || quality?.error}
+        </p>
+      )}
       <div className="call-tile-levels">
         {tile.purpose === "camera" && !tile.stream && (
           <div className="call-tile-level">
@@ -464,7 +522,17 @@ export function CallPanel({
           <MenuAction onClick={settings}>Audio & video settings</MenuAction>
         </>
       ) : (
-        <UserVolume instance={call.client} user={userID(id)} />
+        <>
+          <UserVolume instance={call.client} user={userID(id)} />
+          <VoiceModerationMenu
+            instance={call.client}
+            channel={call.room}
+            participant={state.participants.find(
+              (p) => p.participant_id === id,
+            )!}
+            onError={setError}
+          />
+        </>
       ),
     );
   const settings = () => {
@@ -743,11 +811,17 @@ function CallControls({
         className={state.state.muted ? "toggled" : ""}
         aria-label={state.state.muted ? "Unmute microphone" : "Mute microphone"}
         aria-pressed={state.state.muted}
-        disabled={state.status !== "connected" || state.state.deafened}
+        disabled={
+          state.status !== "connected" ||
+          state.state.deafened ||
+          state.restriction.muted
+        }
         title={
-          state.state.deafened
-            ? "Undeafen before enabling your microphone"
-            : undefined
+          state.restriction.muted || state.restriction.deafened
+            ? "A moderator has restricted your microphone in this channel"
+            : state.state.deafened
+              ? "Undeafen before enabling your microphone"
+              : undefined
         }
         onClick={() => action(call.setState({ muted: !state.state.muted }))}
       >
@@ -757,11 +831,17 @@ function CallControls({
         className={state.state.deafened ? "toggled" : ""}
         aria-label="Deafen"
         aria-pressed={state.state.deafened}
-        disabled={state.status !== "connected" || state.microphoneMonitoring}
+        disabled={
+          state.status !== "connected" ||
+          state.microphoneMonitoring ||
+          state.restriction.deafened
+        }
         title={
-          state.microphoneMonitoring
-            ? "Stop microphone playback before undeafening"
-            : undefined
+          state.restriction.deafened
+            ? "A moderator has deafened you in this channel"
+            : state.microphoneMonitoring
+              ? "Stop microphone playback before undeafening"
+              : undefined
         }
         onClick={() =>
           action(call.setState({ deafened: !state.state.deafened }))
@@ -783,6 +863,12 @@ function CallControls({
       >
         <Video size={18} />
       </button>
+      <details className="capture-settings-menu">
+        <summary aria-label="Camera capture settings">
+          <ChevronDown size={14} />
+        </summary>
+        <VideoSettings purpose="camera" call={call} />
+      </details>
       <button
         className={!state.state.screen_off ? "toggled" : ""}
         aria-label={
@@ -793,6 +879,12 @@ function CallControls({
       >
         <MonitorUp size={18} />
       </button>
+      <details className="capture-settings-menu">
+        <summary aria-label="Screen-share capture settings">
+          <ChevronDown size={14} />
+        </summary>
+        <VideoSettings purpose="screen" call={call} />
+      </details>
       {showSettings && (
         <button
           aria-label="Audio & video settings"
@@ -802,6 +894,7 @@ function CallControls({
           <Settings size={18} />
         </button>
       )}
+      <VoiceRestrictions instance={call.client} channel={call.room} />
       <button
         className="leave"
         aria-label="Leave call"

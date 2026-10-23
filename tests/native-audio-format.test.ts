@@ -9,7 +9,7 @@ vi.mock("../packages/browser/src/media/video-playback", () => ({
   },
 }));
 vi.mock("../packages/browser/src/preferences", () => ({
-  getPreferences: () => ({ camera: "", cameraAudio: "" }),
+  getPreferences: () => ({ camera: "", cameraAudio: "", cameraModes: {} }),
 }));
 afterEach(() => vi.unstubAllGlobals());
 it("uses only the latest format while loading and never feeds new-rate PCM to the old node", async () => {
@@ -50,6 +50,16 @@ it("uses only the latest format while loading and never feeds new-rate PCM to th
   let receive!: (packet: any) => void;
   let id = "";
   const bridge = {
+    nativeCaptureAvailable: true,
+    nativeDevices: async () => ({
+      cameras: [
+        {
+          id: "camera",
+          label: "Camera",
+          formats: [{ width: 1920, height: 1080, minFPS: 30, maxFPS: 60 }],
+        },
+      ],
+    }),
     onNativeEvent: (callback: typeof receive) => {
       receive = callback;
       return vi.fn();
