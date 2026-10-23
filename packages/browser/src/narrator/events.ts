@@ -99,10 +99,12 @@ export class NarratorEvents {
           if (settings.joins) announce(user, "joined");
           continue;
         }
-        if (settings.mute && state.muted !== before.muted)
-          announce(user, state.muted ? "muted" : "unmuted");
         if (settings.deafen && state.deafened !== before.deafened)
           announce(user, state.deafened ? "deafened" : "undeafened");
+        else if (settings.mute && state.muted !== before.muted)
+          // Deafen also changes the effective microphone state. Announce that
+          // action once, while retaining mute notices for mute-only settings.
+          announce(user, state.muted ? "muted" : "unmuted");
         if (settings.screen && state.screen_off !== before.screen_off)
           announce(user, state.screen_off ? "streamStopped" : "streamStarted");
       }

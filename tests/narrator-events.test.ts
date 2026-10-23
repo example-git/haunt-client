@@ -127,7 +127,7 @@ describe("client voice narrator", () => {
       screen_off: false,
     };
     expect(events.observe(changed, settings).map((item) => item.event)).toEqual(
-      ["muted", "deafened", "streamStarted"],
+      ["deafened", "streamStarted"],
     );
     expect(events.observe(changed, settings)).toEqual([]);
     expect(
@@ -137,6 +137,25 @@ describe("client voice narrator", () => {
       ),
     ).toEqual([]);
     expect(events.observe(snapshot(["self", "bob"]), settings)).toEqual([]);
+  });
+  it("announces coupled deafen transitions once and preserves mute-only notices", () => {
+    const { events, settings } = setup();
+    Object.assign(settings, { mute: true, deafen: true, cooldownMs: 0 });
+    const observe = (muted: boolean, deafened: boolean) => {
+      const next = snapshot(["self", "alice"]);
+      next.participants[1].state = { ...state, muted, deafened };
+      return events.observe(next, settings).map((item) => item.event);
+    };
+    expect(observe(false, false)).toEqual([]);
+    expect(observe(true, true)).toEqual(["deafened"]);
+    expect(observe(false, false)).toEqual(["undeafened"]);
+    expect(observe(true, false)).toEqual(["muted"]);
+    expect(observe(true, true)).toEqual(["deafened"]);
+    expect(observe(true, false)).toEqual(["undeafened"]);
+    expect(observe(false, false)).toEqual(["unmuted"]);
+    settings.deafen = false;
+    expect(observe(true, true)).toEqual(["muted"]);
+    expect(observe(false, false)).toEqual(["unmuted"]);
   });
   it("bounds Unicode prompts by bytes without splitting characters and normalizes saved settings", () => {
     expect(
