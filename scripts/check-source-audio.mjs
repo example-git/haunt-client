@@ -631,7 +631,7 @@ export async function checkSourceAudio(browser, fixtures) {
       for (const name of await popup
         .locator(".video-tile .profile-user-name")
         .all())
-        await expect(name).toHaveAttribute("data-name-treatment", "backing");
+        await expect(name).toHaveAttribute("data-name-treatment", "outline");
       await checkChatToggle(popup, "popout");
       assert(
         (await measurePlayback(receiver)).every(

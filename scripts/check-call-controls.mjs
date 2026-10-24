@@ -412,6 +412,64 @@ export async function checkCallControls(browser, fixtures) {
                 .map((animation) => animation.finished.catch(() => {})),
             ),
           );
+          const memberNames = [];
+          for (const member of await bob
+            .locator(".member-list .member-row")
+            .all()) {
+            const samples = [];
+            const sample = async (state) => {
+              samples.push(
+                ...(await member.evaluate(async (row, state) => {
+                  const name = row.querySelector(".profile-user-name");
+                  const values = [];
+                  for (let frame = 0; frame < 3; frame++) {
+                    if (frame) await new Promise(requestAnimationFrame);
+                    const style = getComputedStyle(name);
+                    values.push({
+                      state,
+                      frame,
+                      treatment: name.dataset.nameTreatment,
+                      stroke: style.webkitTextStrokeWidth,
+                      edge: style.webkitTextStrokeColor,
+                      background: style.backgroundColor,
+                      paintOrder: style.paintOrder,
+                    });
+                  }
+                  return values;
+                }, state)),
+              );
+            };
+            await bob.mouse.move(400, 70);
+            await sample("idle");
+            await member.hover();
+            await sample("hover");
+            await member.focus();
+            await sample("focus");
+            await bob.mouse.move(400, 70);
+            await sample("leave");
+            await bob.keyboard.press("Tab");
+            await sample("blur");
+            assert.ok(
+              samples.every(
+                (sample) =>
+                  sample.treatment === "outline" &&
+                  sample.stroke === "4px" &&
+                  ["rgb(0, 0, 0)", "rgb(255, 255, 255)"].includes(
+                    sample.edge,
+                  ) &&
+                  sample.background === "rgba(0, 0, 0, 0)" &&
+                  sample.paintOrder.split(" ")[0] === "stroke",
+              ),
+              JSON.stringify({ theme: name, samples }),
+            );
+            memberNames.push({
+              name: await member.locator(".profile-user-name").textContent(),
+              samples,
+            });
+          }
+          await bob.locator(".member-list .member-row").first().hover();
+          await bob.screenshot({ path: `test-results/name-hover-${name}.png` });
+          await bob.mouse.move(400, 70);
           const result = await person.evaluate((tile) => {
             const box = tile.getBoundingClientRect();
             const avatar = tile
@@ -498,7 +556,7 @@ export async function checkCallControls(browser, fixtures) {
           assert.ok(
             result.controls.every((shadow) => shadow.includes("inset")),
           );
-          evidence.push({ name, ...result });
+          evidence.push({ name, memberNames, ...result });
           await bob.screenshot({
             path: `test-results/call-filled-${name}.png`,
           });

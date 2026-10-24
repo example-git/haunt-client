@@ -84,6 +84,9 @@ jobs:
           for check in calls call-popout; do
             HAUNT_CLIENT_CHECK="$check" dbus-run-session -- npm run test:integration
           done
+      - name: Exercise names and appearance
+        if: always() && steps.build.outcome == 'success'
+        run: HAUNT_CLIENT_CHECK=media-appearance dbus-run-session -- npm run test:integration
       - uses: actions/upload-artifact@v4
         if: always()
         with:
