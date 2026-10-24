@@ -103,11 +103,15 @@ it("rounds normal Linux windows and restores rectangular maximized and fullscree
   expect(contains(959, 320)).toBe(true);
   maximized = true;
   shapeWindow(win, "linux");
-  expect(win.setShape).toHaveBeenLastCalledWith([]);
+  expect(win.setShape).toHaveBeenLastCalledWith([
+    { x: 0, y: 0, width: 960, height: 640 },
+  ]);
   maximized = false;
   fullscreen = true;
   shapeWindow(win, "linux");
-  expect(win.setShape).toHaveBeenLastCalledWith([]);
+  expect(win.setShape).toHaveBeenLastCalledWith([
+    { x: 0, y: 0, width: 960, height: 640 },
+  ]);
   fullscreen = false;
   shapeWindow(win, "linux");
   expect(contains(0, 0)).toBe(false);

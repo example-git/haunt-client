@@ -68,11 +68,11 @@ function applyWindow(
 }
 function shapeWindow(win, platform = process.platform) {
   if (platform !== "linux" || win.isDestroyed()) return;
+  const [width, height] = win.getSize();
   if (win.isMaximized() || win.isFullScreen()) {
-    win.setShape([]);
+    win.setShape([{ x: 0, y: 0, width, height }]);
     return;
   }
-  const [width, height] = win.getSize();
   const radius = Math.min(12, Math.floor(width / 2), Math.floor(height / 2));
   const rects = [{ x: 0, y: radius, width, height: height - radius * 2 }];
   for (let y = 0; y < radius; y++) {

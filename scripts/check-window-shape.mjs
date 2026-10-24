@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { once } from "node:events";
 import { execFileSync, spawn } from "node:child_process";
 
 assert.equal(process.env.CI, "true", "Run this desktop check on remote CI");
@@ -202,7 +203,9 @@ try {
     JSON.stringify(evidence, null, 2),
   );
   await desktop?.close();
+  const stopped = once(wm, "exit");
   wm.kill();
+  await stopped;
   await fs.rm(profile, {
     recursive: true,
     force: true,
