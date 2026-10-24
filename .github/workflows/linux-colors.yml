@@ -25,6 +25,18 @@ jobs:
       - name: Build the production image viewer fixture
         run: node scripts/check-linux-colors.mjs prepare
       - run: npm run electron:stage
+      - name: Record runner graphics devices
+        run: |
+          mkdir -p test-results/linux-colors
+          {
+            if [ -d /dev/dri ]; then
+              ls -l /dev/dri
+            else
+              printf 'No /dev/dri directory on the runner\n'
+            fi
+            ls -l /sys/class/drm
+            lspci -nn
+          } > test-results/linux-colors/runner-graphics.txt
       - name: Compare pixels under Fedora KWin
         run: |
           mkdir -p test-results/linux-colors
