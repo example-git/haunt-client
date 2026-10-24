@@ -18,6 +18,8 @@
     var(--haunt-black) 92%,
     transparent
   );
+  --haunt-name-stroke-width: 4px;
+  --haunt-media-label-stroke: var(--haunt-black);
   --haunt-media-label-text: var(--haunt-text);
   --haunt-media-label-muted: var(--haunt-muted);
   --haunt-text: #f2f2f2;

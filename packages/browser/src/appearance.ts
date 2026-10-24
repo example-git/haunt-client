@@ -92,6 +92,7 @@ export function installAppearance() {
       "--haunt-control-shade": control.controlShade,
       "--haunt-control-shadow": control.controlShadow,
       "--haunt-media-label-background": tint(colors.background, 92),
+      "--haunt-media-label-stroke": colors.background,
       "--haunt-media-label-text": mediaLabel.text,
       "--haunt-media-label-muted": mediaLabel.muted,
       "--haunt-hover": `color-mix(in srgb, ${colors.raised} 88%, ${colors.text})`,

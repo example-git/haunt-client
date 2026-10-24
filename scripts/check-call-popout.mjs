@@ -43,6 +43,8 @@ export async function checkCallPopout(browser, fixtures) {
         await expect(page.locator(".connection")).toHaveText("Connected");
       }
       await alice.evaluate(() => {
+        window.testWindowListeners = new Set();
+        window.testMaximized = {};
         window.hauntDesktop = {
           platform: "darwin",
           appearance: {
@@ -63,8 +65,21 @@ export async function checkCallPopout(browser, fixtures) {
             maximized: false,
             fullscreen: false,
           }),
-          onWindowState: () => () => {},
-          windowControl: async () => {},
+          onWindowState: (listener) => {
+            window.testWindowListeners.add(listener);
+            return () => window.testWindowListeners.delete(listener);
+          },
+          windowControl: async (action, target) => {
+            if (action === "maximize") {
+              window.testMaximized[target] = !window.testMaximized[target];
+              for (const listener of window.testWindowListeners)
+                listener({
+                  target,
+                  maximized: window.testMaximized[target],
+                  fullscreen: false,
+                });
+            }
+          },
           setBadge: async () => {},
           notificationAvailable: async () => false,
           showNotification: async () => {},
@@ -136,6 +151,57 @@ export async function checkCallPopout(browser, fixtures) {
       popup.on("pageerror", (error) => errors.push(error.message));
       await expect(popup.locator(".call-tile")).toHaveCount(2);
       await expect(alice.locator(".call-detached-notice")).toBeVisible();
+      await expect(popup.locator("html")).toHaveAttribute(
+        "data-native-window",
+        "normal",
+      );
+      await popup
+        .getByRole("button", { name: "Maximize window", exact: true })
+        .click();
+      await expect(popup.locator("html")).toHaveAttribute(
+        "data-native-window",
+        "maximized",
+      );
+      await expect(alice.locator("html")).toHaveAttribute(
+        "data-native-window",
+        "normal",
+      );
+      await popup
+        .getByRole("button", { name: "Restore window", exact: true })
+        .click();
+      await expect(popup.locator("html")).toHaveAttribute(
+        "data-native-window",
+        "normal",
+      );
+      await popup
+        .getByRole("button", {
+          name: "Screen-share capture settings",
+          exact: true,
+        })
+        .click();
+      const capture = popup.getByRole("dialog", {
+        name: "Screen-share capture settings",
+        exact: true,
+      });
+      await expect(capture).toBeVisible();
+      await expect(alice.locator(".capture-settings-popover")).toHaveCount(0);
+      assert(
+        await capture.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          return (
+            r.left >= 8 &&
+            r.top >= 8 &&
+            r.right <= innerWidth - 7 &&
+            r.bottom <= innerHeight - 7
+          );
+        }),
+      );
+      await popup.screenshot({
+        path: "test-results/call-popout-capture-settings.png",
+      });
+      await popup.keyboard.press("Escape");
+      await expect(capture).toHaveCount(0);
+
       await alice
         .locator("button.channel")
         .filter({ hasText: "general" })

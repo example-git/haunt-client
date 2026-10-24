@@ -3122,7 +3122,6 @@ dialog.image-viewer {
   height: 18px;
 }
 
-/* One call stage: an equal grid, or one focused tile with a strip below it. */
 .call-panel {
   position: fixed;
   display: flex;
@@ -3184,23 +3183,15 @@ dialog.image-viewer {
   display: none;
 }
 .call-tiles {
-  display: grid;
-  width: var(--grid-width, 100%);
-  height: var(--grid-height, 100%);
-  max-width: 100%;
-  max-height: 100%;
-  grid-template-columns: repeat(var(--tile-columns, 1), minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
-  gap: 8px;
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 .call-tile {
   --tile-ratio: 1;
+  position: absolute;
   display: flex;
   flex-direction: column;
-  justify-self: center;
-  align-self: center;
-  width: calc(var(--tile-height) * var(--tile-ratio));
-  height: var(--tile-height);
   aspect-ratio: var(--tile-ratio);
   min-width: 0;
   min-height: 0;
@@ -3208,12 +3199,12 @@ dialog.image-viewer {
   border-radius: 10px;
   background: var(--haunt-raised);
   overflow: hidden;
-  cursor: zoom-in;
   color: var(--text);
   transition: border-color 100ms;
 }
 .call-tile.video-tile {
   --tile-ratio: calc(16 / 9);
+  cursor: zoom-in;
 }
 .call-tile.focused {
   cursor: zoom-out;
@@ -3229,11 +3220,48 @@ dialog.image-viewer {
   place-items: center;
   container-type: size;
 }
-.call-tile-content > .avatar {
-  width: min(64cqw, 64cqh);
-  height: min(64cqw, 64cqh);
-  font-size: min(28cqw, 28cqh);
-  border-radius: var(--haunt-radius-panel);
+.avatar-tile .call-tile-content {
+  position: absolute;
+  inset: 0;
+}
+.call-avatar {
+  position: absolute;
+  inset: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.call-avatar > .avatar {
+  width: 100%;
+  height: 100%;
+  font-size: 48cqw;
+  line-height: 1;
+  border-radius: 0;
+}
+.call-avatar img {
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+.call-avatar .user-status {
+  display: none;
+}
+.avatar-tile .call-tile-label {
+  bottom: 32px;
+}
+.avatar-tile .call-tile-levels {
+  position: absolute;
+  bottom: 0;
+  padding: 6px 8px;
+  background: var(--haunt-media-label-background);
+}
+.avatar-tile .call-tile-level {
+  height: 14px;
+  font-size: 10px;
+  color: var(--haunt-media-label-muted);
+}
+.avatar-tile .voice-level {
+  height: 7px;
+  border-radius: 3px;
 }
 .media-stream {
   width: 100%;
@@ -3264,8 +3292,11 @@ dialog.image-viewer {
   max-width: calc(100% - 12px);
   border-radius: 4px;
   padding: 3px 6px;
-  background: var(--haunt-media-label-background);
+  background: transparent;
   color: var(--haunt-media-label-text);
+  -webkit-text-stroke: var(--haunt-name-stroke-width)
+    var(--haunt-media-label-stroke);
+  paint-order: stroke fill;
   --muted: var(--haunt-media-label-muted);
   font-size: 11px;
 }
@@ -3276,6 +3307,7 @@ dialog.image-viewer {
 }
 .call-tile-label svg {
   flex: none;
+  filter: drop-shadow(0 1px 1px var(--haunt-media-label-stroke));
 }
 .call-tile-label .call-timer {
   font-size: 9px;
@@ -3347,44 +3379,7 @@ dialog.image-viewer {
   clip-path: inset(0 calc(100% - var(--level)) 0 0);
   transition: clip-path 100ms linear;
 }
-/* The strip scrolls on its own. The focused tile's containing block remains
-   the outer stage, so moving focus never reparents or reloads a video. */
-.call-tiles.has-focus {
-  --strip-height: clamp(44px, 23cqh, 120px);
-  --focused-height: calc(100cqh - var(--strip-height) - 8px);
-  display: flex;
-  align-self: flex-end;
-  justify-content: safe center;
-  width: 100%;
-  height: var(--strip-height);
-  gap: 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-}
-.call-tiles.has-focus > .call-tile:not(.focused) {
-  flex: 0 0 auto;
-  width: auto;
-  height: 100%;
-}
-.call-tiles.has-focus > .focused {
-  position: absolute;
-  left: 50%;
-  top: calc(
-    (
-        var(--focused-height) -
-          min(var(--focused-height), 100cqw / var(--tile-ratio))
-      ) /
-      2
-  );
-  transform: translateX(-50%);
-  width: min(100cqw, calc(var(--focused-height) * var(--tile-ratio)));
-  height: min(var(--focused-height), calc(100cqw / var(--tile-ratio)));
-}
-.call-tiles.has-focus.single-tile {
-  --focused-height: 100cqh;
-}
-.call-tiles.has-focus > .call-tile:not(.focused) .call-timer {
+.call-tiles.has-media .call-tile:not(.focused) .call-timer {
   display: none;
 }
 .call-panel.mini .call-tile-label {
@@ -3467,7 +3462,8 @@ dialog.image-viewer {
   gap: 4px;
   margin-top: 10px;
 }
-.call-controls button {
+.call-controls > button,
+.capture-control > button {
   display: grid;
   place-items: center;
   flex: 1;
@@ -3529,7 +3525,8 @@ dialog.image-viewer {
   gap: 8px;
   margin-top: 14px;
 }
-.call-panel.full > .call-controls button {
+.call-panel.full > .call-controls > button,
+.call-panel.full > .call-controls > .capture-control {
   flex: 0 1 44px;
   height: 38px;
 }
@@ -4675,10 +4672,7 @@ dialog,
   -webkit-box-decoration-break: clone;
 }
 .profile-user-name[data-name-treatment="outline"] {
-  -webkit-text-stroke: 1.5px var(--name-edge);
-}
-.profile-user-name[data-name-treatment="backing"] {
-  background: var(--name-edge);
+  -webkit-text-stroke: var(--haunt-name-stroke-width) var(--name-edge);
 }
 button:disabled:has(.profile-user-name) {
   opacity: 1;
@@ -5890,27 +5884,95 @@ button:disabled:hover {
   color: var(--text);
   box-shadow: 0 4px 20px #0006;
 }
-.capture-settings-menu {
+.capture-control {
   position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 34px;
 }
-.capture-settings-menu > summary {
-  cursor: pointer;
-  list-style: none;
-  padding: 6px 2px;
+.capture-control > button:first-child {
+  width: 100%;
+  height: 100%;
 }
-.capture-settings-menu > .video-settings {
+.capture-control > .capture-settings-trigger {
   position: absolute;
-  bottom: 36px;
-  right: 0;
-  width: 280px;
-  z-index: 20;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  right: -3px;
+  bottom: -4px;
+  width: 19px;
+  height: 17px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--haunt-control-border);
+  border-radius: 5px;
+  background: var(--haunt-raised);
+  color: var(--text);
+  z-index: 1;
+}
+.capture-settings-trigger[aria-expanded="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.capture-settings-popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(320px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--haunt-control-border);
+  border-radius: var(--haunt-radius-panel);
   background: var(--haunt-surface);
   color: var(--text);
-  box-shadow: 0 5px 24px #0006;
+  box-shadow:
+    inset 0 1px 0 var(--haunt-control-highlight),
+    0 8px 28px var(--haunt-control-shadow);
 }
+.capture-settings-popover > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.capture-settings-popover > header .icon {
+  margin-left: auto;
+}
+.capture-settings-popover .video-settings {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  gap: 14px;
+}
+.capture-settings-popover legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.capture-settings-popover label {
+  font-size: 12px;
+  font-weight: 600;
+  gap: 6px;
+}
+.capture-settings-popover select {
+  padding: 9px 10px;
+  background: var(--haunt-raised);
+  font-size: 13px;
+}
+.capture-settings-popover .secondary {
+  padding: 9px 12px;
+  border: 1px solid var(--haunt-control-border);
+  border-radius: var(--haunt-radius-control);
+}
+.capture-settings-popover output {
+  padding: 10px;
+  border-radius: var(--haunt-radius-control);
+  background: var(--haunt-raised);
+}
+
 .video-settings {
   display: grid;
   gap: 8px;
@@ -5948,4 +6010,42 @@ button:disabled:hover {
     var(--glass-grain),
     linear-gradient(145deg, var(--glass-glaze), transparent 55%),
     var(--sidebar-background);
+}
+
+.server-icon:has(> .server-icon-art) {
+  box-shadow:
+    inset 0 1px 0 var(--sidebar-control-highlight),
+    inset 0 -1px 0 var(--sidebar-control-shade),
+    0 1px 2px var(--sidebar-control-shadow);
+}
+.server-icon-art {
+  position: absolute;
+  inset: 3px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  overflow: hidden;
+}
+.server-icon-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 3px 4px var(--sidebar-control-shadow),
+    inset 0 1px 1px var(--sidebar-control-shade);
+  pointer-events: none;
+}
+:root[data-native-window] {
+  background: transparent;
+}
+:root[data-native-window] body {
+  background: var(--window-background, var(--haunt-black));
+  clip-path: inset(0 round var(--window-radius, 12px));
+}
+:root[data-native-window="maximized"] {
+  --window-radius: 0px;
+}
+:root[data-native-window] .app::after {
+  border-radius: var(--window-radius, 12px);
 }

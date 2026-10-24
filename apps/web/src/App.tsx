@@ -293,11 +293,13 @@ function ServerButton({
         aria-pressed={selected}
         onClick={onClick}
       >
-        <ServerArt
-          instance={instance}
-          kind="icon"
-          className="server-icon-image"
-        />
+        <span className="server-icon-art">
+          <ServerArt
+            instance={instance}
+            kind="icon"
+            className="server-icon-image"
+          />
+        </span>
         <i className={`presence ${snapshot.status}`} />
         {count > 0 ? (
           <span

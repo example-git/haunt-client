@@ -64,7 +64,7 @@ jobs:
       - name: Install media fixture dependency
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          sudo apt-get install -y --no-install-recommends ffmpeg xvfb xauth openbox x11-utils libgtk-3-0 libnss3 libgbm1 libasound2t64
       - name: Start disposable database
         run: |
           docker run -d --name chatxo-identity-check -p 127.0.0.1:32768:5432 -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=chatxo_check postgres:16-alpine
@@ -75,6 +75,8 @@ jobs:
           exit 1
       - run: npm ci
       - run: npm run build && npm run build:standalone
+      - name: Check native window corners
+        run: xvfb-run -a -s "-screen 0 1600x1000x24 -nolisten tcp" node scripts/check-window-shape.mjs
       - name: Exercise calls and detached views
         run: |
           for check in calls call-popout; do

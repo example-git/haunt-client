@@ -321,9 +321,10 @@ export async function checkLayeredMedia(browser, fixtures) {
       .locator(".call-dock")
       .getByLabel("Camera capture settings", { exact: true })
       .click();
-    const cameraSettings = publisher
-      .locator(".call-dock .video-settings")
-      .first();
+    const cameraSettings = publisher.getByRole("dialog", {
+      name: "Camera capture settings",
+      exact: true,
+    });
     await cameraSettings
       .getByRole("button", { name: "Check camera modes", exact: true })
       .click();
@@ -362,9 +363,10 @@ export async function checkLayeredMedia(browser, fixtures) {
       .locator(".call-dock")
       .getByLabel("Screen-share capture settings", { exact: true })
       .click();
-    const screenSettings = publisher
-      .locator(".call-dock .video-settings")
-      .nth(1);
+    const screenSettings = publisher.getByRole("dialog", {
+      name: "Screen-share capture settings",
+      exact: true,
+    });
     await expect
       .poll(() => publisher.evaluate(() => typeof window.releaseCapturePublish))
       .toBe("function");

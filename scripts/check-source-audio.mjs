@@ -471,9 +471,10 @@ export async function checkSourceAudio(browser, fixtures) {
         .locator(".call-dock")
         .getByLabel("Screen-share capture settings", { exact: true });
       await screenControl.click();
-      const screenSettings = sender
-        .locator(".call-dock .video-settings")
-        .nth(1);
+      const screenSettings = sender.getByRole("dialog", {
+        name: "Screen-share capture settings",
+        exact: true,
+      });
       await screenSettings
         .getByLabel("Screen share frame rate", { exact: true })
         .selectOption("30");

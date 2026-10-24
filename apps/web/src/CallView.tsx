@@ -1,6 +1,6 @@
 import { openProfile } from "./Profile";
 import { UserName } from "./UserName";
-import { VideoSettings } from "./VideoSettings";
+import { CaptureSettings } from "./VideoSettings";
 import { VoiceModerationMenu, VoiceRestrictions } from "./VoiceModeration";
 import { createPortal } from "react-dom";
 import { Titlebar } from "./Titlebar";
@@ -174,7 +174,7 @@ type Tile = {
   user: string;
   joinedAt: string;
   muted: boolean;
-  purpose: "camera" | "screen";
+  purpose: "avatar" | "camera" | "screen";
   stream?: MediaStream;
   sourceAudio: boolean;
   local: boolean;
@@ -185,9 +185,11 @@ function CallTile({
   focused,
   onFocus,
   context,
+  style,
 }: {
   call: Call;
   tile: Tile;
+  style?: CSSProperties;
   focused: boolean;
   onFocus: () => void;
   context: ReturnType<ReturnType<typeof useContextMenu>>;
@@ -205,17 +207,24 @@ function CallTile({
       data-tile-id={tile.id}
       data-participant={tile.participant}
       data-speaking={speaking}
-      role="button"
+      style={style}
+      role={tile.stream ? "button" : "group"}
       tabIndex={0}
-      aria-label={`${focused ? "Shrink" : "Expand"} ${label} view`}
-      aria-pressed={focused}
+      aria-label={
+        tile.stream
+          ? `${focused ? "Shrink" : "Expand"} ${label} view`
+          : `${name} voice tile`
+      }
+      aria-pressed={tile.stream ? focused : undefined}
       {...context}
       onClick={(e) => {
-        if (!(e.target as HTMLElement).closest("button")) onFocus();
+        if (tile.stream && !(e.target as HTMLElement).closest("button, select"))
+          onFocus();
       }}
       onKeyDown={(e) => {
         context.onKeyDown(e);
         if (
+          tile.stream &&
           !e.defaultPrevented &&
           e.target === e.currentTarget &&
           (e.key === "Enter" || e.key === " ")
@@ -229,7 +238,16 @@ function CallTile({
         {tile.stream ? (
           <Stream stream={tile.stream} muted video label={label} />
         ) : (
-          <Avatar instance={call.client} user={user} size="large" />
+          <div
+            className="call-avatar"
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onDragStart={(event) => event.preventDefault()}
+          >
+            <Avatar instance={call.client} user={user} size="large" />
+          </div>
         )}
         <div className="call-tile-label">
           <UserStatus instance={call.client} user={tile.user} />
@@ -260,7 +278,7 @@ function CallTile({
                     void call
                       .setViewingQuality(
                         tile.participant,
-                        tile.purpose,
+                        tile.purpose === "screen" ? "screen" : "camera",
                         event.target.value,
                       )
                       .catch((error) => setQualityError(friendlyError(error)));
@@ -303,7 +321,7 @@ function CallTile({
         </p>
       )}
       <div className="call-tile-levels">
-        {tile.purpose === "camera" && !tile.stream && (
+        {tile.purpose === "avatar" && (
           <div className="call-tile-level">
             <Mic size={10} aria-hidden="true" />
             <span aria-hidden="true">Mic</span>
@@ -344,47 +362,94 @@ function CallTile({
   );
 }
 
-function useTileGrid(count: number, video: boolean, destination?: HTMLElement) {
+function useTileGrid(
+  tiles: Tile[],
+  focused?: string,
+  destination?: HTMLElement,
+) {
   const ref = useRef<HTMLDivElement>(null);
-  const [style, setStyle] = useState<CSSProperties>({});
+  const [positions, setPositions] = useState<Record<string, CSSProperties>>({});
+  const signature = tiles.map((tile) => tile.id).join("\n");
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el || !count) return;
+    if (!el) return;
     const measure = () => {
       const { width, height } = el.getBoundingClientRect();
-      let best = { columns: 1, width: 0, height: 0, area: 0 };
       const gap = 8;
-      const ratio = video ? 16 / 9 : 1;
-      for (let columns = 1; columns <= count; columns++) {
-        const rows = Math.ceil(count / columns);
-        const w = Math.max(
-          1,
-          Math.min(
-            (width - gap * (columns - 1)) / columns,
-            ((height - gap * (rows - 1)) / rows) * ratio,
-          ),
+      const result: Record<string, CSSProperties> = {};
+      const pack = (items: Tile[], availableHeight: number, top: number) => {
+        if (!items.length) return 0;
+        const ratio = (tile: Tile) => (tile.stream ? 16 / 9 : 1);
+        const rowsAt = (size: number) => {
+          const rows: Tile[][] = [[]];
+          let used = 0;
+          for (const tile of items) {
+            const w = size * ratio(tile);
+            if (used && used + gap + w > width + 0.01) {
+              rows.push([]);
+              used = 0;
+            }
+            rows[rows.length - 1].push(tile);
+            used += (used ? gap : 0) + w;
+          }
+          return rows;
+        };
+        let low = 0;
+        let high = Math.max(
+          0,
+          Math.min(availableHeight, width / Math.max(...items.map(ratio))),
         );
-        if (w * w > best.area)
-          best = {
-            columns,
-            width: w * columns + gap * (columns - 1),
-            height: (w / ratio) * rows + gap * (rows - 1),
-            area: w * w,
-          };
+        for (let step = 0; step < 32; step++) {
+          const mid = (low + high) / 2;
+          const rows = rowsAt(mid);
+          if (rows.length * mid + (rows.length - 1) * gap <= availableHeight)
+            low = mid;
+          else high = mid;
+        }
+        const rows = rowsAt(low);
+        const usedHeight = rows.length * low + (rows.length - 1) * gap;
+        let y = top + (availableHeight - usedHeight) / 2;
+        for (const row of rows) {
+          const usedWidth =
+            row.reduce((sum, tile) => sum + low * ratio(tile), 0) +
+            (row.length - 1) * gap;
+          let x = (width - usedWidth) / 2;
+          for (const tile of row) {
+            result[tile.id] = {
+              left: x,
+              top: y,
+              width: low * ratio(tile),
+              height: low,
+            };
+            x += low * ratio(tile) + gap;
+          }
+          y += low + gap;
+        }
+        return usedHeight;
+      };
+      const media = tiles.filter((tile) => tile.stream);
+      if (!media.length) pack(tiles, height, 0);
+      else {
+        const main = focused
+          ? media.filter((tile) => tile.id === focused)
+          : media;
+        const below = tiles.filter((tile) => !main.includes(tile));
+        const stripHeight = below.length ? pack(below, height * 0.28, 0) : 0;
+        pack(below, stripHeight, height - stripHeight);
+        pack(
+          main,
+          Math.max(0, height - stripHeight - (below.length ? gap : 0)),
+          0,
+        );
       }
-      setStyle({
-        "--tile-columns": best.columns,
-        "--grid-width": `${best.width}px`,
-        "--grid-height": `${best.height}px`,
-        "--tile-height": `${(best.width - gap * (best.columns - 1)) / best.columns / ratio}px`,
-      } as CSSProperties);
+      setPositions(result);
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [count, video, destination]);
-  return { ref, style };
+  }, [signature, focused, destination]);
+  return { ref, positions };
 }
 
 export function CallPanel({
@@ -445,7 +510,7 @@ export function CallPanel({
       const camera = sources.find((m) => m.purpose === "camera");
       const screen = sources.find((m) => m.purpose === "screen");
       const tile: Tile = {
-        id: `${p.participant_id}:camera`,
+        id: `${p.participant_id}:avatar`,
         participant: p.participant_id,
         user: p.user_id,
         joinedAt: p.joined_at,
@@ -453,35 +518,45 @@ export function CallPanel({
           p.participant_id === state.participantId
             ? state.state.muted
             : p.state.muted,
-        purpose: "camera",
-        stream: camera?.stream,
-        sourceAudio: sources.some((m) => m.purpose === "camera_audio"),
+        purpose: "avatar",
+        sourceAudio: false,
         local: p.participant_id === state.participantId,
       };
-      return screen
-        ? [
-            tile,
-            {
-              ...tile,
-              id: `${p.participant_id}:screen`,
-              purpose: "screen",
-              stream: screen.stream,
-              sourceAudio: sources.some((m) => m.purpose === "screen_audio"),
-            },
-          ]
-        : [tile];
+      return [
+        tile,
+        ...(camera
+          ? [
+              {
+                ...tile,
+                id: `${p.participant_id}:camera`,
+                purpose: "camera" as const,
+                stream: camera.stream,
+                sourceAudio: sources.some((m) => m.purpose === "camera_audio"),
+              },
+            ]
+          : []),
+        ...(screen
+          ? [
+              {
+                ...tile,
+                id: `${p.participant_id}:screen`,
+                purpose: "screen" as const,
+                stream: screen.stream,
+                sourceAudio: sources.some((m) => m.purpose === "screen_audio"),
+              },
+            ]
+          : []),
+      ];
     });
-  const focused = tiles.some((tile) => tile.id === focus) ? focus : undefined;
+  const focused = tiles.some((tile) => tile.id === focus && tile.stream)
+    ? focus
+    : undefined;
   useEffect(() => {
     if (focus && !focused) setFocus(undefined);
   }, [focus, focused]);
   const popout = useCallWindow();
   const detached = !!popout.destination;
-  const grid = useTileGrid(
-    tiles.length,
-    tiles.some((tile) => !!tile.stream),
-    popout.destination,
-  );
+  const grid = useTileGrid(tiles, focused, popout.destination);
   const [frame, setFrame] = useState<CSSProperties>();
   const full = !!target || detached;
   const floating = useFloatingCall(!full);
@@ -623,14 +698,14 @@ export function CallPanel({
       {audioNotice}
       <div className="call-stage" ref={grid.ref} hidden={!full && !expanded}>
         <div
-          className={`call-tiles ${focused ? "has-focus" : ""} ${tiles.length === 1 ? "single-tile" : ""}`}
-          style={grid.style}
+          className={`call-tiles ${focused ? "has-focus" : ""} ${tiles.some((tile) => tile.stream) ? "has-media" : ""}`}
         >
           {tiles.map((tile) => (
             <CallTile
               key={tile.id}
               call={call}
               tile={tile}
+              style={grid.positions[tile.id]}
               focused={focused === tile.id}
               onFocus={() =>
                 setFocus((current) =>
@@ -856,38 +931,32 @@ function CallControls({
           <Headphones size={18} />
         )}
       </button>
-      <button
-        className={!state.state.camera_off ? "toggled" : ""}
-        aria-label={
-          state.state.camera_off ? "Turn on camera" : "Turn off camera"
-        }
-        disabled={state.busy || state.status !== "connected"}
-        onClick={() => action(call.toggleVideo("camera"))}
-      >
-        <Video size={18} />
-      </button>
-      <details className="capture-settings-menu">
-        <summary aria-label="Camera capture settings">
-          <ChevronDown size={14} />
-        </summary>
-        <VideoSettings purpose="camera" call={call} />
-      </details>
-      <button
-        className={!state.state.screen_off ? "toggled" : ""}
-        aria-label={
-          state.state.screen_off ? "Share screen" : "Stop sharing screen"
-        }
-        disabled={state.busy || state.status !== "connected"}
-        onClick={() => action(call.toggleVideo("screen"))}
-      >
-        <MonitorUp size={18} />
-      </button>
-      <details className="capture-settings-menu">
-        <summary aria-label="Screen-share capture settings">
-          <ChevronDown size={14} />
-        </summary>
-        <VideoSettings purpose="screen" call={call} />
-      </details>
+      <div className="capture-control">
+        <button
+          className={!state.state.camera_off ? "toggled" : ""}
+          aria-label={
+            state.state.camera_off ? "Turn on camera" : "Turn off camera"
+          }
+          disabled={state.busy || state.status !== "connected"}
+          onClick={() => action(call.toggleVideo("camera"))}
+        >
+          <Video size={18} />
+        </button>
+        <CaptureSettings purpose="camera" call={call} />
+      </div>
+      <div className="capture-control">
+        <button
+          className={!state.state.screen_off ? "toggled" : ""}
+          aria-label={
+            state.state.screen_off ? "Share screen" : "Stop sharing screen"
+          }
+          disabled={state.busy || state.status !== "connected"}
+          onClick={() => action(call.toggleVideo("screen"))}
+        >
+          <MonitorUp size={18} />
+        </button>
+        <CaptureSettings purpose="screen" call={call} />
+      </div>
       {showSettings && (
         <button
           aria-label="Audio & video settings"

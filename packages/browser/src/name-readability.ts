@@ -1,7 +1,7 @@
 import { contrast } from "./themes";
 
 export type NameTreatment = {
-  kind: "plain" | "outline" | "backing";
+  kind: "plain" | "outline";
   edge: string;
 };
 export function nameTreatment(
@@ -9,12 +9,12 @@ export function nameTreatment(
   surfaces?: readonly string[],
 ): NameTreatment {
   const edges = ["#000000", "#ffffff"];
-  const backing = edges.reduce((best, edge) =>
+  const strongest = edges.reduce((best, edge) =>
     contrast(color, edge) > contrast(color, best) ? edge : best,
   );
-  if (!surfaces?.length) return { kind: "backing", edge: backing };
+  if (!surfaces?.length) return { kind: "outline", edge: strongest };
   if (surfaces.every((surface) => contrast(color, surface) >= 4.5))
-    return { kind: "plain", edge: backing };
+    return { kind: "plain", edge: strongest };
   const score = (edge: string) =>
     Math.min(
       contrast(edge, color),
@@ -25,7 +25,7 @@ export function nameTreatment(
   );
   return score(edge) >= 4.5
     ? { kind: "outline", edge }
-    : { kind: "backing", edge: backing };
+    : { kind: "outline", edge: strongest };
 }
 
 const colors = new Map<string, string | undefined>();
