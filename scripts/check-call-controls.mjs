@@ -481,7 +481,7 @@ export async function checkCallControls(browser, fixtures) {
           assert.ok(
             result.names.every(
               (name) =>
-                name.treatment !== "backing" &&
+                name.treatment === "outline" &&
                 name.background === "rgba(0, 0, 0, 0)",
             ),
           );
@@ -603,6 +603,9 @@ export async function checkCallControls(browser, fixtures) {
           await expect(trigger).toBeFocused();
         }
       }
+      await bob
+        .getByRole("button", { name: "Hide member list", exact: true })
+        .click();
       await bob.setViewportSize({ width: 600, height: 500 });
       const qualityTrigger = bob.locator(".call-dock").getByRole("button", {
         name: "Screen-share capture settings",
@@ -633,6 +636,9 @@ export async function checkCallControls(browser, fixtures) {
       });
       await bob.keyboard.press("Escape");
       await bob.setViewportSize({ width: 1120, height: 800 });
+      await bob
+        .getByRole("button", { name: "Show member list", exact: true })
+        .click();
 
       const initial = await row.locator("time").textContent();
       const requests = [];
@@ -1017,6 +1023,9 @@ export async function checkCallControls(browser, fixtures) {
       await bob
         .getByRole("button", { name: "Move call window" })
         .press("ArrowLeft");
+      await bob
+        .getByRole("button", { name: "Hide member list", exact: true })
+        .click();
       await bob.setViewportSize({ width: 390, height: 844 });
       assert(
         await pip.evaluate((el) => {
@@ -1155,6 +1164,11 @@ export async function checkCallControls(browser, fixtures) {
               .getByRole("button", { name, exact: true })
               .click();
           await expect(bob.locator(".video-tile")).toHaveCount(0);
+          const memberToggle = bob.getByRole("button", {
+            name: "Hide member list",
+            exact: true,
+          });
+          if (await memberToggle.isVisible()) await memberToggle.click();
           for (const viewport of [
             { width: 1920, height: 1080 },
             { width: 1120, height: 800 },

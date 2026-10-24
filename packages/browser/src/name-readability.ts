@@ -1,7 +1,7 @@
 import { contrast } from "./themes";
 
 export type NameTreatment = {
-  kind: "plain" | "outline";
+  kind: "outline";
   edge: string;
 };
 export function nameTreatment(
@@ -13,8 +13,6 @@ export function nameTreatment(
     contrast(color, edge) > contrast(color, best) ? edge : best,
   );
   if (!surfaces?.length) return { kind: "outline", edge: strongest };
-  if (surfaces.every((surface) => contrast(color, surface) >= 4.5))
-    return { kind: "plain", edge: strongest };
   const score = (edge: string) =>
     Math.min(
       contrast(edge, color),
