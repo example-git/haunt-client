@@ -59,6 +59,10 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: server/client/package-lock.json
+      - name: Install media fixture dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Start disposable database
         run: |
           docker run -d --name chatxo-identity-check -p 127.0.0.1:32768:5432 -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=chatxo_check postgres:16-alpine
