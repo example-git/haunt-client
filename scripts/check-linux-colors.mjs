@@ -110,7 +110,7 @@ try {
         argv: process.argv,
         hardwareAcceleration: app.isHardwareAccelerationEnabled(),
         gpuFeatures: app.getGPUFeatureStatus(),
-        gpu: await app.getGPUInfo("complete"),
+        gpu: await app.getGPUInfo("complete").catch((error) => ({ error: error.message })),
         displays: screen.getAllDisplays(),
       }));
       report.diagnostics.push({ mode: mode.name, ...diagnostics });
