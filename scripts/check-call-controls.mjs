@@ -345,6 +345,14 @@ export async function checkCallControls(browser, fixtures) {
             theme.windowEffect ?? "solid",
           );
           await focusLayout();
+          await bob.evaluate(() =>
+            Promise.all(
+              document
+                .getAnimations()
+                .filter((animation) => animation instanceof CSSTransition)
+                .map((animation) => animation.finished.catch(() => {})),
+            ),
+          );
           const result = await person.evaluate((tile) => {
             const box = tile.getBoundingClientRect();
             const avatar = tile
@@ -484,6 +492,15 @@ export async function checkCallControls(browser, fixtures) {
         .getAttribute("value");
       assert(device);
       await alice.getByLabel("Camera audio source").selectOption(device);
+      await alice
+        .getByRole("button", { name: "Check camera modes", exact: true })
+        .click();
+      await expect(
+        alice.getByLabel("Camera resolution", { exact: true }),
+      ).toBeEnabled({ timeout: 20000 });
+      await alice
+        .getByLabel("Camera resolution", { exact: true })
+        .selectOption("640x480");
       await alice.getByRole("button", { name: "Close", exact: true }).click();
       // Real browser capture video plus a deterministic test tone for screen audio.
       // Headless screen capture does not expose system audio; this specifically
