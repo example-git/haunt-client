@@ -10,7 +10,8 @@ mkdir -p test-results/linux-colors /tmp/haunt-color-runtime /tmp/haunt-color-con
 chmod 700 /tmp/haunt-color-runtime
 cat /etc/os-release > test-results/linux-colors/os-release.txt
 rpm -q kwin kwin-wayland mesa-dri-drivers mesa-libEGL xorg-x11-server-Xwayland > test-results/linux-colors/packages.txt || true
-kwin_wayland --version > test-results/linux-colors/kwin-version.txt
+rpm -q --filecaps kwin-wayland > test-results/linux-colors/kwin-capabilities.txt
+QT_QPA_PLATFORM=offscreen kwin_wayland --version > test-results/linux-colors/kwin-version.txt
 python3 scripts/ci/linux-color-pixels.py generate
 export XDG_RUNTIME_DIR=/tmp/haunt-color-runtime
 export XDG_CONFIG_HOME=/tmp/haunt-color-config

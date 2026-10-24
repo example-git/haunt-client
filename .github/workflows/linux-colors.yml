@@ -30,7 +30,7 @@ jobs:
           mkdir -p test-results/linux-colors
           docker pull fedora:44
           docker image inspect fedora:44 --format '{{json .RepoDigests}}' > test-results/linux-colors/container.json
-          docker run --rm --shm-size=1g -e CI=true -e GITHUB_ACTIONS=true \
+          docker run --rm --cap-add=SYS_NICE --shm-size=1g -e CI=true -e GITHUB_ACTIONS=true \
             -e HAUNT_COLOR_SOURCE_SHA="$GITHUB_SHA" \
             -v "$PWD:/workspace" -w /workspace fedora:44 \
             bash scripts/ci/check-linux-colors.sh
