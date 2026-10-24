@@ -740,7 +740,7 @@ export async function checkCallControls(browser, fixtures) {
         .toBe(true);
       await expect
         .poll(() => bob.evaluate(() => window.callTones.map(Math.round)))
-        .toEqual([330, 262, 196, 262, 392, 659]);
+        .toEqual([392, 294, 330, 262, 196, 392, 587, 262, 392, 659]);
       // Reconfiguration and reconnect restore source levels from stable user IDs.
       await alice
         .locator(".call-dock")
