@@ -235,28 +235,35 @@ export async function checkCallControls(browser, fixtures) {
       const avatarGrid = async () => {
         await equalTiles();
         await expect(bob.locator(".call-tile.focused")).toHaveCount(0);
-        const fit = await bob.locator(".call-stage").evaluate((stage) => {
-          const { width, height } = stage.getBoundingClientRect();
-          const tiles = [...stage.querySelectorAll(".avatar-tile")];
-          let best = 0;
-          for (let columns = 1; columns <= tiles.length; columns++) {
-            const rows = Math.ceil(tiles.length / columns);
-            best = Math.max(
-              best,
-              Math.min(
-                (width - (columns - 1) * 8) / columns,
-                (height - (rows - 1) * 8) / rows,
-              ),
-            );
-          }
-          return tiles.every(
-            (tile) => Math.abs(tile.getBoundingClientRect().width - best) < 2,
-          );
-        });
-        assert(
-          fit,
-          "Voice-only grid gives each square the largest size that fits",
-        );
+        await expect
+          .poll(
+            () =>
+              bob.locator(".call-stage").evaluate((stage) => {
+                const { width, height } = stage.getBoundingClientRect();
+                const tiles = [...stage.querySelectorAll(".avatar-tile")];
+                let best = 0;
+                for (let columns = 1; columns <= tiles.length; columns++) {
+                  const rows = Math.ceil(tiles.length / columns);
+                  best = Math.max(
+                    best,
+                    Math.min(
+                      (width - (columns - 1) * 8) / columns,
+                      (height - (rows - 1) * 8) / rows,
+                    ),
+                  );
+                }
+                return Math.max(
+                  ...tiles.map((tile) =>
+                    Math.abs(tile.getBoundingClientRect().width - best),
+                  ),
+                );
+              }),
+            {
+              message:
+                "Voice-only grid gives each square the largest size that fits",
+            },
+          )
+          .toBeLessThan(2);
       };
       const focusLayout = async () => {
         await expect(bob.locator(".call-tile.focused")).toBeVisible();
