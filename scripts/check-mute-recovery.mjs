@@ -220,6 +220,7 @@ export async function checkMuteRecovery(fixtures) {
   const report = {
     mode,
     suppression,
+    serverRef: process.env.HAUNT_MUTE_SERVER_REF,
     durations: process.env.HAUNT_MUTE_QUICK === "1" ? [1] : [120, 420, 900],
     versions: [],
     samples: [],

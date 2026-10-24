@@ -4,6 +4,11 @@ on:
     branches: [dev]
   workflow_dispatch:
     inputs:
+      server_ref:
+        description: Server commit to exercise
+        type: string
+        required: true
+        default: 4af54347b9d864c68f7e2716aa8b9f4477f60357
       quick:
         description: Check diagnostic startup and teardown with a one-second mute
         type: boolean
@@ -27,7 +32,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: example-git/haunt-server
-          ref: 4af54347b9d864c68f7e2716aa8b9f4477f60357
+          ref: ${{ inputs.server_ref || '4af54347b9d864c68f7e2716aa8b9f4477f60357' }}
           path: server
       - uses: actions/setup-go@v6
         with:
@@ -53,6 +58,7 @@ jobs:
       HAUNT_CLIENT_CHECK: source-audio
       HAUNT_CALL_SOAK_SECONDS: "1440"
       HAUNT_MUTE_DIAGNOSTICS: "1"
+      HAUNT_MUTE_SERVER_REF: ${{ inputs.server_ref || '4af54347b9d864c68f7e2716aa8b9f4477f60357' }}
       HAUNT_MUTE_QUICK: ${{ inputs.quick && '1' || '0' }}
       HAUNT_MUTE_TRANSPORT: ${{ matrix.transport }}
       HAUNT_MUTE_SUPPRESSION: ${{ matrix.suppression }}
@@ -60,7 +66,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: example-git/haunt-server
-          ref: 4af54347b9d864c68f7e2716aa8b9f4477f60357
+          ref: ${{ inputs.server_ref || '4af54347b9d864c68f7e2716aa8b9f4477f60357' }}
           path: server
       - uses: actions/checkout@v5
         with:
