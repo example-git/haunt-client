@@ -193,33 +193,38 @@ try {
     ].includes(process.env.HAUNT_CLIENT_CHECK)
   )
     vite = await serveBuild();
-  const chrome = launch("/usr/bin/google-chrome", [
-    "--headless=new",
-    "--no-sandbox",
-    ...(process.env.HAUNT_CLIENT_CHECK === "native-media"
-      ? ["--enable-gpu"]
-      : ["--disable-gpu"]),
-    "--disable-dev-shm-usage",
-    "--renderer-process-limit=2",
-    "--no-proxy-server",
-    "--disable-extensions",
-    "--disable-background-networking",
-    "--disable-background-timer-throttling",
-    "--disable-renderer-backgrounding",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-breakpad",
-    "--no-first-run",
-    "--use-fake-device-for-media-stream",
-    "--use-fake-ui-for-media-stream",
-    `--use-file-for-fake-audio-capture=${path.resolve("tests/fixtures/noise-speech.wav")}`,
-    "--autoplay-policy=no-user-gesture-required",
-    "--auto-select-desktop-capture-source=Entire screen",
-    "--remote-debugging-port=0",
-    `--user-data-dir=${scratch}/chrome`,
-    "about:blank",
-  ]);
-  const port = await waitForChromePort(path.join(scratch, "chrome"), chrome);
-  browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+  if (
+    process.env.HAUNT_CLIENT_CHECK !== "source-audio" ||
+    process.env.HAUNT_MUTE_DIAGNOSTICS !== "1"
+  ) {
+    const chrome = launch("/usr/bin/google-chrome", [
+      "--headless=new",
+      "--no-sandbox",
+      ...(process.env.HAUNT_CLIENT_CHECK === "native-media"
+        ? ["--enable-gpu"]
+        : ["--disable-gpu"]),
+      "--disable-dev-shm-usage",
+      "--renderer-process-limit=2",
+      "--no-proxy-server",
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--disable-background-timer-throttling",
+      "--disable-renderer-backgrounding",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-breakpad",
+      "--no-first-run",
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
+      `--use-file-for-fake-audio-capture=${path.resolve("tests/fixtures/noise-speech.wav")}`,
+      "--autoplay-policy=no-user-gesture-required",
+      "--auto-select-desktop-capture-source=Entire screen",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${scratch}/chrome`,
+      "about:blank",
+    ]);
+    const port = await waitForChromePort(path.join(scratch, "chrome"), chrome);
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+  }
   if (process.env.HAUNT_CLIENT_CHECK === "demo") {
     await captureDemo(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "image-viewer") {

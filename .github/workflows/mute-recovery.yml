@@ -3,17 +3,27 @@ on:
   push:
     branches: [dev]
   workflow_dispatch:
+    inputs:
+      transport:
+        type: choice
+        default: all
+        options: [all, rtc, ws]
+      suppression:
+        type: choice
+        default: all
+        options: [all, "on", "off"]
 permissions:
   contents: read
 jobs:
   packet-gap:
+    if: github.event_name != 'workflow_dispatch' || (inputs.transport == 'all' && inputs.suppression == 'all')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
           repository: example-git/haunt-server
-          ref: c0d2ec375f0c718470b96e6206ccbf32f68250b0
+          ref: 4af54347b9d864c68f7e2716aa8b9f4477f60357
           path: server
       - uses: actions/setup-go@v6
         with:
@@ -28,8 +38,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        transport: [rtc, ws]
-        suppression: ["on", "off"]
+        transport: ${{ fromJSON(inputs.transport && inputs.transport != 'all' && format('["{0}"]', inputs.transport) || '["rtc", "ws"]') }}
+        suppression: ${{ fromJSON(inputs.suppression && inputs.suppression != 'all' && format('["{0}"]', inputs.suppression) || '["on", "off"]') }}
     defaults:
       run:
         working-directory: server/client
@@ -44,7 +54,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: example-git/haunt-server
-          ref: c0d2ec375f0c718470b96e6206ccbf32f68250b0
+          ref: 4af54347b9d864c68f7e2716aa8b9f4477f60357
           path: server
       - uses: actions/checkout@v5
         with:
