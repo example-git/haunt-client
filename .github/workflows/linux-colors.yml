@@ -34,7 +34,11 @@ jobs:
             else
               printf 'No /dev/dri directory on the runner\n'
             fi
-            ls -l /sys/class/drm
+            if [ -d /sys/class/drm ]; then
+              ls -l /sys/class/drm
+            else
+              printf 'No /sys/class/drm directory on the runner\n'
+            fi
             lspci -nn
           } > test-results/linux-colors/runner-graphics.txt
       - name: Compare pixels under Fedora KWin
