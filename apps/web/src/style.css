@@ -2028,6 +2028,17 @@ summary {
     border-top: 1px solid var(--line);
   }
 }
+@media (max-width: 720px) and (max-height: 600px) {
+  .voice-chat > header {
+    padding: 8px 12px;
+  }
+  .voice-chat .messages {
+    padding: 4px 12px;
+  }
+  .voice-chat .composer-wrap {
+    padding: 8px 12px;
+  }
+}
 
 .community-tools h2 {
   flex: 0 1 auto;

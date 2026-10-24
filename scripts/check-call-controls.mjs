@@ -1272,6 +1272,26 @@ export async function checkCallControls(browser, fixtures) {
               ),
               "Participant labels and meters leave the avatar center visible",
             );
+            assert(
+              await bob
+                .locator(".voice-chat .composer")
+                .evaluate((composer) => {
+                  const box = composer.getBoundingClientRect();
+                  const pane = composer
+                    .closest(".voice-chat")
+                    .getBoundingClientRect();
+                  const center = document.elementFromPoint(
+                    box.left + box.width / 2,
+                    box.top + box.height / 2,
+                  );
+                  return (
+                    box.top >= pane.top &&
+                    box.bottom <= pane.bottom + 1 &&
+                    center?.closest(".composer") === composer
+                  );
+                }),
+              "Pinned chat composer fits beside the call without being covered",
+            );
             await bob.screenshot({
               path: `test-results/call-five-grid-${viewport.width}.png`,
             });
