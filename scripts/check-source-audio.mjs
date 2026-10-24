@@ -52,6 +52,10 @@ async function measurePlayback(page) {
 }
 
 export async function checkSourceAudio(browser, fixtures) {
+  if (process.env.HAUNT_MUTE_DIAGNOSTICS === "1") {
+    const { checkMuteRecovery } = await import("./check-mute-recovery.mjs");
+    return checkMuteRecovery(fixtures);
+  }
   const rawSoak = process.env.HAUNT_CALL_SOAK_SECONDS;
   const soakSeconds = rawSoak === undefined ? 0 : Number(rawSoak);
   if (
