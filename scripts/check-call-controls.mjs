@@ -493,12 +493,16 @@ export async function checkCallControls(browser, fixtures) {
       assert(device);
       await alice.getByLabel("Camera audio source").selectOption(device);
       await alice
+        .getByRole("dialog")
         .getByRole("button", { name: "Check camera modes", exact: true })
         .click();
       await expect(
-        alice.getByLabel("Camera resolution", { exact: true }),
+        alice
+          .getByRole("dialog")
+          .getByLabel("Camera resolution", { exact: true }),
       ).toBeEnabled({ timeout: 20000 });
       await alice
+        .getByRole("dialog")
         .getByLabel("Camera resolution", { exact: true })
         .selectOption("640x480");
       await alice.getByRole("button", { name: "Close", exact: true }).click();
