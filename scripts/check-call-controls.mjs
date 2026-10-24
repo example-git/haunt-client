@@ -83,9 +83,14 @@ export async function checkCallControls(browser, fixtures) {
     }
     const login = async (page, user) => {
       await page.goto("http://127.0.0.1:5173");
-      await page
-        .getByRole("button", { name: "Add server", exact: true })
-        .click();
+      if (process.env.HAUNT_CLIENT_BUILD === "dist-standalone")
+        await expect(
+          page.getByRole("dialog", { name: "Connect to a server" }),
+        ).toBeVisible();
+      else
+        await page
+          .getByRole("button", { name: "Add server", exact: true })
+          .click();
       await fillSignin(page, server.url, user);
       await page
         .getByLabel("Password", { exact: true })
@@ -126,13 +131,11 @@ export async function checkCallControls(browser, fixtures) {
           .getByRole("button", { name: "Edit your profile", exact: true })
           .click();
         const editor = alice.locator(".art-editor.art-avatar");
-        await editor
-          .locator("input[type=file]")
-          .setInputFiles({
-            name: "call-avatar.png",
-            mimeType: "image/png",
-            buffer: Buffer.from(image, "base64"),
-          });
+        await editor.locator("input[type=file]").setInputFiles({
+          name: "call-avatar.png",
+          mimeType: "image/png",
+          buffer: Buffer.from(image, "base64"),
+        });
         await editor
           .getByRole("button", { name: "Save image", exact: true })
           .click();

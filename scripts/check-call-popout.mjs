@@ -25,9 +25,14 @@ export async function checkCallPopout(browser, fixtures) {
       ]) {
         page.on("pageerror", (error) => errors.push(error.message));
         await page.goto("http://127.0.0.1:5173");
-        await page
-          .getByRole("button", { name: "Add server", exact: true })
-          .click();
+        if (process.env.HAUNT_CLIENT_BUILD === "dist-standalone")
+          await expect(
+            page.getByRole("dialog", { name: "Connect to a server" }),
+          ).toBeVisible();
+        else
+          await page
+            .getByRole("button", { name: "Add server", exact: true })
+            .click();
         await fillSignin(page, server.url, user);
         await page
           .getByLabel("Password", { exact: true })

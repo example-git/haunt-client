@@ -38,6 +38,8 @@ jobs:
     if: inputs.calls
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      HAUNT_CLIENT_BUILD: dist-standalone
     defaults:
       run:
         working-directory: server/client
@@ -72,7 +74,7 @@ jobs:
           done
           exit 1
       - run: npm ci
-      - run: npm run build
+      - run: npm run build && npm run build:standalone
       - name: Exercise calls and detached views
         run: |
           for check in calls call-popout; do
