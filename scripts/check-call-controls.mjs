@@ -1245,6 +1245,26 @@ export async function checkCallControls(browser, fixtures) {
           ]) {
             await bob.setViewportSize(viewport);
             await avatarGrid();
+            assert(
+              await bob.locator(".avatar-tile").evaluateAll((tiles) =>
+                tiles.every((tile) => {
+                  const box = tile.getBoundingClientRect();
+                  const label = tile
+                    .querySelector(".call-tile-label")
+                    .getBoundingClientRect();
+                  const center = document.elementFromPoint(
+                    box.left + box.width / 2,
+                    box.top + box.height / 2,
+                  );
+                  return (
+                    box.width >= 80 &&
+                    label.top >= box.top &&
+                    !!center?.closest(".call-avatar")
+                  );
+                }),
+              ),
+              "Participant labels and meters leave the avatar center visible",
+            );
             await bob.screenshot({
               path: `test-results/call-five-grid-${viewport.width}.png`,
             });

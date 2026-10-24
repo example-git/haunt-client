@@ -3189,6 +3189,7 @@ dialog.image-viewer {
 }
 .call-tile {
   --tile-ratio: 1;
+  container: call-tile / size;
   position: absolute;
   display: flex;
   flex-direction: column;
@@ -3262,6 +3263,29 @@ dialog.image-viewer {
 .avatar-tile .voice-level {
   height: 7px;
   border-radius: 3px;
+}
+@container call-tile (max-width: 110px) {
+  .avatar-tile .call-tile-label {
+    left: 3px;
+    right: 3px;
+    bottom: 12px;
+    padding: 2px;
+    gap: 3px;
+    font-size: 10px;
+  }
+  .avatar-tile .call-tile-label :is(.user-status, .call-timer, svg),
+  .avatar-tile .call-tile-level > :is(svg, span) {
+    display: none;
+  }
+  .avatar-tile .call-tile-levels {
+    padding: 3px 4px;
+  }
+  .avatar-tile .call-tile-level {
+    height: 7px;
+  }
+  .avatar-tile .voice-level {
+    height: 5px;
+  }
 }
 .media-stream {
   width: 100%;
@@ -3517,6 +3541,12 @@ dialog.image-viewer {
   }
   .call-panel.full {
     padding: 10px;
+  }
+  .voice-workspace > .voice-stage-slot {
+    flex-basis: 60%;
+  }
+  .call-panel.full:not(.native-popout) > .call-controls {
+    display: none;
   }
 }
 .call-panel.full > .call-controls {
