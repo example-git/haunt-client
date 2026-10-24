@@ -1014,7 +1014,13 @@ export async function checkCallControls(browser, fixtures) {
         (await pip.boundingBox()).width > small.width + 60,
         "PiP resizes by dragging",
       );
-      await bob.locator(".avatar-tile").first().click();
+      await bob
+        .locator(".avatar-tile .call-avatar")
+        .first()
+        .click({ position: { x: 4, y: 4 } });
+      await expect(
+        bob.getByRole("dialog", { name: "Member profile" }),
+      ).toHaveCount(0);
       await expect(bob.locator(".avatar-tile.focused")).toHaveCount(0);
       await equalTiles();
       await bob
