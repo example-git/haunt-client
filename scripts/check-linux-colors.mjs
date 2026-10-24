@@ -68,6 +68,7 @@ const capture = async (page, mode, fixture, view, selector) => {
   const pageFile = `${stem}-page.png`;
   const outputFile = `${stem}-output.png`;
   await page.screenshot({ path: path.join(results, pageFile), animations: "disabled" });
+  await page.waitForTimeout(1000);
   await run("import", ["-display", process.env.HAUNT_COLOR_OUTER_DISPLAY, "-window", "root", path.join(results, outputFile)], {
     timeout: 15000,
     env: { ...process.env, XAUTHORITY: process.env.HAUNT_COLOR_OUTER_XAUTHORITY },
@@ -90,6 +91,7 @@ try {
     const log = createWriteStream(path.join(results, `${mode.name}-electron.log`));
     try {
       desktop = await electron.launch({
+        executablePath: path.resolve("node_modules/electron/dist/electron"),
         args: ["--no-sandbox", "--password-store=basic", ...mode.args, path.resolve("electron-app/main.cjs")],
         env: {
           ...process.env,
@@ -108,12 +110,17 @@ try {
       const diagnostics = await desktop.evaluate(async ({ app, screen }) => ({
         versions: process.versions,
         argv: process.argv,
+        switches: Object.fromEntries(["force-color-profile", "disable-features", "disable-gpu", "ozone-platform"].map((key) => [key, { present: app.commandLine.hasSwitch(key), value: app.commandLine.getSwitchValue(key) }])),
         hardwareAcceleration: app.isHardwareAccelerationEnabled(),
         gpuFeatures: app.getGPUFeatureStatus(),
         gpu: await app.getGPUInfo("complete").catch((error) => ({ error: error.message })),
         displays: screen.getAllDisplays(),
       }));
       report.diagnostics.push({ mode: mode.name, ...diagnostics });
+      assert.equal(diagnostics.switches["force-color-profile"].present, mode.name === "forced-srgb");
+      if (mode.name === "forced-srgb") assert.equal(diagnostics.switches["force-color-profile"].value, "srgb");
+      assert.equal(diagnostics.switches["disable-features"].value, mode.name === "no-wayland-cm" ? "WaylandWpColorManagerV1" : "");
+      assert.equal(diagnostics.switches["disable-gpu"].present, mode.name === "no-gpu");
       const gpuPageReady = desktop.waitForEvent("window");
       await desktop.evaluate(async ({ BrowserWindow }) => {
         globalThis.colorGpuWindow = new BrowserWindow({ show: false });
@@ -156,6 +163,11 @@ try {
     } finally {
       await desktop?.close();
       await new Promise((resolve) => log.end(resolve));
+      const diagnostic = report.diagnostics.find((item) => item.mode === mode.name);
+      if (diagnostic) {
+        const protocol = await fs.readFile(path.join(results, `${mode.name}-electron.log`), "utf8");
+        diagnostic.surfaceImageDescriptionRequests = (protocol.match(/wp_color_management_surface_v1#\d+\.set_image_description/g) || []).length;
+      }
     }
   }
   report.completed = true;

@@ -68,6 +68,8 @@ def analyze():
         capture["pagePixels"] = sample(capture["pageFile"], capture["box"])
         capture["outputPixels"] = sample(capture["outputFile"], capture["box"])
         capture["distinctOutputPatches"] = len({tuple(p) for p in capture["outputPixels"]})
+        if capture["distinctOutputPatches"] < 24:
+            raise ValueError(f"Chart not distinguishable in compositor capture: {capture['outputFile']}")
         capture["maxSourceError"] = distance(capture["outputPixels"], expected)
         lookup[(capture["mode"], capture["fixture"], capture["view"])] = capture
         rgb = lambda value: "#" + "".join(f"{v:02x}" for v in value)
@@ -84,7 +86,11 @@ def analyze():
             comparisons.append({"mode": mode, "fixture": fixture, "defaultVsModeMax": distance(baseline["outputPixels"], candidate["outputPixels"])})
     report["comparisons"] = comparisons
     (root / "measurements.json").write_text(json.dumps(report, indent=2))
-    lines += ["", "## Comparisons", "", "```json", json.dumps(comparisons, indent=2), "```", "",
+    backends = [{"mode": d["mode"], "gpuCompositing": d["gpuFeatures"].get("gpu_compositing"),
+                 "surfaceImageDescriptionRequests": d.get("surfaceImageDescriptionRequests"),
+                 "switches": d["switches"]} for d in report["diagnostics"]]
+    lines += ["", "## Rendering backends", "", "```json", json.dumps(backends, indent=2), "```",
+              "", "## Comparisons", "", "```json", json.dumps(comparisons, indent=2), "```", "",
               "A completed matrix establishes these renderer/compositor measurements only. No physical display, ICC calibration, HDR scanout, or vendor GPU driver is covered."]
     (root / "summary.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
