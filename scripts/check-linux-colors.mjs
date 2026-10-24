@@ -35,6 +35,7 @@ createRoot(document.getElementById("root")).render(<ImagePreview className="atta
   process.exit(0);
 }
 
+const electronExecutable = (await import("electron")).default;
 const modes = [
   { name: "default", args: [] },
   { name: "no-wayland-cm", args: ["--disable-features=WaylandWpColorManagerV1"] },
@@ -91,7 +92,7 @@ try {
     const log = createWriteStream(path.join(results, `${mode.name}-electron.log`));
     try {
       desktop = await electron.launch({
-        executablePath: path.resolve("node_modules/electron/dist/electron"),
+        executablePath: electronExecutable,
         args: ["--no-sandbox", "--password-store=basic", ...mode.args, path.resolve("electron-app/main.cjs")],
         env: {
           ...process.env,
