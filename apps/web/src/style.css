@@ -3194,8 +3194,14 @@ dialog.image-viewer {
   gap: 8px;
 }
 .call-tile {
+  --tile-ratio: 1;
   display: flex;
   flex-direction: column;
+  justify-self: center;
+  align-self: center;
+  width: calc(var(--tile-height) * var(--tile-ratio));
+  height: var(--tile-height);
+  aspect-ratio: var(--tile-ratio);
   min-width: 0;
   min-height: 0;
   border: 2px solid transparent;
@@ -3205,6 +3211,9 @@ dialog.image-viewer {
   cursor: zoom-in;
   color: var(--text);
   transition: border-color 100ms;
+}
+.call-tile.video-tile {
+  --tile-ratio: calc(16 / 9);
 }
 .call-tile.focused {
   cursor: zoom-out;
@@ -3221,10 +3230,10 @@ dialog.image-viewer {
   container-type: size;
 }
 .call-tile-content > .avatar {
-  width: min(92px, 35cqw, 50cqh);
-  height: min(92px, 35cqw, 50cqh);
-  font-size: min(34px, 18cqh);
-  border-radius: 30%;
+  width: min(64cqw, 64cqh);
+  height: min(64cqw, 64cqh);
+  font-size: min(28cqw, 28cqh);
+  border-radius: var(--haunt-radius-panel);
 }
 .media-stream {
   width: 100%;
@@ -3255,7 +3264,9 @@ dialog.image-viewer {
   max-width: calc(100% - 12px);
   border-radius: 4px;
   padding: 3px 6px;
-  background: rgb(12 12 12 / 80%);
+  background: var(--haunt-media-label-background);
+  color: var(--haunt-media-label-text);
+  --muted: var(--haunt-media-label-muted);
   font-size: 11px;
 }
 .call-tile-label > span {
@@ -3339,11 +3350,13 @@ dialog.image-viewer {
 /* The strip scrolls on its own. The focused tile's containing block remains
    the outer stage, so moving focus never reparents or reloads a video. */
 .call-tiles.has-focus {
+  --strip-height: clamp(44px, 23cqh, 120px);
+  --focused-height: calc(100cqh - var(--strip-height) - 8px);
   display: flex;
   align-self: flex-end;
   justify-content: safe center;
   width: 100%;
-  height: clamp(44px, 23cqh, 120px);
+  height: var(--strip-height);
   gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -3351,22 +3364,25 @@ dialog.image-viewer {
 }
 .call-tiles.has-focus > .call-tile:not(.focused) {
   flex: 0 0 auto;
-  width: clamp(
-    78px,
-    calc((100cqw - 8px * (var(--strip-count, 1) - 1)) / var(--strip-count, 1)),
-    210px
-  );
+  width: auto;
   height: 100%;
 }
 .call-tiles.has-focus > .focused {
   position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  height: calc(100% - clamp(44px, 23cqh, 120px) - 8px);
+  left: 50%;
+  top: calc(
+    (
+        var(--focused-height) -
+          min(var(--focused-height), 100cqw / var(--tile-ratio))
+      ) /
+      2
+  );
+  transform: translateX(-50%);
+  width: min(100cqw, calc(var(--focused-height) * var(--tile-ratio)));
+  height: min(var(--focused-height), calc(100cqw / var(--tile-ratio)));
 }
-.call-tiles.has-focus.single-tile > .focused {
-  height: 100%;
+.call-tiles.has-focus.single-tile {
+  --focused-height: 100cqh;
 }
 .call-tiles.has-focus > .call-tile:not(.focused) .call-timer {
   display: none;
@@ -3460,6 +3476,15 @@ dialog.image-viewer {
   border-radius: var(--haunt-radius-control);
   background: var(--haunt-raised);
   color: var(--text);
+  box-shadow:
+    inset 0 1px 0 var(--haunt-control-highlight),
+    inset 0 -1px 0 var(--haunt-control-shade),
+    0 1px 2px var(--haunt-control-shadow);
+}
+.call-controls button:active:not(:disabled) {
+  box-shadow:
+    inset 0 1px 2px var(--haunt-control-shade),
+    inset 0 -1px 0 var(--haunt-control-highlight);
 }
 .call-controls button:hover {
   background: var(--haunt-hover);
@@ -5106,8 +5131,7 @@ button.mention {
 /* Labels over artwork keep their contrast independent of a light/custom theme. */
 .community-cover.has-banner .server-name-label,
 .community-cover.has-banner h2,
-.community-cover.has-banner .icon,
-.call-tile-label {
+.community-cover.has-banner .icon {
   color: #f2f2f2;
 }
 
@@ -5324,6 +5348,9 @@ button.mention {
   --layer-muted: var(--sidebar-muted);
   --layer-border: var(--sidebar-border);
   --layer-control-border: var(--sidebar-control-border);
+  --layer-control-highlight: var(--sidebar-control-highlight);
+  --layer-control-shade: var(--sidebar-control-shade);
+  --layer-control-shadow: var(--sidebar-control-shadow);
   --layer-utility: var(--sidebar-utility);
   --layer-utility-text: var(--sidebar-utility-text);
   --layer-focus: var(--sidebar-focus);
@@ -5347,6 +5374,9 @@ button.mention {
   --layer-muted: var(--chrome-muted);
   --layer-border: var(--chrome-border);
   --layer-control-border: var(--chrome-control-border);
+  --layer-control-highlight: var(--chrome-control-highlight);
+  --layer-control-shade: var(--chrome-control-shade);
+  --layer-control-shadow: var(--chrome-control-shadow);
   --layer-utility: var(--chrome-utility);
   --layer-utility-text: var(--chrome-utility-text);
   --layer-focus: var(--chrome-focus);
@@ -5379,6 +5409,9 @@ button.mention {
   --haunt-muted: var(--layer-muted);
   --haunt-border: var(--layer-border);
   --haunt-control-border: var(--layer-control-border);
+  --haunt-control-highlight: var(--layer-control-highlight);
+  --haunt-control-shade: var(--layer-control-shade);
+  --haunt-control-shadow: var(--layer-control-shadow);
   --haunt-focus: var(--layer-focus);
   --haunt-surface: var(--layer-fill);
   --haunt-raised: var(--layer-hover);

@@ -344,9 +344,7 @@ function CallTile({
   );
 }
 
-// Choose the largest equal 16:9 tiles that fit the available stage. This also
-// handles a resized PiP; focus changes CSS placement, never media element keys.
-function useTileGrid(count: number, destination?: HTMLElement) {
+function useTileGrid(count: number, video: boolean, destination?: HTMLElement) {
   const ref = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<CSSProperties>({});
   useLayoutEffect(() => {
@@ -356,20 +354,21 @@ function useTileGrid(count: number, destination?: HTMLElement) {
       const { width, height } = el.getBoundingClientRect();
       let best = { columns: 1, width: 0, height: 0, area: 0 };
       const gap = 8;
+      const ratio = video ? 16 / 9 : 1;
       for (let columns = 1; columns <= count; columns++) {
         const rows = Math.ceil(count / columns);
         const w = Math.max(
           1,
           Math.min(
             (width - gap * (columns - 1)) / columns,
-            (((height - gap * (rows - 1)) / rows) * 16) / 9,
+            ((height - gap * (rows - 1)) / rows) * ratio,
           ),
         );
         if (w * w > best.area)
           best = {
             columns,
             width: w * columns + gap * (columns - 1),
-            height: ((w * 9) / 16) * rows + gap * (rows - 1),
+            height: (w / ratio) * rows + gap * (rows - 1),
             area: w * w,
           };
       }
@@ -378,13 +377,14 @@ function useTileGrid(count: number, destination?: HTMLElement) {
         "--strip-count": Math.max(1, count - 1),
         "--grid-width": `${best.width}px`,
         "--grid-height": `${best.height}px`,
+        "--tile-height": `${(best.width - gap * (best.columns - 1)) / best.columns / ratio}px`,
       } as CSSProperties);
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [count, destination]);
+  }, [count, video, destination]);
   return { ref, style };
 }
 
@@ -478,7 +478,11 @@ export function CallPanel({
   }, [focus, focused]);
   const popout = useCallWindow();
   const detached = !!popout.destination;
-  const grid = useTileGrid(tiles.length, popout.destination);
+  const grid = useTileGrid(
+    tiles.length,
+    tiles.some((tile) => !!tile.stream),
+    popout.destination,
+  );
   const [frame, setFrame] = useState<CSSProperties>();
   const full = !!target || detached;
   const floating = useFloatingCall(!full);

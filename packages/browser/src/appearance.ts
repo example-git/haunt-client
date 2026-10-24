@@ -69,6 +69,8 @@ export function installAppearance() {
     );
     // The rim stays bright even in light themes; its tint follows the palette.
     const ice = `color-mix(in srgb, ${colors.text} ${dark ? 18 : 6}%, white)`;
+    const control = layerPalette(colors.raised, colors, color);
+    const mediaLabel = layerPalette(colors.background, colors, color);
     const variables: Record<string, string> = {
       ...layers,
       "--haunt-black": colors.background,
@@ -86,6 +88,12 @@ export function installAppearance() {
       "--selection-background": colors.selection,
       "--selection-text": colors.selectionText,
       "--haunt-control-border": `color-mix(in srgb, ${colors.border} 65%, ${colors.text})`,
+      "--haunt-control-highlight": control.controlHighlight,
+      "--haunt-control-shade": control.controlShade,
+      "--haunt-control-shadow": control.controlShadow,
+      "--haunt-media-label-background": tint(colors.background, 92),
+      "--haunt-media-label-text": mediaLabel.text,
+      "--haunt-media-label-muted": mediaLabel.muted,
       "--haunt-hover": `color-mix(in srgb, ${colors.raised} 88%, ${colors.text})`,
       "--accent": color,
       "--haunt-ember": color,

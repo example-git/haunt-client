@@ -1,6 +1,7 @@
 import { fillSignin } from "./signin-fields.mjs";
 import { expect } from "@playwright/test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 async function peak(element) {
   // React mounts the element before attaching its stream in an effect. A
   // restarted share can already exist in the DOM while that binding is pending.
@@ -140,16 +141,20 @@ export async function checkCallControls(browser, fixtures) {
         const boxes = await bob.locator(".call-tile").evaluateAll((els) =>
           els.map((el) => {
             const b = el.getBoundingClientRect();
-            return { width: b.width, height: b.height };
+            return {
+              width: b.width,
+              height: b.height,
+              ratio: el.classList.contains("video-tile") ? 16 / 9 : 1,
+            };
           }),
         );
         assert(
           boxes.every(
             (b) =>
-              Math.abs(b.width - boxes[0].width) < 2 &&
+              Math.abs(b.width - b.height * b.ratio) < 2 &&
               Math.abs(b.height - boxes[0].height) < 2,
           ),
-          "Default tiles have equal dimensions",
+          "Grid tiles have equal heights and keep their media aspect ratios",
         );
       };
       const focusLayout = async () => {
@@ -158,9 +163,20 @@ export async function checkCallControls(browser, fixtures) {
           await bob.locator(".call-stage").evaluate((el) => {
             const box = el.getBoundingClientRect();
             const focus = el.querySelector(".focused").getBoundingClientRect();
+            const ratio = el
+              .querySelector(".focused")
+              .classList.contains("video-tile")
+              ? 16 / 9
+              : 1;
             return (
-              focus.width >= box.width - 2 &&
-              focus.height > box.height / 2 &&
+              focus.width > 0 &&
+              Math.abs(focus.width - focus.height * ratio) < 2 &&
+              Math.abs(
+                focus.left + focus.width / 2 - box.left - box.width / 2,
+              ) < 2 &&
+              focus.left >= box.left - 1 &&
+              focus.right <= box.right + 1 &&
+              focus.top >= box.top - 1 &&
               [...el.querySelectorAll(".call-tile:not(.focused)")].every(
                 (tile) => {
                   const b = tile.getBoundingClientRect();
@@ -169,7 +185,7 @@ export async function checkCallControls(browser, fixtures) {
               )
             );
           }),
-          "Focused tile fills the stage above the other participants",
+          "Focused tile is centered, keeps its aspect ratio and fits above the other participants",
         );
       };
       await equalTiles();
@@ -227,6 +243,111 @@ export async function checkCallControls(browser, fixtures) {
       await equalTiles();
       await person.click();
       await focusLayout();
+      if (transport === "rtc") {
+        const original = await bob.evaluate(() =>
+          localStorage.getItem("chatxo-client-preferences-v1"),
+        );
+        const evidence = [];
+        await bob.setViewportSize({ width: 1920, height: 1080 });
+        await bob.evaluate(() => {
+          window.hauntDesktop = {
+            appearance: {
+              set: async (request) => ({
+                effect: request.mode,
+                supported: true,
+                restart: false,
+              }),
+            },
+          };
+        });
+        for (const [name, theme, accentColor] of [
+          ["charcoal", { preset: "charcoal" }, "#ff9a3d"],
+          [
+            "peach-material",
+            {
+              preset: "peach-noir",
+              windowEffect: "material",
+              sidebarOpacity: 30,
+            },
+            "#ffc39c",
+          ],
+          ["paper", { preset: "paper" }, "#4364b0"],
+        ]) {
+          await bob.evaluate(
+            ({ theme, accentColor }) => {
+              const key = "chatxo-client-preferences-v1";
+              const current = JSON.parse(localStorage.getItem(key) ?? "{}");
+              localStorage.setItem(
+                key,
+                JSON.stringify({ ...current, theme, accentColor }),
+              );
+              window.dispatchEvent(new StorageEvent("storage", { key }));
+            },
+            { theme, accentColor },
+          );
+          await expect(bob.locator("html")).toHaveAttribute(
+            "data-window-effect",
+            theme.windowEffect ?? "solid",
+          );
+          await focusLayout();
+          const result = await person.evaluate((tile) => {
+            const box = tile.getBoundingClientRect();
+            const avatar = tile
+              .querySelector(".avatar")
+              .getBoundingClientRect();
+            const style = getComputedStyle(
+              tile.querySelector(".call-tile-label"),
+            );
+            return {
+              tile: { width: box.width, height: box.height },
+              avatar: {
+                width: avatar.width,
+                height: avatar.height,
+                centered:
+                  Math.abs(
+                    avatar.left + avatar.width / 2 - box.left - box.width / 2,
+                  ) < 2,
+              },
+              label: { background: style.backgroundColor, color: style.color },
+              controls: [...document.querySelectorAll(".call-controls")].map(
+                (bar) =>
+                  getComputedStyle(bar.querySelector("button")).boxShadow,
+              ),
+              theme: JSON.parse(
+                localStorage.getItem("chatxo-client-preferences-v1"),
+              ).theme,
+            };
+          });
+          assert.ok(
+            result.avatar.width > 180 && result.avatar.centered,
+            JSON.stringify(result),
+          );
+          assert.ok(Math.abs(result.avatar.width - result.avatar.height) < 1);
+          assert.ok(
+            result.controls.every((shadow) => shadow.includes("inset")),
+          );
+          evidence.push({ name, ...result });
+          await bob.screenshot({
+            path: `test-results/call-expanded-${name}.png`,
+          });
+          await person.click();
+          await equalTiles();
+          await bob.screenshot({ path: `test-results/call-grid-${name}.png` });
+          await person.click();
+        }
+        await fs.writeFile(
+          "test-results/call-presentation.json",
+          JSON.stringify(evidence, null, 2),
+        );
+        await bob.evaluate((original) => {
+          const key = "chatxo-client-preferences-v1";
+          if (original === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, original);
+          window.dispatchEvent(new StorageEvent("storage", { key }));
+          delete window.hauntDesktop;
+        }, original);
+        await bob.setViewportSize({ width: 1120, height: 800 });
+      }
       await expect(bob.getByRole("menu")).toHaveCount(0);
       await person.click();
       await expect(bob.locator(".call-tile.focused")).toHaveCount(0);
