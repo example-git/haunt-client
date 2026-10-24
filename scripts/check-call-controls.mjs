@@ -145,7 +145,9 @@ export async function checkCallControls(browser, fixtures) {
           .getByRole("button", { name: "Close", exact: true })
           .click();
       }
-      const name = await alice.locator(".profile .user-name").innerText();
+      const name = await alice
+        .locator(".profile .profile-user-name")
+        .innerText();
       const row = bob
         .locator(".sidebar .voice-member")
         .filter({ hasText: name });
@@ -772,7 +774,7 @@ export async function checkCallControls(browser, fixtures) {
       await bob
         .locator(".call-tile")
         .filter({
-          hasText: await bob.locator(".profile .user-name").innerText(),
+          hasText: await bob.locator(".profile .profile-user-name").innerText(),
         })
         .click();
       await expect(bob.locator(".call-tile.focused")).toBeVisible();
