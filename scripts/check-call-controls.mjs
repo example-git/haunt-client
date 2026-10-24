@@ -420,20 +420,23 @@ export async function checkCallControls(browser, fixtures) {
             const sample = async (state) => {
               samples.push(
                 ...(await member.evaluate(async (row, state) => {
-                  const name = row.querySelector(".profile-user-name");
+                  const names = [...row.querySelectorAll(".profile-user-name")];
                   const values = [];
                   for (let frame = 0; frame < 3; frame++) {
                     if (frame) await new Promise(requestAnimationFrame);
-                    const style = getComputedStyle(name);
-                    values.push({
-                      state,
-                      frame,
-                      treatment: name.dataset.nameTreatment,
-                      stroke: style.webkitTextStrokeWidth,
-                      edge: style.webkitTextStrokeColor,
-                      background: style.backgroundColor,
-                      paintOrder: style.paintOrder,
-                    });
+                    for (const name of names) {
+                      const style = getComputedStyle(name);
+                      values.push({
+                        state,
+                        frame,
+                        name: name.textContent,
+                        treatment: name.dataset.nameTreatment,
+                        stroke: style.webkitTextStrokeWidth,
+                        edge: style.webkitTextStrokeColor,
+                        background: style.backgroundColor,
+                        paintOrder: style.paintOrder,
+                      });
+                    }
                   }
                   return values;
                 }, state)),
@@ -463,7 +466,9 @@ export async function checkCallControls(browser, fixtures) {
               JSON.stringify({ theme: name, samples }),
             );
             memberNames.push({
-              name: await member.locator(".profile-user-name").textContent(),
+              names: await member
+                .locator(".profile-user-name")
+                .allTextContents(),
               samples,
             });
           }
