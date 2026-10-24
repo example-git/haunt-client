@@ -287,6 +287,8 @@ export async function checkMuteRecovery(fixtures) {
       pages.push(page);
       page.setDefaultTimeout(20000);
       page.on("pageerror", (error) => report.errors.push(error.message));
+      await stage(`initial-load-${username}`);
+      await page.waitForLoadState("load", { timeout: 20000 });
       await page.addInitScript(observeMedia);
       await stage(`reload-${username}`);
       await page.reload({ waitUntil: "domcontentloaded", timeout: 20000 });
