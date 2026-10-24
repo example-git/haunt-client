@@ -222,7 +222,23 @@ try {
       `--user-data-dir=${scratch}/chrome`,
       "about:blank",
     ]);
-    const port = await waitForChromePort(path.join(scratch, "chrome"), chrome);
+    const port = await waitForChromePort(
+      path.join(scratch, "chrome"),
+      chrome,
+      30000,
+    ).catch(async (error) => {
+      console.error(
+        "Chrome startup profile:",
+        await fs.readdir(path.join(scratch, "chrome")).catch(() => []),
+      );
+      console.error(
+        "Chrome startup process:",
+        await fs
+          .readFile(`/proc/${chrome.pid}/status`, "utf8")
+          .catch(() => "Process exited"),
+      );
+      throw error;
+    });
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   }
   if (process.env.HAUNT_CLIENT_CHECK === "demo") {
