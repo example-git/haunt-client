@@ -184,12 +184,12 @@ export async function checkCallPopout(browser, fixtures) {
           }),
         )
         .toEqual(["rgb(18, 58, 188)", "rgb(254, 220, 186)"]);
-      for (const [effect, minimum] of [
-        ["material", 30],
-        ["transparent", 50],
+      for (const [effect, minimum, railOpacity] of [
+        ["material", 30, 47.5],
+        ["transparent", 50, 67.5],
       ]) {
         await alice
-          .getByLabel("Sidebar effect", { exact: true })
+          .getByLabel("Window effect", { exact: true })
           .selectOption(effect);
         const slider = alice.getByLabel("Sidebar opacity", { exact: true });
         await expect(slider).toHaveAttribute("min", String(minimum));
@@ -209,7 +209,7 @@ export async function checkCallPopout(browser, fixtures) {
           .toBe(Math.round((255 * minimum) / 100));
         await expect
           .poll(() => alpha(".server-rail"))
-          .toBe(Math.round((255 * (minimum + 15)) / 100));
+          .toBe(Math.round((255 * railOpacity) / 100));
         await expect(popup.locator(".voice-chat")).toHaveCSS(
           "background-color",
           "rgb(32, 32, 36)",
@@ -217,7 +217,7 @@ export async function checkCallPopout(browser, fixtures) {
       }
       console.log("Call popout: themes, selection and panel opacity passed");
       await alice
-        .getByLabel("Sidebar effect", { exact: true })
+        .getByLabel("Window effect", { exact: true })
         .selectOption("solid");
       await alice.getByRole("button", { name: "Close", exact: true }).click();
       await chat
