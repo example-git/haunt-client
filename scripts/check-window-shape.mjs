@@ -61,40 +61,47 @@ try {
     { timeout: 30000 },
   );
   const shape = async (target, phase, rounded) => {
-    const state = await desktop.evaluate(({ BrowserWindow }, target) => {
-      const windows = BrowserWindow.getAllWindows();
-      const win = windows.find((win) =>
-        target === "call"
-          ? win.webContents.getURL().endsWith("/call-window.html")
-          : !win.webContents.getURL().endsWith("/call-window.html"),
+    await expect(async () => {
+      const state = await desktop.evaluate(({ BrowserWindow }, target) => {
+        const windows = BrowserWindow.getAllWindows();
+        const win = windows.find((win) =>
+          target === "call"
+            ? win.webContents.getURL().endsWith("/call-window.html")
+            : !win.webContents.getURL().endsWith("/call-window.html"),
+        );
+        return {
+          id: win.getNativeWindowHandle().readUInt32LE(0),
+          size: win.getSize(),
+          maximized: win.isMaximized(),
+          fullscreen: win.isFullScreen(),
+        };
+      }, target);
+      const rects = JSON.parse(
+        execFileSync("python3", ["-c", readShape, String(state.id)], {
+          encoding: "utf8",
+        }),
       );
-      return {
-        id: win.getNativeWindowHandle().readUInt32LE(0),
-        size: win.getSize(),
-        maximized: win.isMaximized(),
-        fullscreen: win.isFullScreen(),
-      };
-    }, target);
-    const rects = JSON.parse(
-      execFileSync("python3", ["-c", readShape, String(state.id)], {
-        encoding: "utf8",
-      }),
-    );
-    const contains = (x, y) =>
-      rects.some(
-        (r) => x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height,
+      const contains = (x, y) =>
+        rects.some(
+          (r) =>
+            x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height,
+        );
+      evidence.push({ target, phase, ...state, rects });
+      assert.equal(
+        contains(0, 0),
+        !rounded,
+        `${phase}: top-left native corner; ${JSON.stringify({ state, rects })}`,
       );
-    assert.equal(contains(0, 0), !rounded, `${phase}: top-left native corner`);
-    assert.equal(
-      contains(state.size[0] - 1, state.size[1] - 1),
-      !rounded,
-      `${phase}: bottom-right native corner`,
-    );
-    assert(
-      contains(Math.floor(state.size[0] / 2), Math.floor(state.size[1] / 2)),
-      `${phase}: native center`,
-    );
-    evidence.push({ target, phase, ...state, rects });
+      assert.equal(
+        contains(state.size[0] - 1, state.size[1] - 1),
+        !rounded,
+        `${phase}: bottom-right native corner`,
+      );
+      assert(
+        contains(Math.floor(state.size[0] / 2), Math.floor(state.size[1] / 2)),
+        `${phase}: native center`,
+      );
+    }).toPass({ timeout: 5000, intervals: [100, 250, 500] });
   };
   await shape("main", "normal", true);
   await page.screenshot({ path: "test-results/window-normal-renderer.png" });

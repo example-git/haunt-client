@@ -75,9 +75,11 @@ jobs:
           exit 1
       - run: npm ci
       - run: npm run build && npm run build:standalone
+        id: build
       - name: Check native window corners
         run: xvfb-run -a -s "-screen 0 1600x1000x24 -nolisten tcp" node scripts/check-window-shape.mjs
       - name: Exercise calls and detached views
+        if: always() && steps.build.outcome == 'success'
         run: |
           for check in calls call-popout; do
             HAUNT_CLIENT_CHECK="$check" npm run test:integration
