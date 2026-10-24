@@ -1,0 +1,49 @@
+name: Linux color diagnostics
+on:
+  push:
+    branches: [codex/linux-color-diagnostics]
+    paths:
+      - .github/workflows/linux-colors.yml
+      - scripts/check-linux-colors.mjs
+      - scripts/ci/check-linux-colors.sh
+      - scripts/ci/linux-color-pixels.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fedora:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Build the production image viewer fixture
+        run: node scripts/check-linux-colors.mjs prepare
+      - run: npm run electron:stage
+      - name: Compare pixels under Fedora KWin
+        run: |
+          mkdir -p test-results/linux-colors
+          docker pull fedora:44
+          docker image inspect fedora:44 --format '{{json .RepoDigests}}' > test-results/linux-colors/container.json
+          docker run --rm --shm-size=1g -e CI=true -e GITHUB_ACTIONS=true \
+            -e HAUNT_COLOR_SOURCE_SHA="$GITHUB_SHA" \
+            -v "$PWD:/workspace" -w /workspace fedora:44 \
+            bash scripts/ci/check-linux-colors.sh
+      - name: Summarize measurements
+        if: always()
+        run: |
+          if [ -f test-results/linux-colors/summary.md ]; then
+            cat test-results/linux-colors/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fedora-linux-color-evidence
+          path: test-results/linux-colors/
+          if-no-files-found: error
+          retention-days: 14
