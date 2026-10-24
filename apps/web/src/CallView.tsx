@@ -374,7 +374,6 @@ function useTileGrid(count: number, video: boolean, destination?: HTMLElement) {
       }
       setStyle({
         "--tile-columns": best.columns,
-        "--strip-count": Math.max(1, count - 1),
         "--grid-width": `${best.width}px`,
         "--grid-height": `${best.height}px`,
         "--tile-height": `${(best.width - gap * (best.columns - 1)) / best.columns / ratio}px`,

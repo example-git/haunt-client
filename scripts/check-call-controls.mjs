@@ -109,6 +109,39 @@ export async function checkCallControls(browser, fixtures) {
     try {
       await login(alice, "alice");
       await login(bob, "bob");
+      if (transport === "rtc") {
+        const image = await alice.evaluate(() => {
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 128;
+          const context = canvas.getContext("2d");
+          context.fillStyle = "#305579";
+          context.fillRect(0, 0, 128, 128);
+          context.fillStyle = "#d7eaff";
+          context.font = "bold 80px sans-serif";
+          context.textAlign = "center";
+          context.fillText("A", 64, 94);
+          return canvas.toDataURL("image/png").split(",")[1];
+        });
+        await alice
+          .getByRole("button", { name: "Edit your profile", exact: true })
+          .click();
+        const editor = alice.locator(".art-editor.art-avatar");
+        await editor
+          .locator("input[type=file]")
+          .setInputFiles({
+            name: "call-avatar.png",
+            mimeType: "image/png",
+            buffer: Buffer.from(image, "base64"),
+          });
+        await editor
+          .getByRole("button", { name: "Save image", exact: true })
+          .click();
+        await expect(editor.getByRole("status")).toHaveText("Image saved.");
+        await alice
+          .getByRole("dialog")
+          .getByRole("button", { name: "Close", exact: true })
+          .click();
+      }
       const name = await alice.locator(".profile .user-name").innerText();
       const row = bob
         .locator(".sidebar .voice-member")
@@ -126,6 +159,11 @@ export async function checkCallControls(browser, fixtures) {
       await join(bob);
       await expect(audio("audio")).toHaveCount(1, { timeout: 30000 });
       await expect(row.locator("time")).toHaveCount(1);
+      const joined = await row.locator("time").getAttribute("datetime");
+      assert(
+        joined.endsWith("Z") &&
+          Math.abs(Date.now() - Date.parse(joined)) < 30000,
+      );
       await row.click();
       await expect(bob.getByRole("menu")).toHaveCount(0);
       await expect(bob.getByRole("dialog")).toBeVisible();
@@ -251,6 +289,18 @@ export async function checkCallControls(browser, fixtures) {
         await bob.setViewportSize({ width: 1920, height: 1080 });
         await bob.evaluate(() => {
           window.hauntDesktop = {
+            platform: "linux",
+            windowState: async () => ({
+              target: "main",
+              maximized: false,
+              fullscreen: false,
+            }),
+            onWindowState: () => () => {},
+            onCallWindowClosed: () => () => {},
+            windowControl: async () => {},
+            setBadge: async () => {},
+            notificationAvailable: async () => false,
+            showNotification: async () => {},
             appearance: {
               set: async (request) => ({
                 effect: request.mode,
@@ -299,6 +349,7 @@ export async function checkCallControls(browser, fixtures) {
               tile.querySelector(".call-tile-label"),
             );
             return {
+              imageWidth: tile.querySelector(".avatar img")?.naturalWidth,
               tile: { width: box.width, height: box.height },
               avatar: {
                 width: avatar.width,
@@ -322,6 +373,7 @@ export async function checkCallControls(browser, fixtures) {
             result.avatar.width > 180 && result.avatar.centered,
             JSON.stringify(result),
           );
+          assert.ok(result.imageWidth > 0);
           assert.ok(Math.abs(result.avatar.width - result.avatar.height) < 1);
           assert.ok(
             result.controls.every((shadow) => shadow.includes("inset")),
@@ -369,11 +421,6 @@ export async function checkCallControls(browser, fixtures) {
         path: `test-results/voice-grid-${transport}.png`,
       });
 
-      const joined = await row.locator("time").getAttribute("datetime");
-      assert(
-        joined.endsWith("Z") &&
-          Math.abs(Date.now() - Date.parse(joined)) < 30000,
-      );
       const initial = await row.locator("time").textContent();
       const requests = [];
       const capture = (request) => {
@@ -488,6 +535,38 @@ export async function checkCallControls(browser, fixtures) {
       await expect(bob.locator(".call-panel video")).toHaveCount(2);
       await expect(bob.locator(".call-tile")).toHaveCount(3);
       await equalTiles();
+      await expect
+        .poll(() =>
+          bob
+            .locator(".call-panel video")
+            .evaluateAll((elements) =>
+              elements.every((el) => el.videoWidth > 0 && el.videoHeight > 0),
+            ),
+        )
+        .toBe(true);
+      const videoFrames = await bob
+        .locator(".call-panel video")
+        .evaluateAll((elements) =>
+          elements.map((el) => ({
+            sourceWidth: el.videoWidth,
+            sourceHeight: el.videoHeight,
+            objectFit: getComputedStyle(el).objectFit,
+            tileWidth: el.closest(".call-tile").getBoundingClientRect().width,
+            tileHeight: el.closest(".call-tile").getBoundingClientRect().height,
+          })),
+        );
+      assert.ok(videoFrames.every((frame) => frame.objectFit === "contain"));
+      assert.ok(
+        videoFrames.some(
+          (frame) =>
+            Math.abs(frame.sourceWidth / frame.sourceHeight - 16 / 9) > 0.05,
+        ),
+        "Exercise a source with a different aspect ratio",
+      );
+      await fs.writeFile(
+        `test-results/call-video-frames-${transport}.json`,
+        JSON.stringify(videoFrames, null, 2),
+      );
       await bob
         .locator(".call-panel video")
         .first()
