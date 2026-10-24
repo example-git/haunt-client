@@ -13,21 +13,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: example-git/haunt-server
-          ref: f7d0d2b15a4839d48ec31b24ecc5d33d463ecfb1
+          ref: c0d2ec375f0c718470b96e6206ccbf32f68250b0
           path: server
-      - uses: actions/checkout@v5
-        with:
-          path: diagnostic
       - uses: actions/setup-go@v6
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
       - name: Exercise server forwarding across controlled mute gaps
         working-directory: server
-        run: |
-          cp ../diagnostic/scripts/ci/mute-gap_test.go internal/voice/mute_gap_diagnostic_test.go
-          gofmt -w internal/voice/mute_gap_diagnostic_test.go
-          go test -race ./internal/voice -run '^TestMuteGapRecovery$' -count=1 -v -timeout=2m
+        run: go test -race ./internal/voice -count=1 -v -timeout=3m
   electron:
     runs-on: ubuntu-24.04
     timeout-minutes: 50
@@ -50,7 +44,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: example-git/haunt-server
-          ref: f7d0d2b15a4839d48ec31b24ecc5d33d463ecfb1
+          ref: c0d2ec375f0c718470b96e6206ccbf32f68250b0
           path: server
       - uses: actions/checkout@v5
         with:
