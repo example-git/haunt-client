@@ -4,6 +4,10 @@ on:
     branches: [dev]
   workflow_dispatch:
     inputs:
+      quick:
+        description: Check diagnostic startup and teardown with a one-second mute
+        type: boolean
+        default: false
       transport:
         type: choice
         default: all
@@ -48,6 +52,7 @@ jobs:
       HAUNT_CLIENT_CHECK: source-audio
       HAUNT_CALL_SOAK_SECONDS: "1440"
       HAUNT_MUTE_DIAGNOSTICS: "1"
+      HAUNT_MUTE_QUICK: ${{ inputs.quick && '1' || '0' }}
       HAUNT_MUTE_TRANSPORT: ${{ matrix.transport }}
       HAUNT_MUTE_SUPPRESSION: ${{ matrix.suppression }}
     steps:
@@ -84,6 +89,7 @@ jobs:
       - run: npm ci
       - run: npm run build && npm run electron:stage
       - name: Measure real mute and unmute playback
+        timeout-minutes: ${{ inputs.quick && 3 || 35 }}
         run: xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' npm run test:integration
       - uses: actions/upload-artifact@v4
         if: always()

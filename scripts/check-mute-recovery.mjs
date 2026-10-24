@@ -220,13 +220,20 @@ export async function checkMuteRecovery(fixtures) {
   const report = {
     mode,
     suppression,
+    durations: process.env.HAUNT_MUTE_QUICK === "1" ? [1] : [120, 420, 900],
     versions: [],
     samples: [],
     errors: [],
     result: "running",
   };
   const save = () => fs.writeFile(output, JSON.stringify(report, null, 2));
+  const stage = async (value) => {
+    report.stage = value;
+    await save();
+    console.log(`Mute diagnostic ${mode}/${suppression}: ${value}`);
+  };
   const sample = async (phase) => {
+    await stage(`snapshot-${phase}`);
     const [sender, receiver] = await Promise.all(pages.map(snapshot));
     const entry = { phase, sender, receiver, levels: await levels(pages[1]) };
     report.samples.push(entry);
@@ -243,6 +250,7 @@ export async function checkMuteRecovery(fixtures) {
       .click();
   try {
     for (const username of ["alice", "bob"]) {
+      await stage(`launch-${username}`);
       const desktop = await electron.launch({
         executablePath: (await import("electron")).default,
         args: [
@@ -261,6 +269,7 @@ export async function checkMuteRecovery(fixtures) {
         timeout: 60000,
       });
       desktops.push(desktop);
+      await stage(`versions-${username}`);
       report.versions.push(
         await desktop.evaluate(({ app }) => ({
           versions: process.versions,
@@ -268,6 +277,7 @@ export async function checkMuteRecovery(fixtures) {
           name: app.getName(),
         })),
       );
+      await stage(`window-${username}`);
       const page = await desktop.firstWindow();
       pages.push(page);
       page.setDefaultTimeout(20000);
@@ -277,6 +287,7 @@ export async function checkMuteRecovery(fixtures) {
       await page
         .getByRole("button", { name: "Add server", exact: true })
         .click();
+      await stage(`signin-${username}`);
       await fillSignin(page, server.url, username);
       await page
         .getByLabel("Password", { exact: true })
@@ -303,13 +314,14 @@ export async function checkMuteRecovery(fixtures) {
       );
     }
     const [sender, receiver] = pages;
+    await stage("baseline-playback");
     await expect
       .poll(async () => (await levels(receiver)).playback, { timeout: 20000 })
       .toBeGreaterThan(0.01);
     await sample("baseline");
     await control(receiver, "Mute microphone");
     const failures = [];
-    for (const seconds of [120, 420, 900]) {
+    for (const seconds of report.durations) {
       await control(sender, "Mute microphone");
       await expect
         .poll(async () => (await levels(receiver)).playback)
@@ -372,8 +384,9 @@ export async function checkMuteRecovery(fixtures) {
     }
     throw error;
   } finally {
-    await save();
+    await stage("close-desktops");
     for (const desktop of desktops) await desktop.close().catch(() => {});
+    await stage("closed-desktops");
     await fs.rm(scratch, { recursive: true, force: true });
   }
 }
