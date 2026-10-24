@@ -49,6 +49,7 @@ jobs:
         working-directory: server/client
         shell: bash
     env:
+      DEBUG: pw:browser
       HAUNT_CLIENT_CHECK: source-audio
       HAUNT_CALL_SOAK_SECONDS: "1440"
       HAUNT_MUTE_DIAGNOSTICS: "1"

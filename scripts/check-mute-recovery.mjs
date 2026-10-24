@@ -271,19 +271,26 @@ export async function checkMuteRecovery(fixtures) {
       desktops.push(desktop);
       await stage(`versions-${username}`);
       report.versions.push(
-        await desktop.evaluate(({ app }) => ({
+        await desktop.evaluate(({ app, BrowserWindow }) => ({
           versions: process.versions,
           argv: process.argv,
           name: app.getName(),
+          ready: app.isReady(),
+          windows: BrowserWindow.getAllWindows().map((win) => ({
+            id: win.id,
+            url: win.webContents.getURL(),
+          })),
         })),
       );
       await stage(`window-${username}`);
-      const page = await desktop.firstWindow();
+      const page = await desktop.firstWindow({ timeout: 20000 });
       pages.push(page);
       page.setDefaultTimeout(20000);
       page.on("pageerror", (error) => report.errors.push(error.message));
       await page.addInitScript(observeMedia);
-      await page.reload();
+      await stage(`reload-${username}`);
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 20000 });
+      await stage(`add-server-${username}`);
       await page
         .getByRole("button", { name: "Add server", exact: true })
         .click();
