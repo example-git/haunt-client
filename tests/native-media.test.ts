@@ -1,10 +1,11 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import vm from "node:vm";
 import fs from "node:fs";
 const require = createRequire(import.meta.url);
+afterEach(() => vi.useRealTimers());
 const {
   PacketReader,
   stereoPCM,
@@ -160,6 +161,19 @@ function nativeShell(cadence = 59.94) {
     }
   }
   const contents = Object.assign(new EventEmitter(), { send: vi.fn() });
+  const catalog = {
+    cameras: [
+      {
+        id: "camera",
+        label: "Camera",
+        formats: [
+          { width: 1920, height: 1080, minFPS: cadence, maxFPS: cadence },
+        ],
+      },
+    ],
+    audio: [] as { id: string; label: string }[],
+  };
+  const listSources = vi.fn(async () => structuredClone(catalog));
   const parent = Object.assign(new EventEmitter(), {
     isDestroyed: () => false,
     webContents: contents,
@@ -173,6 +187,8 @@ function nativeShell(cadence = 59.94) {
     process: { platform: "darwin", arch: "arm64" },
     setTimeout,
     clearTimeout,
+    setInterval,
+    clearInterval,
     Uint8Array,
     require: (name: string) => {
       if (name === "electron")
@@ -187,23 +203,7 @@ function nativeShell(cadence = 59.94) {
       if (name === "./swiftcapture.cjs")
         return {
           Capture: ObservedCapture,
-          listSources: async () => ({
-            cameras: [
-              {
-                id: "camera",
-                label: "Camera",
-                formats: [
-                  {
-                    width: 1920,
-                    height: 1080,
-                    minFPS: cadence,
-                    maxFPS: cadence,
-                  },
-                ],
-              },
-            ],
-            audio: [],
-          }),
+          listSources,
         };
       if (name === "./capture-picker.cjs") return {};
       return localRequire(name);
@@ -223,6 +223,10 @@ function nativeShell(cadence = 59.94) {
     children,
     captures,
     contents,
+    catalog,
+    listSources,
+    devices: () => handlers.get("native:devices")!({}, true),
+    dispose: () => parent.emit("closed"),
     start: (patch = {}) =>
       handlers.get("native:start")!({}, { ...request, ...patch }),
     stop: () => handlers.get("native:stop")!({}, request.id),
@@ -281,6 +285,8 @@ it.each([59.94, 60.001])(
       expect(shell.captures[i].closed).toBe(false);
       await shell.stop();
     }
+    expect(shell.listSources).toHaveBeenCalledOnce();
+    shell.dispose();
   },
 );
 it.each(["process", "packet"])(
@@ -306,6 +312,7 @@ it.each(["process", "packet"])(
     shell.ready();
     await expect(retried).resolves.toMatchObject({ video: { fps: 60 } });
     await shell.stop();
+    shell.dispose();
   },
 );
 it("settles a cancelled startup and releases the camera for retry", async () => {
@@ -320,6 +327,35 @@ it("settles a cancelled startup and releases the camera for retry", async () => 
   shell.ready();
   await expect(retried).resolves.toMatchObject({ video: { fps: 60 } });
   await shell.stop();
+  shell.dispose();
+});
+it("shares the native catalog and only publishes changed periodic snapshots", async () => {
+  vi.useFakeTimers();
+  const shell = nativeShell();
+  const [first, second] = await Promise.all([shell.devices(), shell.devices()]);
+  expect(second).toBe(first);
+  expect(shell.listSources).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(shell.listSources).toHaveBeenCalledTimes(2);
+  expect(await shell.devices()).toBe(first);
+  expect(shell.contents.send).not.toHaveBeenCalled();
+  shell.catalog.audio.push({ id: "input", label: "Input" });
+  await vi.advanceTimersByTimeAsync(30000);
+  expect((await shell.devices()).audio).toEqual(shell.catalog.audio);
+  expect(shell.contents.send).toHaveBeenCalledOnce();
+  expect(shell.contents.send).toHaveBeenCalledWith(
+    "native:event",
+    expect.objectContaining({ kind: "devices", devices: shell.catalog }),
+  );
+  shell.listSources.mockRejectedValueOnce(
+    new Error("Fixture discovery failure"),
+  );
+  await vi.advanceTimersByTimeAsync(30000);
+  expect((await shell.devices()).audio).toEqual(shell.catalog.audio);
+  expect(shell.contents.send).toHaveBeenCalledOnce();
+  shell.dispose();
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(shell.listSources).toHaveBeenCalledTimes(4);
 });
 it("rejects unsupported native camera requests before starting a worker", async () => {
   const shell = nativeShell();
@@ -329,6 +365,7 @@ it("rejects unsupported native camera requests before starting a worker", async 
   );
   await expect(shell.start({ fps: 30 })).rejects.toThrow("unavailable");
   expect(shell.spawn).not.toHaveBeenCalled();
+  shell.dispose();
 });
 it("reads split and coalesced SCAP packets and bounds allocations before reading the body", () => {
   const packets: any[] = [];

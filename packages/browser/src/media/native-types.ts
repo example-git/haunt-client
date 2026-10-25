@@ -8,7 +8,14 @@ export interface NativeVideoConfig {
 export interface NativeEvent {
   id: string;
   kind:
-    "video-config" | "audio-config" | "video" | "audio" | "error" | "keyframe";
+    | "video-config"
+    | "audio-config"
+    | "video"
+    | "audio"
+    | "error"
+    | "keyframe"
+    | "devices";
+  devices?: { cameras: NativeDevice[]; audio: NativeDevice[] };
   purpose?: string;
   layer?: string;
   config?: NativeVideoConfig & { sampleRate?: number };

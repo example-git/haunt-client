@@ -272,6 +272,8 @@ async function attachNativeShell(page, root) {
     process: { platform: "darwin", arch: "arm64", resourcesPath: root },
     setTimeout,
     clearTimeout,
+    setInterval,
+    clearInterval,
     Uint8Array,
   };
   vm.runInNewContext(await fs.readFile(entry, "utf8"), box);
@@ -886,7 +888,10 @@ export async function checkNativeMedia(browser, fixtures) {
           );
           const tiles = receiver.locator(".video-tile");
           for (const tile of await tiles.all()) {
-            await tile.getByRole("combobox").selectOption("l");
+            await tile.click({ button: "right" });
+            await receiver
+              .getByRole("menuitemradio", { name: /640 × 360/ })
+              .click();
             await expect
               .poll(
                 () =>

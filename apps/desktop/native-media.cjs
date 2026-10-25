@@ -36,32 +36,50 @@ function installNativeMedia(parent, validateSender) {
   };
   let generation = 0;
   let catalogPending;
-  let catalog,
-    catalogAt = 0;
+  let catalog, catalogTimer;
+  let disposed = false;
   const idOK = (id) => typeof id === "string" && /^[a-f0-9-]{36}$/.test(id);
   const send = (message) => {
     if (!parent.isDestroyed()) parent.webContents.send("native:event", message);
   };
-  const sources = async (fresh = false) => {
-    if (!fresh && catalog && Date.now() - catalogAt <= 5000) return catalog;
+  const refreshSources = () => {
     if (!catalogPending)
       catalogPending = listSources(worker)
         .then((value) => {
-          catalog = value;
-          catalogAt = Date.now();
-          return value;
+          const devicesChanged =
+            !!catalog &&
+            JSON.stringify([catalog.cameras, catalog.audio]) !==
+              JSON.stringify([value.cameras, value.audio]);
+          if (JSON.stringify(catalog) !== JSON.stringify(value))
+            catalog = value;
+          if (devicesChanged && !disposed)
+            send({
+              id: "",
+              kind: "devices",
+              devices: { cameras: catalog.cameras, audio: catalog.audio },
+            });
+          return catalog;
         })
         .finally(() => {
           catalogPending = undefined;
         });
     return catalogPending;
   };
+  const sources = async () => {
+    if (!catalogTimer && !disposed) {
+      catalogTimer = setInterval(() => {
+        void refreshSources().catch(() => {});
+      }, 30000);
+      catalogTimer.unref();
+    }
+    return catalog ?? refreshSources();
+  };
   const permission = async (kind) => {
-    if (
-      systemPreferences.getMediaAccessStatus(kind) !== "granted" &&
-      !(await systemPreferences.askForMediaAccess(kind))
-    )
+    if (systemPreferences.getMediaAccessStatus(kind) === "granted")
+      return false;
+    if (!(await systemPreferences.askForMediaAccess(kind)))
       throw Error(`Enable ${kind} access for Haunt in macOS System Settings.`);
+    return true;
   };
   const device = (list, id, label) => {
     if (!id) return undefined;
@@ -81,8 +99,9 @@ function installNativeMedia(parent, validateSender) {
   };
   ipcMain.handle("native:devices", async (event, requestPermission) => {
     validateSender(event);
-    if (requestPermission === true) await permission("camera");
-    return sources(requestPermission === true);
+    if (requestPermission === true && (await permission("camera")))
+      await refreshSources();
+    return sources();
   });
   const startCapture = async (event, request, replacement) => {
     validateSender(event);
@@ -130,7 +149,7 @@ function installNativeMedia(parent, validateSender) {
       if (request.purpose === "screen") {
         if (![15, 30, 60].includes(request.fps))
           throw Error("Screen capture supports 15, 30 or 60 FPS.");
-        const list = await sources(true);
+        const list = await sources();
         const chosen = replacement
           ? { video: replacement.source, audio: replacement.options.audio }
           : await chooseCapture(parent, request.audio === true, {
@@ -155,9 +174,11 @@ function installNativeMedia(parent, validateSender) {
           );
         }
       } else {
-        await permission("camera");
-        if (request.audioDevice) await permission("microphone");
-        const list = await sources(true);
+        let granted = await permission("camera");
+        if (request.audioDevice)
+          granted = (await permission("microphone")) || granted;
+        if (granted) await refreshSources();
+        const list = await sources();
         options.device = device(
           list.cameras,
           replacement ? `swift:${replacement.options.device}` : request.device,
@@ -473,7 +494,12 @@ function installNativeMedia(parent, validateSender) {
       if (mainFrame && !inPlace) clean();
     },
   );
-  parent.once("closed", clean);
-  app.on("before-quit", clean);
+  const dispose = () => {
+    disposed = true;
+    clearInterval(catalogTimer);
+    clean();
+  };
+  parent.once("closed", dispose);
+  app.on("before-quit", dispose);
 }
 module.exports = { installNativeMedia };

@@ -31,16 +31,19 @@ export function MenuAction({
   onClick,
   danger = false,
   disabled = false,
+  checked,
 }: {
   children: ReactNode;
   onClick: () => void;
   danger?: boolean;
   disabled?: boolean;
+  checked?: boolean;
 }) {
   const { close } = useContext(Context);
   return (
     <button
-      role="menuitem"
+      role={checked === undefined ? "menuitem" : "menuitemradio"}
+      aria-checked={checked}
       disabled={disabled}
       className={danger ? "danger-text" : undefined}
       onClick={() => {
@@ -48,6 +51,11 @@ export function MenuAction({
         onClick();
       }}
     >
+      {checked !== undefined && (
+        <span className="menu-check" aria-hidden="true">
+          {checked ? "✓" : ""}
+        </span>
+      )}
       {children}
     </button>
   );
@@ -149,13 +157,15 @@ export function ContextMenus({ children }: { children: ReactNode }) {
             onContextMenu={(e) => e.preventDefault()}
             onKeyDown={(e) => {
               if (
-                (e.target as HTMLElement).tagName === "INPUT" &&
+                ["INPUT", "SELECT"].includes(
+                  (e.target as HTMLElement).tagName,
+                ) &&
                 e.key !== "Tab"
               )
                 return;
               const items = Array.from(
                 e.currentTarget.querySelectorAll<HTMLElement>(
-                  "button:not(:disabled), input:not(:disabled)",
+                  "button:not(:disabled), input:not(:disabled), select:not(:disabled)",
                 ),
               );
               const current = items.indexOf(
