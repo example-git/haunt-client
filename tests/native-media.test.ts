@@ -130,7 +130,7 @@ function nativeShell(cadence = 59.94) {
       kill(signal: string) {
         if (this.signalCode) return;
         this.signalCode = signal;
-        queueMicrotask(() => this.emit("close", null, signal));
+        queueMicrotask(() => child.emit("close", null, signal));
       },
     });
     children.push(child);
