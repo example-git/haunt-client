@@ -606,7 +606,11 @@ export async function checkCallControls(browser, fixtures) {
         "Audio & video settings",
       ]) {
         const button = bob
-          .locator(".call-dock")
+          .locator(
+            control === "Audio & video settings"
+              ? ".call-panel.full"
+              : ".call-dock",
+          )
           .getByRole("button", { name: control, exact: true });
         await button.click({ button: "right" });
         const devices = bob.getByRole("menu", {
