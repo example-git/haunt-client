@@ -110,16 +110,27 @@ export async function checkNotificationMessages(app, page, native, report) {
       )
       .toBe(false);
   };
+  const openNavigation = async () => {
+    const button = page.getByRole("button", {
+      name: /^(Show servers|Show channels|Hide channels)$/,
+    });
+    await expect(button).toBeVisible();
+    if ((await button.getAttribute("aria-expanded")) !== "true")
+      await button.click();
+    await expect(button).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".server-rail")).toHaveCSS(
+      "transform",
+      "matrix(1, 0, 0, 1, 0, 0)",
+    );
+  };
   const settings = async () => {
     await show();
-    const button = page.getByRole("button", {
-      name: /^(Client settings|Account settings)$/,
-    });
-    if (!(await button.isVisible()))
-      await page
-        .getByRole("button", { name: /^(Show servers|Show channels)$/ })
-        .click();
-    await button.click();
+    await openNavigation();
+    await page
+      .getByRole("button", {
+        name: /^(Client settings|Account settings)$/,
+      })
+      .click();
     const notifications = page.getByRole("dialog").getByRole("button", {
       name: "Notification Settings",
       exact: true,
@@ -152,11 +163,7 @@ export async function checkNotificationMessages(app, page, native, report) {
     await expect(checkbox).toBeChecked();
   };
   const select = async (name) => {
-    const sidebar = page.getByRole("button", {
-      name: "Show channels",
-      exact: true,
-    });
-    if (await sidebar.isVisible()) await sidebar.click();
+    await openNavigation();
     await page
       .locator(".channel")
       .filter({ has: page.getByText(name, { exact: true }) })
@@ -201,13 +208,7 @@ export async function checkNotificationMessages(app, page, native, report) {
     );
     await show();
     await expect(page.locator(".server-rail")).toBeHidden();
-    await page
-      .getByRole("button", { name: /^(Show servers|Show channels)$/ })
-      .click();
-    await expect(page.locator(".server-rail")).toHaveCSS(
-      "transform",
-      "matrix(1, 0, 0, 1, 0, 0)",
-    );
+    await openNavigation();
     await page.getByRole("button", { name: "Add server", exact: true }).click();
     await fillSignin(page, server.origin, "owner");
     await page
