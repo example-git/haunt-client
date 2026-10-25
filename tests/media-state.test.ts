@@ -240,7 +240,10 @@ describe("reactive call safety", () => {
       },
     };
     const { call, wire, raw, processed, incoming } = await connected([other]);
-    call.client.account.instance.capabilities.push("media.levels.v1");
+    call.client.account.instance.capabilities = [
+      ...(call.client.account.instance.capabilities ?? []),
+      "media.levels.v1",
+    ];
     vi.spyOn(call.speaking, "available").mockReturnValue(true);
     vi.spyOn(call.speaking, "level").mockReturnValue(67);
     await vi.advanceTimersByTimeAsync(600);
