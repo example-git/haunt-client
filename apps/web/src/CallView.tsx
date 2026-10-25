@@ -413,7 +413,9 @@ function CallTileMenu({
             </MenuAction>
             <MenuAction
               disabled={
-                state.status !== "connected" || state.restriction.deafened
+                state.status !== "connected" ||
+                state.microphoneMonitoring ||
+                state.restriction.deafened
               }
               onClick={() =>
                 run(call.setState({ deafened: !call.snapshot.state.deafened }))
@@ -747,6 +749,10 @@ export function CallPanel({
   }, [target]);
   const action = (task: Promise<unknown>) =>
     void task.catch((e) => setError(friendlyError(e)));
+  const userID = (id: string) =>
+    state.participants.find((p) => p.participant_id === id)?.user_id ?? "";
+  const name = (id: string) =>
+    displayName(call.client.snapshot.users.find((u) => u.id === userID(id)));
   const options = (tile: Tile) =>
     menu(
       `${displayName(call.client.snapshot.users.find((user) => user.id === tile.user))} · ${tile.purpose === "avatar" ? "Voice" : tile.purpose === "camera" ? "Camera" : "Screen share"}`,
