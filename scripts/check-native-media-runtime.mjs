@@ -956,9 +956,13 @@ export async function checkNativeMedia(browser, fixtures) {
                 { exact: true },
               )
               .click();
-            const settings = sender
-              .locator(".call-dock .video-settings")
-              .nth(purpose === "camera" ? 0 : 1);
+            const settings = sender.getByRole("dialog", {
+              name:
+                purpose === "camera"
+                  ? "Camera capture settings"
+                  : "Screen-share capture settings",
+              exact: true,
+            });
             if (purpose === "camera") {
               await settings
                 .getByRole("button", {

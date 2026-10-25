@@ -65,12 +65,11 @@ glass tint, with softly uneven frosting on chrome. Frosted mode uses a stronger
 texture; text and controls stay above it. Previews use the same palette, tint,
 and texture.
 
-Names retain the exact profile accent color. On known solid surfaces, sufficient
-contrast leaves the name plain. Otherwise a thin black or white outline is
-painted beneath the fill when it contrasts with both the name and surface.
-Gradients, transparent or image surfaces, and insufficient outline contrast use
-a tight opaque black/white backing around the name. The treatment follows the
-viewer's theme and applied window effect, including call popouts.
+Names retain the exact profile accent color with a thick black or white outline
+painted beneath the fill. The edge color preserves contrast with the name across
+solid colors, gradients, transparency and images; no rectangular backing is used.
+The shared treatment follows the viewer's theme and applied window effect,
+including call popouts.
 
 A change requiring a different native transparent-window construction is saved for
 next launch. The UI says when a restart is needed; it never interrupts a call to

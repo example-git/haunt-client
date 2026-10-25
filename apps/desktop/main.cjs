@@ -19,6 +19,7 @@ const {
   supportedMode,
   windowOptions,
   applyWindow,
+  shapeWindow,
 } = require("./appearance.cjs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -166,9 +167,12 @@ async function startMain() {
   });
   const trackWindow = (win, target) => {
     const changed = () => {
+      shapeWindow(win);
       if (window && !window.isDestroyed() && !win.isDestroyed())
         window.webContents.send("window:state", windowState(target, win));
     };
+    shapeWindow(win);
+    win.on("resize", () => shapeWindow(win));
     for (const event of [
       "maximize",
       "unmaximize",
@@ -688,6 +692,7 @@ async function startMain() {
         minWidth: 360,
         minHeight: 280,
         frame: false,
+        roundedCorners: true,
         title: "Haunt · Voice",
         backgroundColor: appearance.background,
         autoHideMenuBar: true,

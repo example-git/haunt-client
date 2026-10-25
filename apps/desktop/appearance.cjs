@@ -32,6 +32,7 @@ function windowOptions(
 ) {
   const mode = supportedMode(value.mode, platform, release);
   return {
+    roundedCorners: true,
     transparent:
       mode === "transparent" || (mode === "material" && platform === "darwin"),
     backgroundColor: mode === "solid" ? value.background : "#00000000",
@@ -65,4 +66,33 @@ function applyWindow(
     supported: requested === value.mode,
   };
 }
-module.exports = { validAppearance, supportedMode, windowOptions, applyWindow };
+function shapeWindow(win, platform = process.platform) {
+  if (platform !== "linux" || win.isDestroyed()) return;
+  const [width, height] = win.getSize();
+  if (win.isMaximized() || win.isFullScreen()) {
+    win.setShape([{ x: 0, y: 0, width, height }]);
+    return;
+  }
+  const radius = Math.min(12, Math.floor(width / 2), Math.floor(height / 2));
+  const rects = [{ x: 0, y: radius, width, height: height - radius * 2 }];
+  for (let y = 0; y < radius; y++) {
+    const inset = Math.ceil(
+      radius - Math.sqrt(radius * radius - (radius - y - 0.5) ** 2),
+    );
+    rects.push({ x: inset, y, width: width - inset * 2, height: 1 });
+    rects.push({
+      x: inset,
+      y: height - y - 1,
+      width: width - inset * 2,
+      height: 1,
+    });
+  }
+  win.setShape(rects);
+}
+module.exports = {
+  validAppearance,
+  supportedMode,
+  windowOptions,
+  applyWindow,
+  shapeWindow,
+};

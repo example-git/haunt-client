@@ -140,10 +140,10 @@ export async function checkMediaAppearance(browser, fixtures) {
       selection: "#ff9a3d",
       selectionText: "#000000",
     };
-    for (const [kind, color, surface, text] of [
-      ["plain", "#ffffff", "#000000", "#ffffff"],
-      ["outline", "#ffffff", "#ffffff", "#000000"],
-      ["backing", "#777777", "#222222", "#ffffff"],
+    for (const [scenario, color, surface, text] of [
+      ["light-on-dark", "#ffffff", "#000000", "#ffffff"],
+      ["light-on-light", "#ffffff", "#ffffff", "#000000"],
+      ["midtone-on-dark", "#777777", "#222222", "#ffffff"],
     ]) {
       await api(member, "PUT", "/api/v1/me/profile", {
         accent_color: color,
@@ -172,7 +172,9 @@ export async function checkMediaAppearance(browser, fixtures) {
           ),
         )
         .toBe(color);
-      await expect(author).toHaveAttribute("data-name-treatment", kind);
+      await expect(author).toHaveAttribute("data-name-treatment", "outline");
+      await expect(author).toHaveCSS("-webkit-text-stroke-width", "4px");
+      await expect(author).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       assert.equal(
         await author.evaluate((element) =>
           element.style.getPropertyValue("--name-color"),
@@ -188,7 +190,7 @@ export async function checkMediaAppearance(browser, fixtures) {
           paintOrder: getComputedStyle(element).paintOrder,
         })),
       );
-      await owner.screenshot({ path: `test-results/name-${kind}.png` });
+      await owner.screenshot({ path: `test-results/name-${scenario}.png` });
     }
     await owner.evaluate(() => {
       window.hauntDesktop = {
@@ -388,7 +390,7 @@ export async function checkMediaAppearance(browser, fixtures) {
       },
     });
     await expect(owner.locator(".messages.chat-display-compact")).toBeVisible();
-    await expect(author).toHaveAttribute("data-name-treatment", "backing");
+    await expect(author).toHaveAttribute("data-name-treatment", "outline");
     await owner
       .locator(".message")
       .filter({ hasText: "Profile color fixture" })
@@ -416,7 +418,7 @@ export async function checkMediaAppearance(browser, fixtures) {
         ".message-reply-reference .profile-user-name, .mention .profile-user-name",
       )
       .all()) {
-      await expect(name).toHaveAttribute("data-name-treatment", "backing");
+      await expect(name).toHaveAttribute("data-name-treatment", "outline");
       assert.equal(
         await name.evaluate((element) =>
           element.style.getPropertyValue("--name-color"),

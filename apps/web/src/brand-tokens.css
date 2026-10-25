@@ -6,6 +6,22 @@
   --haunt-hover: #333333;
   --haunt-border: #383838;
   --haunt-control-border: #666666;
+  --haunt-control-highlight: color-mix(in srgb, var(--haunt-raised) 86%, white);
+  --haunt-control-shade: color-mix(in srgb, var(--haunt-raised) 78%, black);
+  --haunt-control-shadow: color-mix(
+    in srgb,
+    var(--haunt-control-shade) 30%,
+    transparent
+  );
+  --haunt-media-label-background: color-mix(
+    in srgb,
+    var(--haunt-black) 92%,
+    transparent
+  );
+  --haunt-name-stroke-width: 4px;
+  --haunt-media-label-stroke: var(--haunt-black);
+  --haunt-media-label-text: var(--haunt-text);
+  --haunt-media-label-muted: var(--haunt-muted);
   --haunt-text: #f2f2f2;
   --haunt-muted: #adadad;
   --haunt-ember: #ff9a3d;

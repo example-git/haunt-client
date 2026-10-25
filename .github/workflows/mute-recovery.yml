@@ -1,0 +1,109 @@
+name: Prolonged mute diagnostics
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+    inputs:
+      server_ref:
+        description: Server commit to exercise
+        type: string
+        required: true
+        default: 4af54347b9d864c68f7e2716aa8b9f4477f60357
+      quick:
+        description: Check diagnostic startup and teardown with a one-second mute
+        type: boolean
+        default: false
+      transport:
+        type: choice
+        default: all
+        options: [all, rtc, ws]
+      suppression:
+        type: choice
+        default: all
+        options: [all, "on", "off"]
+permissions:
+  contents: read
+jobs:
+  packet-gap:
+    if: github.event_name != 'workflow_dispatch' || (inputs.transport == 'all' && inputs.suppression == 'all')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: example-git/haunt-server
+          ref: ${{ inputs.server_ref || '4af54347b9d864c68f7e2716aa8b9f4477f60357' }}
+          path: server
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Exercise server forwarding across controlled mute gaps
+        working-directory: server
+        run: go test -race ./internal/voice -count=1 -v -timeout=3m
+  electron:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        transport: ${{ fromJSON(inputs.transport && inputs.transport != 'all' && format('["{0}"]', inputs.transport) || '["rtc", "ws"]') }}
+        suppression: ${{ fromJSON(inputs.suppression && inputs.suppression != 'all' && format('["{0}"]', inputs.suppression) || '["on", "off"]') }}
+    defaults:
+      run:
+        working-directory: server/client
+        shell: bash
+    env:
+      DEBUG: pw:browser
+      HAUNT_CLIENT_CHECK: source-audio
+      HAUNT_CALL_SOAK_SECONDS: "1440"
+      HAUNT_MUTE_DIAGNOSTICS: "1"
+      HAUNT_MUTE_SERVER_REF: ${{ inputs.server_ref || '4af54347b9d864c68f7e2716aa8b9f4477f60357' }}
+      HAUNT_MUTE_QUICK: ${{ inputs.quick && '1' || '0' }}
+      HAUNT_MUTE_TRANSPORT: ${{ matrix.transport }}
+      HAUNT_MUTE_SUPPRESSION: ${{ matrix.suppression }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: example-git/haunt-server
+          ref: ${{ inputs.server_ref || '4af54347b9d864c68f7e2716aa8b9f4477f60357' }}
+          path: server
+      - uses: actions/checkout@v5
+        with:
+          path: server/client
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: server/client/package-lock.json
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg xvfb xauth libasound2t64 libnss3 libgbm1 libgtk-3-0
+          test -x /usr/bin/google-chrome
+      - name: Start disposable PostgreSQL
+        run: |
+          docker run -d --name chatxo-identity-check -p 127.0.0.1:32768:5432 -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=chatxo_check postgres:16-alpine
+          for _ in $(seq 1 60); do
+            if docker exec chatxo-identity-check pg_isready -U postgres -d chatxo_check; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - run: npm ci
+      - run: npm run build && npm run electron:stage
+      - name: Measure real mute and unmute playback
+        timeout-minutes: ${{ inputs.quick && 3 || 35 }}
+        run: xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' npm run test:integration
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mute-${{ matrix.transport }}-${{ matrix.suppression }}
+          path: server/client/test-results/
+          retention-days: 14
+      - name: Remove disposable PostgreSQL
+        if: always()
+        run: docker rm -f -v chatxo-identity-check

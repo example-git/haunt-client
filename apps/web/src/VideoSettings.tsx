@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { createPortal } from "react-dom";
+import { ChevronDown, Video, MonitorUp, X } from "lucide-react";
 import { friendlyError } from "@haunt/core";
 import type { Call } from "@haunt/browser/media/call";
 import {
@@ -212,5 +221,119 @@ export function VideoSettings({
         </p>
       )}
     </fieldset>
+  );
+}
+
+export function CaptureSettings({
+  purpose,
+  call,
+}: {
+  purpose: "camera" | "screen";
+  call: Call;
+}) {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const label = purpose === "camera" ? "Camera" : "Screen-share";
+  useLayoutEffect(() => {
+    const node = panel.current;
+    const button = trigger.current;
+    if (!open || !node || !button) return;
+    const owner = button.ownerDocument;
+    const view = owner.defaultView!;
+    node.showPopover();
+    const position = () => {
+      const anchor = button.getBoundingClientRect();
+      const bounds = node.getBoundingClientRect();
+      const above = anchor.top - bounds.height - 10;
+      node.style.left = `${Math.max(8, Math.min(anchor.right - bounds.width, view.innerWidth - bounds.width - 8))}px`;
+      node.style.top = `${Math.max(8, Math.min(above >= 8 ? above : anchor.bottom + 10, view.innerHeight - bounds.height - 8))}px`;
+    };
+    position();
+    const resize = new ResizeObserver(position);
+    resize.observe(node);
+    resize.observe(button);
+    const dismiss = (event: Event) => {
+      if (
+        !node.contains(event.target as Node) &&
+        !button.contains(event.target as Node)
+      )
+        setOpen(false);
+    };
+    const keyboard = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+        button.focus({ preventScroll: true });
+      }
+    };
+    node
+      .querySelector<HTMLElement>(
+        "button:not(:disabled), select:not(:disabled)",
+      )
+      ?.focus({ preventScroll: true });
+    owner.addEventListener("pointerdown", dismiss);
+    owner.addEventListener("keydown", keyboard, true);
+    view.addEventListener("resize", position);
+    view.addEventListener("scroll", position, true);
+    return () => {
+      resize.disconnect();
+      node.hidePopover();
+      owner.removeEventListener("pointerdown", dismiss);
+      owner.removeEventListener("keydown", keyboard, true);
+      view.removeEventListener("resize", position);
+      view.removeEventListener("scroll", position, true);
+    };
+  }, [open]);
+  return (
+    <>
+      <button
+        ref={trigger}
+        className="capture-settings-trigger"
+        aria-label={`${label} capture settings`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-controls={open ? id : undefined}
+        onClick={() => setOpen(!open)}
+      >
+        <ChevronDown size={12} />
+      </button>
+      {open &&
+        createPortal(
+          <div
+            ref={panel}
+            id={id}
+            popover="manual"
+            role="dialog"
+            aria-label={`${label} capture settings`}
+            className="capture-settings-popover"
+          >
+            <header>
+              {purpose === "camera" ? (
+                <Video size={18} />
+              ) : (
+                <MonitorUp size={18} />
+              )}
+              <strong>
+                {purpose === "camera" ? "Camera" : "Screen share"}
+              </strong>
+              <button
+                className="icon"
+                aria-label="Close capture settings"
+                onClick={() => {
+                  setOpen(false);
+                  trigger.current?.focus();
+                }}
+              >
+                <X size={16} />
+              </button>
+            </header>
+            <VideoSettings purpose={purpose} call={call} />
+          </div>,
+          trigger.current!.ownerDocument.body,
+        )}
+    </>
   );
 }

@@ -52,6 +52,10 @@ async function measurePlayback(page) {
 }
 
 export async function checkSourceAudio(browser, fixtures) {
+  if (process.env.HAUNT_MUTE_DIAGNOSTICS === "1") {
+    const { checkMuteRecovery } = await import("./check-mute-recovery.mjs");
+    return checkMuteRecovery(fixtures);
+  }
   const rawSoak = process.env.HAUNT_CALL_SOAK_SECONDS;
   const soakSeconds = rawSoak === undefined ? 0 : Number(rawSoak);
   if (
@@ -467,9 +471,10 @@ export async function checkSourceAudio(browser, fixtures) {
         .locator(".call-dock")
         .getByLabel("Screen-share capture settings", { exact: true });
       await screenControl.click();
-      const screenSettings = sender
-        .locator(".call-dock .video-settings")
-        .nth(1);
+      const screenSettings = sender.getByRole("dialog", {
+        name: "Screen-share capture settings",
+        exact: true,
+      });
       await screenSettings
         .getByLabel("Screen share frame rate", { exact: true })
         .selectOption("30");
@@ -626,7 +631,7 @@ export async function checkSourceAudio(browser, fixtures) {
       for (const name of await popup
         .locator(".video-tile .profile-user-name")
         .all())
-        await expect(name).toHaveAttribute("data-name-treatment", "backing");
+        await expect(name).toHaveAttribute("data-name-treatment", "outline");
       await checkChatToggle(popup, "popout");
       assert(
         (await measurePlayback(receiver)).every(

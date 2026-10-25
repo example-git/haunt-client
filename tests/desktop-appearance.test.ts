@@ -1,8 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
-const { validAppearance, windowOptions, applyWindow } = createRequire(
-  import.meta.url,
-)("../apps/desktop/appearance.cjs");
+const { validAppearance, windowOptions, applyWindow, shapeWindow } =
+  createRequire(import.meta.url)("../apps/desktop/appearance.cjs");
 const base = { mode: "material", background: "#161616", dark: true };
 it("uses native material only on supported platforms and requests a restart for immutable transparency changes", () => {
   expect(windowOptions(base, "win32", "10.0.22621")).toMatchObject({
@@ -74,4 +73,46 @@ it("stages every local dependency used by desktop runtime modules", async () => 
       expect(desktopFiles, `${name} requires ${match[1]}`).toContain(match[1]);
     }
   }
+});
+
+it("rounds normal Linux windows and restores rectangular maximized and fullscreen bounds", () => {
+  let maximized = false,
+    fullscreen = false;
+  let size = [800, 600];
+  const win = {
+    isDestroyed: () => false,
+    isMaximized: () => maximized,
+    isFullScreen: () => fullscreen,
+    getSize: () => size,
+    setShape: vi.fn(),
+  };
+  shapeWindow(win, "linux");
+  const contains = (x: number, y: number) =>
+    win.setShape.mock.lastCall![0].some(
+      (r: { x: number; y: number; width: number; height: number }) =>
+        x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height,
+    );
+  expect(contains(0, 0)).toBe(false);
+  expect(contains(799, 599)).toBe(false);
+  expect(contains(400, 0)).toBe(true);
+  expect(contains(0, 300)).toBe(true);
+  expect(contains(400, 300)).toBe(true);
+  size = [960, 640];
+  shapeWindow(win, "linux");
+  expect(contains(959, 639)).toBe(false);
+  expect(contains(959, 320)).toBe(true);
+  maximized = true;
+  shapeWindow(win, "linux");
+  expect(win.setShape).toHaveBeenLastCalledWith([
+    { x: 0, y: 0, width: 960, height: 640 },
+  ]);
+  maximized = false;
+  fullscreen = true;
+  shapeWindow(win, "linux");
+  expect(win.setShape).toHaveBeenLastCalledWith([
+    { x: 0, y: 0, width: 960, height: 640 },
+  ]);
+  fullscreen = false;
+  shapeWindow(win, "linux");
+  expect(contains(0, 0)).toBe(false);
 });

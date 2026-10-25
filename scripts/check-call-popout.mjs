@@ -25,9 +25,14 @@ export async function checkCallPopout(browser, fixtures) {
       ]) {
         page.on("pageerror", (error) => errors.push(error.message));
         await page.goto("http://127.0.0.1:5173");
-        await page
-          .getByRole("button", { name: "Add server", exact: true })
-          .click();
+        if (process.env.HAUNT_CLIENT_BUILD === "dist-standalone")
+          await expect(
+            page.getByRole("dialog", { name: "Connect to a server" }),
+          ).toBeVisible();
+        else
+          await page
+            .getByRole("button", { name: "Add server", exact: true })
+            .click();
         await fillSignin(page, server.url, user);
         await page
           .getByLabel("Password", { exact: true })
@@ -38,6 +43,8 @@ export async function checkCallPopout(browser, fixtures) {
         await expect(page.locator(".connection")).toHaveText("Connected");
       }
       await alice.evaluate(() => {
+        window.testWindowListeners = new Set();
+        window.testMaximized = {};
         window.hauntDesktop = {
           platform: "darwin",
           appearance: {
@@ -58,8 +65,21 @@ export async function checkCallPopout(browser, fixtures) {
             maximized: false,
             fullscreen: false,
           }),
-          onWindowState: () => () => {},
-          windowControl: async () => {},
+          onWindowState: (listener) => {
+            window.testWindowListeners.add(listener);
+            return () => window.testWindowListeners.delete(listener);
+          },
+          windowControl: async (action, target) => {
+            if (action === "maximize") {
+              window.testMaximized[target] = !window.testMaximized[target];
+              for (const listener of window.testWindowListeners)
+                listener({
+                  target,
+                  maximized: window.testMaximized[target],
+                  fullscreen: false,
+                });
+            }
+          },
           setBadge: async () => {},
           notificationAvailable: async () => false,
           showNotification: async () => {},
@@ -131,6 +151,57 @@ export async function checkCallPopout(browser, fixtures) {
       popup.on("pageerror", (error) => errors.push(error.message));
       await expect(popup.locator(".call-tile")).toHaveCount(2);
       await expect(alice.locator(".call-detached-notice")).toBeVisible();
+      await expect(popup.locator("html")).toHaveAttribute(
+        "data-native-window",
+        "normal",
+      );
+      await popup
+        .getByRole("button", { name: "Maximize window", exact: true })
+        .click();
+      await expect(popup.locator("html")).toHaveAttribute(
+        "data-native-window",
+        "maximized",
+      );
+      await expect(alice.locator("html")).toHaveAttribute(
+        "data-native-window",
+        "normal",
+      );
+      await popup
+        .getByRole("button", { name: "Restore window", exact: true })
+        .click();
+      await expect(popup.locator("html")).toHaveAttribute(
+        "data-native-window",
+        "normal",
+      );
+      await popup
+        .getByRole("button", {
+          name: "Screen-share capture settings",
+          exact: true,
+        })
+        .click();
+      const capture = popup.getByRole("dialog", {
+        name: "Screen-share capture settings",
+        exact: true,
+      });
+      await expect(capture).toBeVisible();
+      await expect(alice.locator(".capture-settings-popover")).toHaveCount(0);
+      assert(
+        await capture.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          return (
+            r.left >= 8 &&
+            r.top >= 8 &&
+            r.right <= innerWidth - 7 &&
+            r.bottom <= innerHeight - 7
+          );
+        }),
+      );
+      await popup.screenshot({
+        path: "test-results/call-popout-capture-settings.png",
+      });
+      await popup.keyboard.press("Escape");
+      await expect(capture).toHaveCount(0);
+
       await alice
         .locator("button.channel")
         .filter({ hasText: "general" })
@@ -179,12 +250,12 @@ export async function checkCallPopout(browser, fixtures) {
           }),
         )
         .toEqual(["rgb(18, 58, 188)", "rgb(254, 220, 186)"]);
-      for (const [effect, minimum] of [
-        ["material", 30],
-        ["transparent", 50],
+      for (const [effect, minimum, railOpacity] of [
+        ["material", 30, 47.5],
+        ["transparent", 50, 67.5],
       ]) {
         await alice
-          .getByLabel("Sidebar effect", { exact: true })
+          .getByLabel("Window effect", { exact: true })
           .selectOption(effect);
         const slider = alice.getByLabel("Sidebar opacity", { exact: true });
         await expect(slider).toHaveAttribute("min", String(minimum));
@@ -204,7 +275,7 @@ export async function checkCallPopout(browser, fixtures) {
           .toBe(Math.round((255 * minimum) / 100));
         await expect
           .poll(() => alpha(".server-rail"))
-          .toBe(Math.round((255 * (minimum + 15)) / 100));
+          .toBe(Math.round((255 * railOpacity) / 100));
         await expect(popup.locator(".voice-chat")).toHaveCSS(
           "background-color",
           "rgb(32, 32, 36)",
@@ -212,7 +283,7 @@ export async function checkCallPopout(browser, fixtures) {
       }
       console.log("Call popout: themes, selection and panel opacity passed");
       await alice
-        .getByLabel("Sidebar effect", { exact: true })
+        .getByLabel("Window effect", { exact: true })
         .selectOption("solid");
       await alice.getByRole("button", { name: "Close", exact: true }).click();
       await chat

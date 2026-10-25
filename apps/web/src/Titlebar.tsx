@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Minus, Square, Copy, X } from "lucide-react";
 
 export function Titlebar({
@@ -8,28 +8,39 @@ export function Titlebar({
   children: ReactNode;
   target?: "main" | "call";
 }) {
+  const frame = useRef<HTMLElement>(null);
   const desktop = window.hauntDesktop;
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
-    if (!desktop) return;
+    if (!desktop || !frame.current) return;
+    const root = frame.current.ownerDocument.documentElement;
+    root.dataset.nativeWindow = "normal";
     const changed = (state: {
       target: "main" | "call";
       maximized: boolean;
       fullscreen: boolean;
     }) => {
-      if (state.target === target)
-        setMaximized(state.maximized || state.fullscreen);
+      if (state.target === target) {
+        const expanded = state.maximized || state.fullscreen;
+        setMaximized(expanded);
+        root.dataset.nativeWindow = expanded ? "maximized" : "normal";
+      }
     };
     void desktop
       .windowState(target)
       .then(changed)
       .catch(() => {});
-    return desktop.onWindowState(changed);
+    const off = desktop.onWindowState(changed);
+    return () => {
+      off();
+      delete root.dataset.nativeWindow;
+    };
   }, [desktop, target]);
   const control = (action: "minimize" | "maximize" | "close") =>
     void desktop?.windowControl(action, target).catch(() => {});
   return (
     <header
+      ref={frame}
       className={`app-titlebar ${desktop ? "native-titlebar" : ""}`}
       data-platform={desktop?.platform}
       onDoubleClick={(e) => {
