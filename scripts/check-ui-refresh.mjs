@@ -412,6 +412,11 @@ export async function checkUIRefresh(browser, fixtures) {
       .click();
     await close(owner);
     await owner.setViewportSize({ width: 390, height: 844 });
+    const showMobileMembers = owner.getByRole("button", {
+      name: "Show member list",
+      exact: true,
+    });
+    if (await showMobileMembers.isVisible()) await showMobileMembers.click();
     await owner
       .getByRole("button", { name: "Hide member list", exact: true })
       .click();
