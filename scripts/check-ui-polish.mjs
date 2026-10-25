@@ -5,11 +5,9 @@ import fs from "node:fs/promises";
 /** Exercise visible interactions on the production server-rendered application. */
 export async function checkUIPolish(page, { appearance, close }) {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const showMembers = page.getByRole("button", {
-    name: "Show member list",
-    exact: true,
-  });
-  if (await showMembers.isVisible()) await showMembers.click();
+  await expect(
+    page.getByRole("button", { name: "Hide member list", exact: true }),
+  ).toHaveAttribute("aria-expanded", "true");
   const resize = page.getByRole("separator", { name: "Resize channels panel" });
   await expect(page.locator(".sidebar")).toHaveCSS("width", "236px");
   await resize.focus();
@@ -108,16 +106,7 @@ export async function checkUIPolish(page, { appearance, close }) {
   await close(page);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  const hideMembers = page.getByRole("button", {
-    name: "Hide member list",
-    exact: true,
-  });
-  if (await hideMembers.isVisible()) await hideMembers.click();
-  const hideChannels = page.getByRole("button", {
-    name: "Hide channels",
-    exact: true,
-  });
-  if (await hideChannels.isVisible()) await hideChannels.click();
+  await expect(page.locator(".member-panel")).toBeHidden();
   await expect(page.locator(".server-rail")).toBeHidden();
   await page
     .getByRole("button", { name: "Show channels", exact: true })

@@ -497,14 +497,14 @@ export async function checkUIRefresh(browser, fixtures) {
     for (const width of [1400, 800, 390]) {
       await owner.setViewportSize({ width, height: 960 });
       if (width <= 720) {
-        const hideMembers = owner.getByRole("button", {
-          name: "Hide member list",
-          exact: true,
-        });
-        if (await hideMembers.isVisible()) await hideMembers.click();
+        await expect(owner.locator(".member-panel")).toBeHidden();
         await owner
           .getByRole("button", { name: "Show channels", exact: true })
           .click();
+        await expect(owner.locator(".sidebar")).toHaveCSS(
+          "transform",
+          "matrix(1, 0, 0, 1, 0, 0)",
+        );
       }
       await expect(owner.locator(".sidebar .server-banner")).toBeVisible();
       const bounds = await owner.evaluate(() => {

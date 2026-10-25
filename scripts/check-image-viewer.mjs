@@ -197,11 +197,8 @@ export async function checkImageViewer(browser, fixtures) {
     await page.mouse.click(70, 80);
     await expect(dialog).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
-    const hideMembers = page.getByRole("button", {
-      name: "Hide member list",
-      exact: true,
-    });
-    if (await hideMembers.isVisible()) await hideMembers.click();
+    await expect(page.locator(".member-panel")).toBeHidden();
+    await expect(page.locator(".server-rail")).toBeHidden();
     await open(2);
     await chrome();
     await page.screenshot({ path: "test-results/viewer-mobile-portrait.png" });
@@ -253,9 +250,9 @@ export async function checkImageViewer(browser, fixtures) {
     await expect(page.locator(".connection")).toHaveText("Connected");
     for (const width of [1964, 900, 390]) {
       await page.setViewportSize({ width, height: 1000 });
-      for (const label of ["Hide member list", "Hide channels"]) {
-        const button = page.getByRole("button", { name: label, exact: true });
-        if (width <= 720 && (await button.isVisible())) await button.click();
+      if (width <= 720) {
+        await expect(page.locator(".member-panel")).toBeHidden();
+        await expect(page.locator(".server-rail")).toBeHidden();
       }
       for (const text of [
         "Viewer picture 2",
