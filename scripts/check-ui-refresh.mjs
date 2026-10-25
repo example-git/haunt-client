@@ -416,10 +416,16 @@ export async function checkUIRefresh(browser, fixtures) {
       name: "Show member list",
       exact: true,
     });
-    if (await showMobileMembers.isVisible()) await showMobileMembers.click();
+    const mobileMembers = owner.getByRole("complementary", {
+      name: "Member list",
+    });
+    await expect(mobileMembers).toBeHidden();
+    await showMobileMembers.click();
+    await expect(mobileMembers).toBeVisible();
     await owner
       .getByRole("button", { name: "Hide member list", exact: true })
       .click();
+    await expect(mobileMembers).toBeHidden();
     await expect(owner.locator(".message.has-reply").last()).toBeVisible();
     await restoredReply.locator(".message-body").click();
     await restoredReply
