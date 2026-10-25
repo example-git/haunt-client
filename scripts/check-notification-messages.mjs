@@ -200,14 +200,14 @@ export async function checkNotificationMessages(app, page, native, report) {
       ),
     );
     await show();
-    if (
-      !(await page
-        .getByRole("button", { name: "Add server", exact: true })
-        .isVisible())
-    )
-      await page
-        .getByRole("button", { name: /^(Show servers|Show channels)$/ })
-        .click();
+    await expect(page.locator(".server-rail")).toBeHidden();
+    await page
+      .getByRole("button", { name: /^(Show servers|Show channels)$/ })
+      .click();
+    await expect(page.locator(".server-rail")).toHaveCSS(
+      "transform",
+      "matrix(1, 0, 0, 1, 0, 0)",
+    );
     await page.getByRole("button", { name: "Add server", exact: true }).click();
     await fillSignin(page, server.origin, "owner");
     await page
