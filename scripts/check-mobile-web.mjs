@@ -68,6 +68,7 @@ export async function checkMobileWeb(browser, fixtures) {
     await expect(rail).toBeHidden();
     await swipe([4, 350], [280, 350]);
     await expect(rail).toBeVisible();
+    await expect(rail).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
     await expect(
       page.getByRole("button", { name: "Hide channels", exact: true }),
     ).toHaveAttribute("aria-expanded", "true");
@@ -76,11 +77,20 @@ export async function checkMobileWeb(browser, fixtures) {
     await expect(rail).toBeHidden();
     await swipe([386, 350], [110, 350]);
     await expect(members).toBeVisible();
+    await expect(members).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
     await expect(rail).toBeHidden();
     await page.screenshot({ path: "test-results/mobile-members-open.png" });
     await swipe([120, 350], [385, 350]);
     await expect(members).toBeHidden();
+    await page.locator(".messages").evaluate((element) => {
+      element.scrollTop = 0;
+    });
     await swipe([4, 350], [8, 200]);
+    await expect
+      .poll(() =>
+        page.locator(".messages").evaluate((element) => element.scrollTop),
+      )
+      .toBeGreaterThan(0);
     await expect(rail).toBeHidden();
     await expect(members).toBeHidden();
     await swipe([195, 350], [310, 350]);
@@ -160,7 +170,7 @@ export async function checkMobileWeb(browser, fixtures) {
     await expect(rail).toBeVisible();
     await page
       .getByRole("button", { name: "Open The Common Room", exact: true })
-      .click();
+      .tap();
     await page.setViewportSize({ width: 844, height: 390 });
     await expect(page.locator(".server-rail")).toBeVisible();
     await expect(
@@ -178,7 +188,7 @@ export async function checkMobileWeb(browser, fixtures) {
         name: "Direct messages and notifications",
         exact: true,
       })
-      .click();
+      .tap();
     await touch("touchStart", [[4, 350]]);
     await touch("touchMove", [[25, 350]]);
     const homeRail = await rail.boundingBox();
