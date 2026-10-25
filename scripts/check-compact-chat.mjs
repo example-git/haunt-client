@@ -118,10 +118,7 @@ export async function checkCompactChat(page, { appearance, close }) {
       path: `test-results/compact-themes/${slug}-desktop.png`,
     });
     await page.setViewportSize({ width: 390, height: 844 });
-    for (const label of ["Hide member list", "Hide channels"]) {
-      const button = page.getByRole("button", { name: label, exact: true });
-      if (await button.isVisible()) await button.click();
-    }
+    await expect(page.locator(".member-panel")).toBeHidden();
     await expect(page.locator(".server-rail")).toBeHidden();
     assert(
       await page

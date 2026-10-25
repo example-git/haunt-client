@@ -5,6 +5,12 @@ export const contentSecurityPolicy =
   "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src https: wss: http: ws:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-src https://www.youtube-nocookie.com; form-action 'none'";
 export async function serveBuild(port = 5173, host = "127.0.0.1") {
   const root = path.resolve(process.env.HAUNT_CLIENT_BUILD ?? "dist");
+  const policy =
+    process.env.HAUNT_CLIENT_BUILD === "dist-standalone"
+      ? (await fs.readFile(path.join(root, "_headers"), "utf8")).match(
+          /Content-Security-Policy: (.+)/,
+        )[1]
+      : contentSecurityPolicy;
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, "http://localhost");
@@ -38,7 +44,7 @@ export async function serveBuild(port = 5173, host = "127.0.0.1") {
       res
         .writeHead(200, {
           "Content-Type": type,
-          "Content-Security-Policy": contentSecurityPolicy,
+          "Content-Security-Policy": policy,
           "X-Content-Type-Options": "nosniff",
           "Cache-Control": "no-store",
         })

@@ -47,6 +47,15 @@ export const protocol = {
           "type"
         ]
       },
+      "media.level": {
+        "description": "Requires media.levels.v1. Report the current participant's post-filter, post-gain microphone level as an integer from 0 to 100 on a fixed -60 to 0 dBFS scale. Send changes at most ten times per second and unchanged readings every 500 ms. Reports have a separate limit of 20 per second. Only unmuted senders are relayed, to other participants in the same room including deafened listeners. Mute and deafen stop outgoing reports. Discard reports after two seconds without an update and on mute, leave or reconnect. No durable replay.",
+        "reply": "media.level.accepted",
+        "required": [
+          "type",
+          "participant_id",
+          "level"
+        ]
+      },
       "media.publish": {
         "description": "WebRTC only. SDP offer and purpose-to-track-ID map. Purposes: audio (microphone), camera, screen, camera_audio, screen_audio. Replaces prior publishing peer and invalidates its receiver subscriptions. With media.layers.v1, layers maps camera/screen to at most three representations with id (h, m, l), width, height and fps; SDP RID identifies each copy. Track metadata lists available representations. Legacy publications remain single-quality.",
         "optional": [
@@ -171,6 +180,14 @@ export const protocol = {
         "participant"
       ],
       "media.left": [
+        "type"
+      ],
+      "media.level": [
+        "type",
+        "participant_id",
+        "level"
+      ],
+      "media.level.accepted": [
         "type"
       ],
       "media.participant.joined": [

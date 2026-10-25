@@ -1,5 +1,6 @@
 import { checkImageViewer } from "./check-image-viewer.mjs";
 import { checkUIRefresh } from "./check-ui-refresh.mjs";
+import { checkMobileWeb } from "./check-mobile-web.mjs";
 import { checkPublicDownloads } from "./check-public-downloads.mjs";
 import { checkNotificationDelivery } from "./check-notification-delivery.mjs";
 import { checkNotificationSearch } from "./check-notification-search.mjs";
@@ -249,6 +250,8 @@ try {
     await checkSourceAudio(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "ui-refresh") {
     await checkUIRefresh(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "mobile-web") {
+    await checkMobileWeb(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "narrator") {
     await checkNarrator(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "media-status") {

@@ -1,4 +1,5 @@
 import { UserName } from "./UserName";
+import { useMobilePanels } from "./useMobilePanels";
 import { PanelResize, usePanelWidths } from "./PanelResize";
 import { VoiceReconnectBanner } from "./VoiceReconnect";
 import { VoiceRestrictions, canModerateVoice } from "./VoiceModeration";
@@ -670,8 +671,15 @@ export function App() {
       setPendingJoin({ instance, room, intent });
     else await startCall(instance, room, true, intent);
   };
+  const mobilePanels = useMobilePanels({
+    navigationOpen,
+    setNavigationOpen,
+    membersAvailable: view === "server" && !!instance,
+  });
   return (
     <div
+      ref={mobilePanels.root}
+      data-mobile-members={mobilePanels.membersOpen ? "open" : undefined}
       className={`app ${call ? "in-call" : ""} ${view !== "server" ? "dm-shell" : ""} ${navigationOpen ? "mobile-nav-open" : ""}`}
       style={
         {
@@ -680,7 +688,10 @@ export function App() {
         } as CSSProperties
       }
       onKeyDown={(event) => {
-        if (event.key === "Escape") setNavigationOpen(false);
+        if (event.key === "Escape") {
+          setNavigationOpen(false);
+          mobilePanels.setMembersOpen(false);
+        }
       }}
     >
       <Titlebar>
@@ -737,7 +748,7 @@ export function App() {
           <ServerBrandingCache instance={instance} />
         </Fragment>
       ))}
-      {navigationOpen && (
+      {(navigationOpen || mobilePanels.dragging === "navigation") && (
         <button
           className="navigation-scrim"
           aria-label="Close navigation"
@@ -835,6 +846,7 @@ export function App() {
       ) : instance ? (
         <Workspace
           headerTarget={headerTarget}
+          mobilePanels={mobilePanels}
           sidebar={navigationOpen}
           setSidebar={setNavigationOpen}
           panels={panels}
@@ -964,6 +976,7 @@ export function App() {
   );
 }
 function Workspace({
+  mobilePanels,
   sidebar,
   setSidebar,
   panels,
@@ -978,6 +991,7 @@ function Workspace({
   joinCall,
   onOpenDM,
 }: {
+  mobilePanels: ReturnType<typeof useMobilePanels>;
   sidebar: boolean;
   setSidebar: (open: boolean) => void;
   panels: ReturnType<typeof usePanelWidths>;
@@ -1014,15 +1028,19 @@ function Workspace({
     subscribePreferences,
     getPreferences,
   );
-  const membersOpen =
-    !preferences.memberListsCollapsed[instance.account.instance.instance_id];
-  const setMembersOpen = (open: boolean) =>
-    setPreferences({
-      memberListsCollapsed: {
-        ...getPreferences().memberListsCollapsed,
-        [instance.account.instance.instance_id]: !open,
-      },
-    });
+  const membersOpen = mobilePanels.mobile
+    ? mobilePanels.membersOpen
+    : !preferences.memberListsCollapsed[instance.account.instance.instance_id];
+  const setMembersOpen = (open: boolean) => {
+    if (mobilePanels.mobile) mobilePanels.setMembersOpen(open);
+    else
+      setPreferences({
+        memberListsCollapsed: {
+          ...getPreferences().memberListsCollapsed,
+          [instance.account.instance.instance_id]: !open,
+        },
+      });
+  };
   const menu = useContextMenu();
   const [serverTab, setServerTab] = useState("overview");
   const [notificationServer, setNotificationServer] = useState(false);
@@ -1673,7 +1691,7 @@ function Workspace({
           </div>
         )}
       </main>
-      {membersOpen && (
+      {(membersOpen || mobilePanels.mobile) && (
         <>
           <button
             className="member-scrim"

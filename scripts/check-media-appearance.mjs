@@ -717,10 +717,20 @@ export async function checkMediaAppearance(browser, fixtures) {
     const offlineResult = owner.locator('.dm-people-results [role="option"]');
     await expect(offlineResult).toHaveCount(1);
     await expect(offlineResult).toBeEnabled();
+    await owner.evaluate(() =>
+      Promise.all(
+        window.appearanceSockets
+          .filter((socket) => socket.readyState !== WebSocket.CLOSED)
+          .map(
+            (socket) =>
+              new Promise((resolve) => {
+                socket.addEventListener("close", resolve, { once: true });
+                socket.close();
+              }),
+          ),
+      ),
+    );
     await contexts[0].setOffline(true);
-    await owner.evaluate(() => {
-      for (const socket of window.appearanceSockets) socket.close();
-    });
     await expect(offlineResult).toBeDisabled();
     assert.equal(
       await offlineResult.locator(".profile-user-name").evaluate((element) => {

@@ -412,9 +412,20 @@ export async function checkUIRefresh(browser, fixtures) {
       .click();
     await close(owner);
     await owner.setViewportSize({ width: 390, height: 844 });
+    const showMobileMembers = owner.getByRole("button", {
+      name: "Show member list",
+      exact: true,
+    });
+    const mobileMembers = owner.getByRole("complementary", {
+      name: "Member list",
+    });
+    await expect(mobileMembers).toBeHidden();
+    await showMobileMembers.click();
+    await expect(mobileMembers).toBeVisible();
     await owner
       .getByRole("button", { name: "Hide member list", exact: true })
       .click();
+    await expect(mobileMembers).toBeHidden();
     await expect(owner.locator(".message.has-reply").last()).toBeVisible();
     await restoredReply.locator(".message-body").click();
     await restoredReply
@@ -486,14 +497,14 @@ export async function checkUIRefresh(browser, fixtures) {
     for (const width of [1400, 800, 390]) {
       await owner.setViewportSize({ width, height: 960 });
       if (width <= 720) {
-        const hideMembers = owner.getByRole("button", {
-          name: "Hide member list",
-          exact: true,
-        });
-        if (await hideMembers.isVisible()) await hideMembers.click();
+        await expect(owner.locator(".member-panel")).toBeHidden();
         await owner
           .getByRole("button", { name: "Show channels", exact: true })
           .click();
+        await expect(owner.locator(".sidebar")).toHaveCSS(
+          "transform",
+          "matrix(1, 0, 0, 1, 0, 0)",
+        );
       }
       await expect(owner.locator(".sidebar .server-banner")).toBeVisible();
       const bounds = await owner.evaluate(() => {

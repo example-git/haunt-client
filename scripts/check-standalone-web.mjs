@@ -23,6 +23,9 @@ const manifestFiles = (text) =>
       .replace(/;$/, ""),
   );
 const files = manifestFiles(worker);
+const policy = (await fs.readFile(path.join(root, "_headers"), "utf8")).match(
+  /Content-Security-Policy: (.+)/,
+)[1];
 let directory = root;
 let broken = false;
 let apiCalls = 0;
@@ -102,6 +105,7 @@ if (!url) {
         }[path.extname(filename)] ?? "application/octet-stream";
       response.writeHead(200, {
         "Content-Type": contentType,
+        "Content-Security-Policy": policy,
         "Cache-Control": "no-store",
       });
       response.end(data);
@@ -162,6 +166,18 @@ const update = () =>
   });
 try {
   await page.goto(url);
+  const manifestSession = await context.newCDPSession(page);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
+    "href",
+    /^blob:/,
+  );
+  const manifest = await manifestSession.send("Page.getAppManifest");
+  assert.deepEqual(manifest.errors, []);
+  const installed = JSON.parse(manifest.data);
+  assert.equal(installed.background_color, "#202020");
+  assert.equal(installed.theme_color, "#202020");
+  assert.equal(installed.id, new URL("/", url).href);
+  await manifestSession.detach();
   await expect(
     page.getByRole("dialog", { name: "Connect to a server", exact: true }),
   ).toBeVisible();

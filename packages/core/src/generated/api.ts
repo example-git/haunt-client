@@ -6582,6 +6582,8 @@ export interface HttpapiEventCommand {
   layers?: {
     [k: string]: VoiceVideoLayer[];
   };
+  level?: null | number;
+  participant_id?: string;
   peer_id?: string;
   publisher_id?: string;
   purpose?: string;
