@@ -156,6 +156,11 @@ export async function checkMobileWeb(browser, fixtures) {
     );
     await page.screenshot({ path: "test-results/mobile-theme-chrome.png" });
     report.themeAndManifest = true;
+    await swipe([4, 350], [58, 350]);
+    await expect(rail).toBeVisible();
+    await page
+      .getByRole("button", { name: "Open The Common Room", exact: true })
+      .click();
     await page.setViewportSize({ width: 844, height: 390 });
     await expect(page.locator(".server-rail")).toBeVisible();
     await expect(
@@ -167,6 +172,26 @@ export async function checkMobileWeb(browser, fixtures) {
       page.getByRole("complementary", { name: "Member list" }),
     ).toBeHidden();
     report.desktopPreferencePreserved = true;
+    await swipe([4, 350], [280, 350]);
+    await page
+      .getByRole("button", {
+        name: "Direct messages and notifications",
+        exact: true,
+      })
+      .click();
+    await touch("touchStart", [[4, 350]]);
+    await touch("touchMove", [[25, 350]]);
+    const homeRail = await rail.boundingBox();
+    assert(homeRail.x < 0 && homeRail.x + homeRail.width > 0);
+    await touch("touchEnd", []);
+    await expect(rail).toBeHidden();
+    await swipe([4, 350], [58, 350]);
+    await expect(rail).toBeVisible();
+    await swipe([58, 350], [4, 350]);
+    await expect(rail).toBeHidden();
+    await swipe([386, 350], [110, 350]);
+    await expect(page.locator(".member-panel")).toHaveCount(0);
+    report.homeDrawer = true;
     assert.deepEqual(errors, []);
     await fs.writeFile(
       "test-results/mobile-web.json",

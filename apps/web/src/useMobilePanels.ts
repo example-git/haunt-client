@@ -50,7 +50,7 @@ export function useMobilePanels({
           moving: boolean;
         }
       | undefined;
-    let suppressClick = false;
+    let suppressClickUntil = 0;
     const reset = () => {
       gesture = undefined;
       delete element.dataset.mobileDrag;
@@ -58,7 +58,7 @@ export function useMobilePanels({
       setDragging(undefined);
     };
     const start = (event: TouchEvent) => {
-      suppressClick = false;
+      suppressClickUntil = 0;
       if (event.touches.length !== 1) return reset();
       const target = event.target;
       if (
@@ -129,7 +129,7 @@ export function useMobilePanels({
     const end = (event: TouchEvent) => {
       if (gesture?.moving) {
         event.preventDefault();
-        suppressClick = true;
+        suppressClickUntil = performance.now() + 350;
         const open = gesture.progress >= 0.5;
         if (gesture.panel === "navigation") setNavigationOpen(open);
         else {
@@ -140,8 +140,8 @@ export function useMobilePanels({
       reset();
     };
     const click = (event: MouseEvent) => {
-      if (!suppressClick) return;
-      suppressClick = false;
+      if (performance.now() > suppressClickUntil) return;
+      suppressClickUntil = 0;
       event.preventDefault();
       event.stopPropagation();
     };

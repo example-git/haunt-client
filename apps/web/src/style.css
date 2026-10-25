@@ -5717,8 +5717,12 @@ button:disabled:hover {
   .app {
     --rail-width: 62px;
     --sidebar-width: min(264px, calc(100vw - 100px));
+    --mobile-navigation-width: calc(var(--rail-width) + var(--sidebar-width));
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
+  }
+  .app.dm-shell {
+    --mobile-navigation-width: var(--rail-width);
   }
   .app .server-rail {
     display: flex;
@@ -5742,9 +5746,7 @@ button:disabled:hover {
   .app .server-rail,
   .app .sidebar {
     visibility: hidden;
-    transform: translateX(
-      calc(-1 * (var(--rail-width) + var(--sidebar-width)))
-    );
+    transform: translateX(calc(-1 * var(--mobile-navigation-width)));
     transition:
       transform 180ms ease,
       visibility 180ms;
@@ -5759,10 +5761,7 @@ button:disabled:hover {
     visibility: visible;
     transition: none;
     transform: translateX(
-      calc(
-        (var(--drawer-progress, 0) - 1) *
-          (var(--rail-width) + var(--sidebar-width))
-      )
+      calc((var(--drawer-progress, 0) - 1) * var(--mobile-navigation-width))
     );
   }
   .app .navigation-scrim {
