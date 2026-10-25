@@ -28,6 +28,38 @@ function fixture(dm=false,enabled=true) {
 }
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 describe("attachment intake", () => {
+  it.each(["", "application/octet-stream"])("normalizes unspecified media types (%s) without changing the file", async (type) => {
+    const { draft, upload } = fixture();
+    const original = new File([new Uint8Array([1, 2, 3])], "clip.MP4", { type, lastModified: 12345 });
+    draft.add([original, file("picture.png", type)]);
+    expect(upload).toHaveBeenCalledTimes(2);
+    const uploaded = upload.mock.calls[0][1] as File;
+    expect(uploaded.type).toBe("video/mp4");
+    expect(uploaded.name).toBe(original.name);
+    expect(uploaded.lastModified).toBe(original.lastModified);
+    expect(await uploaded.arrayBuffer()).toEqual(await original.arrayBuffer());
+    expect(upload.mock.calls[1][1].type).toBe("image/png");
+    draft.dispose();
+  });
+  it("preserves limits and rejects unsupported types when inferring file extensions", () => {
+    const { draft, upload } = fixture();
+    draft.add([
+      file("large.mp4", "application/octet-stream", 201),
+      file("large.png", "application/octet-stream", 101),
+      file("empty.mp4", "application/octet-stream", 0),
+      file("unknown.bin", "application/octet-stream"),
+      file("text.mp4", "text/plain"),
+    ]);
+    expect(upload).not.toHaveBeenCalled();
+    expect(draft.getSnapshot().entries).toHaveLength(0);
+    draft.dispose();
+    const dm = fixture(true);
+    dm.draft.add([file("clip.mp4", "application/octet-stream"), file("picture.png", "application/octet-stream")]);
+    expect(dm.upload).toHaveBeenCalledTimes(1);
+    expect(dm.upload.mock.calls[0][1].type).toBe("image/png");
+    expect(dm.draft.getSnapshot().error).toContain("images only");
+    dm.draft.dispose();
+  });
   it("allows only compressible images in DMs and honors disabled uploads for every intake source",()=>{
     const active=fixture(true);active.draft.add([file("clip.mp4","video/mp4"),file("pic.png","image/png",101)]);
     expect(active.upload).toHaveBeenCalledTimes(1);expect(active.draft.getSnapshot().error).toContain("images only");active.draft.dispose();
