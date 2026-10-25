@@ -517,7 +517,15 @@ export async function checkSourceAudio(browser, fixtures) {
             )
             .toBeGreaterThan(50);
       await checkChatToggle(receiver, "main");
-      await receiver.locator(".video-tile").first().click({ button: "right" });
+      await receiver
+        .locator('.video-tile[data-tile-id$=":camera"]')
+        .click({ button: "right" });
+      await expect(
+        receiver.getByRole("slider", {
+          name: "Screen-share audio volume",
+          exact: true,
+        }),
+      ).toHaveCount(0);
       await receiver
         .getByRole("slider", { name: "Camera audio volume", exact: true })
         .fill("0");
@@ -547,6 +555,13 @@ export async function checkSourceAudio(browser, fixtures) {
       await receiver
         .getByRole("slider", { name: "Camera audio volume", exact: true })
         .fill("100");
+      await receiver.keyboard.press("Escape");
+      await receiver
+        .locator('.video-tile[data-tile-id$=":screen"]')
+        .click({ button: "right" });
+      await expect(
+        receiver.getByRole("slider", { name: "Camera audio volume", exact: true }),
+      ).toHaveCount(0);
       await receiver
         .getByRole("slider", { name: "Screen-share audio volume", exact: true })
         .fill("0");
