@@ -113,6 +113,8 @@ function installNativeMedia(parent, validateSender) {
       request.fps > 1000
     )
       throw Error("Select an available capture resolution and frame rate.");
+    if (request.purpose === "camera" && !Number.isInteger(request.fps))
+      throw Error("Choose a whole-number camera frame rate.");
     const epoch = generation;
     const active = () => epoch === generation && !parent.isDestroyed();
     pending.add(request.purpose);
@@ -169,8 +171,8 @@ function installNativeMedia(parent, validateSender) {
             (f) =>
               f.width === request.width &&
               f.height === request.height &&
-              f.minFPS <= request.fps &&
-              f.maxFPS >= request.fps,
+              Math.round(f.minFPS) <= request.fps &&
+              Math.round(f.maxFPS) >= request.fps,
           )
         )
           throw Error(
@@ -249,15 +251,17 @@ function installNativeMedia(parent, validateSender) {
           );
           const success = () => done();
           const failure = (error) => done(error);
+          const stopped = () => done(Error("Capture cancelled"));
           const done = (error) => {
             clearTimeout(timer);
             capture.removeListener("video-config", success);
             capture.removeListener("failure", failure);
+            capture.removeListener("stopped", stopped);
             error ? reject(error) : resolve();
           };
           capture.once("video-config", success);
-          capture.once("failure", failure);
-          capture.once("stopped", () => done(Error("Capture cancelled")));
+          capture.prependOnceListener("failure", failure);
+          capture.once("stopped", stopped);
         });
         if (!active()) {
           await stopCapture(entry);

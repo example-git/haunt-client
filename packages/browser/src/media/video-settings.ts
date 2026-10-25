@@ -61,9 +61,11 @@ export function preferredCameraMode(modes: VideoMode[]): VideoMode {
 export function nativeCameraModes(device: NativeDevice): VideoMode[] {
   const modes = new Map<string, VideoMode>();
   for (const format of device.formats ?? []) {
-    for (const fps of new Set([...frameRates, format.minFPS, format.maxFPS])) {
+    const minFPS = Math.round(format.minFPS);
+    const maxFPS = Math.round(format.maxFPS);
+    for (const fps of new Set([...frameRates, minFPS, maxFPS])) {
       const mode = { width: format.width, height: format.height, fps };
-      if (validVideoMode(mode) && fps >= format.minFPS && fps <= format.maxFPS)
+      if (validVideoMode(mode) && fps >= minFPS && fps <= maxFPS)
         modes.set(modeKey(mode), mode);
     }
   }

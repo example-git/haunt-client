@@ -88,7 +88,7 @@ it.each(["video", "audio"])(
   },
 );
 
-it("retains fixed fractional native frame rates", () => {
+it("maps fractional hardware cadences to native integer FPS targets", () => {
   const modes = nativeCameraModes({
     id: "fractional",
     label: "Fractional camera",
@@ -97,12 +97,80 @@ it("retains fixed fractional native frame rates", () => {
       { width: 1280, height: 720, minFPS: 119.88, maxFPS: 119.88 },
     ],
   });
-  expect(modes.map(modeKey).sort()).toEqual([
-    "1280x720@119.88",
-    "1920x1080@29.97",
-  ]);
-  expect(preferredCameraMode(modes).fps).toBe(29.97);
+  expect(modes.map(modeKey).sort()).toEqual(["1280x720@120", "1920x1080@30"]);
+  expect(preferredCameraMode(modes).fps).toBe(30);
 });
+
+it("deduplicates nominal camera rates and selects the highest default mode", () => {
+  const modes = nativeCameraModes({
+    id: "uvc",
+    label: "UVC capture",
+    formats: [1920, 1280].flatMap((width) =>
+      [120.001, 60.001, 59.94, 50, 30.001, 29.97].map((fps) => ({
+        width,
+        height: width === 1920 ? 1080 : 720,
+        minFPS: fps,
+        maxFPS: fps,
+      })),
+    ),
+  });
+  expect(preferredCameraMode(modes)).toEqual({
+    width: 1920,
+    height: 1080,
+    fps: 60,
+  });
+  expect(
+    modes.filter((mode) => mode.width === 1920).map((mode) => mode.fps),
+  ).toEqual([30, 50, 60, 120]);
+  expect(modes.every((mode) => Number.isInteger(mode.fps))).toBe(true);
+});
+
+it.each([true, false])(
+  "migrates saved camera FPS targets only with native capture available=%s",
+  async (nativeCaptureAvailable) => {
+    vi.resetModules();
+    vi.stubGlobal("window", {
+      hauntDesktop: { nativeCaptureAvailable },
+      addEventListener: vi.fn(),
+    });
+    const saved = {
+      camera: "swift:uvc",
+      cameraModes: {
+        "swift:uvc": { width: 1920, height: 1080, fps: 59.94 },
+        "": { width: 1280, height: 720, fps: 30.001 },
+      },
+      screenMode: { width: 1920, height: 1080, fps: 30 },
+    };
+    const setItem = vi.fn();
+    vi.stubGlobal("localStorage", {
+      getItem: () => JSON.stringify(saved),
+      setItem,
+    });
+    const { getPreferences, setPreferences } =
+      await import("../packages/browser/src/preferences");
+    expect(getPreferences().cameraModes).toEqual(
+      nativeCaptureAvailable
+        ? {
+            "swift:uvc": { width: 1920, height: 1080, fps: 60 },
+            "": { width: 1280, height: 720, fps: 30 },
+          }
+        : saved.cameraModes,
+    );
+    expect(getPreferences().screenMode).toEqual(saved.screenMode);
+    setPreferences({ camera: saved.camera });
+    expect(JSON.parse(setItem.mock.calls.at(-1)![1]).cameraModes).toEqual(
+      getPreferences().cameraModes,
+    );
+    if (nativeCaptureAvailable)
+      expect(() => setPreferences({ cameraModes: saved.cameraModes })).toThrow(
+        "whole-number",
+      );
+    else
+      expect(() =>
+        setPreferences({ cameraModes: saved.cameraModes }),
+      ).not.toThrow();
+  },
+);
 
 it("keeps camera FPS tied to each native format, including 120 and 240 FPS", () => {
   const modes = nativeCameraModes({
