@@ -227,6 +227,72 @@ function monitor() {
 }
 
 describe("reactive call safety", () => {
+  it("keeps reported remote levels while deafened and clears muted, stale and departed sources", async () => {
+    vi.useFakeTimers();
+    const other = {
+      participant_id: "other",
+      user_id: "them",
+      state: {
+        muted: false,
+        deafened: false,
+        camera_off: true,
+        screen_off: true,
+      },
+    };
+    const { call, wire, raw, processed, incoming } = await connected([other]);
+    call.client.account.instance.capabilities.push("media.levels.v1");
+    vi.spyOn(call.speaking, "available").mockReturnValue(true);
+    vi.spyOn(call.speaking, "level").mockReturnValue(67);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(call.microphoneLevel("self")).toBe(67);
+    const reports = () =>
+      vi
+        .mocked(call.client.command)
+        .mock.calls.filter(([message]) => message.type === "media.level");
+    expect(reports().at(-1)?.[0]).toEqual({
+      type: "media.level",
+      participant_id: "self",
+      level: 67,
+    });
+    const snapshot = call.snapshot;
+    wire({ type: "media.level", participant_id: "other", level: 73 });
+    expect(call.snapshot).toBe(snapshot);
+    expect(call.microphoneLevel("other")).toBe(73);
+    await call.setState({ deafened: true });
+    expect([raw.enabled, processed.enabled, incoming.enabled]).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    expect(call.microphoneLevel("self")).toBe(0);
+    expect(call.microphoneLevel("other")).toBe(73);
+    const count = reports().length;
+    await vi.advanceTimersByTimeAsync(600);
+    expect(reports()).toHaveLength(count);
+    wire({ type: "media.level", participant_id: "other", level: 47 });
+    expect(call.microphoneLevel("other")).toBe(47);
+    wire({
+      type: "media.participant.state",
+      participant: {
+        ...other,
+        state: { ...other.state, muted: true },
+      },
+    });
+    expect(call.microphoneLevel("other")).toBe(0);
+    wire({ type: "media.level", participant_id: "other", level: 99 });
+    expect(call.microphoneLevel("other")).toBe(0);
+    wire({ type: "media.participant.state", participant: other });
+    expect(call.microphoneLevel("other")).toBeUndefined();
+    wire({ type: "media.level", participant_id: "other", level: 25 });
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(call.microphoneLevel("other")).toBeUndefined();
+    wire({ type: "media.level", participant_id: "other", level: 25 });
+    wire({ type: "media.participant.left", participant_id: "other" });
+    expect(call.microphoneLevel("other")).toBeUndefined();
+    wire({ type: "media.level", participant_id: "other", level: 88 });
+    expect(call.microphoneLevel("other")).toBeUndefined();
+  });
+
   it("enforces deafen on raw capture, processed output and incoming playback before acknowledgement", async () => {
     const { call, raw, processed, incoming, hold, acknowledgements } =
       await connected();

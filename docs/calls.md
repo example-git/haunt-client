@@ -28,6 +28,13 @@ members are absent. Restrictions survive leaving and server restarts. The
 member's own mute/deafen choices remain separate and return when a restriction
 is removed. Camera and screen audio remain independent of microphone mute.
 
+Microphone tile meters use the sender's post-filter, post-gain level on servers
+advertising `media.levels.v1`. Receiver volume and deafen do not change the reading.
+Muted microphones stop reporting and display zero; deafen also mutes the sender's
+microphone. Missing reports become unavailable after two seconds. Camera and
+screen-share meters still measure received playback. A microphone level reports
+sender activity, not confirmation of audio delivery.
+
 After relaunch, a reconnect banner offers the last successfully joined voice
 channel only after an authenticated check confirms current View and Connect
 access. Offline checks retry without showing an unverified offer. Reconnecting

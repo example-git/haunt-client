@@ -64,6 +64,38 @@ export async function checkCallControls(browser, fixtures) {
       await page.addInitScript(() => {
         window.callTones = [];
         window.activityContexts = [];
+        window.microphoneTracks = [];
+        window.microphoneReports = [];
+        window.suppressLevelReports = false;
+        const getMedia = navigator.mediaDevices.getUserMedia.bind(
+          navigator.mediaDevices,
+        );
+        navigator.mediaDevices.getUserMedia = async (constraints) => {
+          const stream = await getMedia(constraints);
+          if (constraints.audio && !constraints.video)
+            window.microphoneTracks.push(...stream.getAudioTracks());
+          return stream;
+        };
+        const send = WebSocket.prototype.send;
+        WebSocket.prototype.send = function (data) {
+          if (typeof data === "string") {
+            const message = JSON.parse(data);
+            if (message.type === "media.level") {
+              window.microphoneReports.push(message);
+              if (window.suppressLevelReports) {
+                queueMicrotask(() =>
+                  this.dispatchEvent(
+                    new MessageEvent("message", {
+                      data: JSON.stringify({ type: "media.level.accepted" }),
+                    }),
+                  ),
+                );
+                return;
+              }
+            }
+          }
+          return send.call(this, data);
+        };
         const Context = window.AudioContext;
         window.AudioContext = class extends Context {
           constructor(...args) {
@@ -862,7 +894,9 @@ export async function checkCallControls(browser, fixtures) {
       );
       await slider(bob, "Microphone", 0);
       await expect(person).toHaveAttribute("data-speaking", "false");
-      await expect(meter).toHaveAttribute("aria-valuenow", "0");
+      await expect
+        .poll(async () => Number(await meter.getAttribute("aria-valuenow")))
+        .toBeGreaterThan(0);
       await expect(row.locator(".speaking-mic")).toHaveCount(0);
       await slider(bob, "Microphone", 27);
       await slider(bob, "Camera audio", 43);
@@ -1157,6 +1191,25 @@ export async function checkCallControls(browser, fixtures) {
         .getByRole("meter", { name: /microphone level$/ })
         .all())
         await expect(value).toHaveAttribute("aria-valuenow", "0");
+      await expect
+        .poll(() =>
+          alice.evaluate(
+            () =>
+              window.microphoneTracks.length > 0 &&
+              window.microphoneTracks
+                .filter((track) => track.readyState === "live")
+                .every((track) => !track.enabled),
+          ),
+        )
+        .toBe(true);
+      const mutedReports = await alice.evaluate(
+        () => window.microphoneReports.length,
+      );
+      await alice.waitForTimeout(650);
+      assert.equal(
+        await alice.evaluate(() => window.microphoneReports.length),
+        mutedReports,
+      );
       for (const source of ["camera audio", "screen-share audio"])
         await expect
           .poll(async () =>
@@ -1198,9 +1251,50 @@ export async function checkCallControls(browser, fixtures) {
       for (const value of await bob
         .locator(".call-tile")
         .filter({ hasText: name })
-        .getByRole("meter")
+        .getByRole("meter", {
+          name: /(?:camera audio|screen-share audio) level$/,
+        })
         .all())
         await expect(value).toHaveAttribute("aria-valuenow", "0");
+      await expect
+        .poll(async () => Number(await meter.getAttribute("aria-valuenow")))
+        .toBeGreaterThan(0);
+      await expect
+        .poll(() =>
+          bob.evaluate(
+            () =>
+              window.microphoneTracks.length > 0 &&
+              window.microphoneTracks
+                .filter((track) => track.readyState === "live")
+                .every((track) => !track.enabled),
+          ),
+        )
+        .toBe(true);
+      const deafenedReports = await bob.evaluate(
+        () => window.microphoneReports.length,
+      );
+      await alice.evaluate(() => {
+        window.suppressLevelReports = true;
+      });
+      await expect(meter).toHaveAttribute("aria-valuetext", "Unavailable");
+      await expect(meter).not.toHaveAttribute("aria-valuenow");
+      await alice.evaluate(() => {
+        window.suppressLevelReports = false;
+      });
+      await expect
+        .poll(async () => Number(await meter.getAttribute("aria-valuenow")))
+        .toBeGreaterThan(0);
+      assert.equal(
+        await bob.evaluate(() => window.microphoneReports.length),
+        deafenedReports,
+      );
+      assert(
+        (await peak(audio("audio"))) < 0.000001,
+        "Deafened receiver gets no microphone audio",
+      );
+      await bob.screenshot({
+        path: `test-results/deafened-microphone-levels-${transport}.png`,
+      });
       await expect(row.locator(".speaking-mic")).toHaveCount(0);
       await expect
         .poll(() =>

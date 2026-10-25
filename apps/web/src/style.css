@@ -3423,6 +3423,10 @@ dialog.image-viewer {
   clip-path: inset(0 calc(100% - var(--level)) 0 0);
   transition: clip-path 100ms linear;
 }
+.voice-level[data-unavailable="true"] {
+  border: 1px dashed var(--muted);
+  background: transparent;
+}
 .call-tiles.has-media .call-tile:not(.focused) .call-timer {
   display: none;
 }

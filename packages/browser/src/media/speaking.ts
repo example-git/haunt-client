@@ -27,6 +27,17 @@ export class SpeakingActivity {
   private levelListeners = new Map<string, Set<() => void>>();
   private lastMeter = -Infinity;
   level = (id: string) => this.levels.get(id) ?? 0;
+  available(id: string) {
+    const input = this.inputs.get(id);
+    return (
+      !!input &&
+      this.context?.state === "running" &&
+      input.track.enabled &&
+      !input.track.muted &&
+      input.track.readyState === "live" &&
+      input.gain() > 0
+    );
+  }
   subscribeLevel(id: string, listener: () => void) {
     const listeners = this.levelListeners.get(id) ?? new Set();
     listeners.add(listener);

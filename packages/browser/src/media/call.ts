@@ -70,6 +70,90 @@ export class Call {
     return this.snapshotValue;
   }
   readonly speaking = new SpeakingActivity();
+  private microphoneLevels = new Map<string, number>();
+  private levelListeners = new Map<string, Set<() => void>>();
+  private levelReceived = new Map<string, number>();
+  private levelTimer: ReturnType<typeof setInterval>;
+  private levelSending = false;
+  private levelSentAt = 0;
+  private levelSent?: number;
+  microphoneLevel = (id: string) => this.microphoneLevels.get(id);
+  subscribeMicrophoneLevel(id: string, listener: () => void) {
+    const listeners = this.levelListeners.get(id) ?? new Set();
+    listeners.add(listener);
+    this.levelListeners.set(id, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (!listeners.size) this.levelListeners.delete(id);
+    };
+  }
+  private setMicrophoneLevel(id: string, level: number | undefined) {
+    if (this.microphoneLevel(id) === level) return;
+    if (level === undefined) this.microphoneLevels.delete(id);
+    else this.microphoneLevels.set(id, level);
+    this.levelListeners.get(id)?.forEach((listener) => listener());
+  }
+  private updateMicrophoneLevels = () => {
+    const state = this.snapshot;
+    const now = performance.now();
+    const present = new Set(state.participants.map((p) => p.participant_id));
+    for (const id of this.microphoneLevels.keys()) {
+      if (state.status !== "connected" || !present.has(id)) {
+        this.levelReceived.delete(id);
+        this.setMicrophoneLevel(id, undefined);
+      }
+    }
+    if (state.status !== "connected") {
+      this.levelReceived.clear();
+      this.levelSent = undefined;
+      return;
+    }
+    for (const participant of state.participants) {
+      const id = participant.participant_id;
+      if (participant.state.muted) {
+        this.levelReceived.delete(id);
+        this.setMicrophoneLevel(id, 0);
+      } else if (id === state.participantId) {
+        this.setMicrophoneLevel(
+          id,
+          this.speaking.available(id) ? this.speaking.level(id) : undefined,
+        );
+      } else if (now - (this.levelReceived.get(id) ?? -Infinity) >= 2000) {
+        this.levelReceived.delete(id);
+        this.setMicrophoneLevel(id, undefined);
+      }
+    }
+    const id = state.participantId;
+    const level = id ? this.microphoneLevel(id) : undefined;
+    if (state.state.muted || level === undefined) {
+      this.levelSent = undefined;
+      return;
+    }
+    if (
+      this.levelSending ||
+      !this.stateReady ||
+      !this.synchronizedState ||
+      this.synchronizedState.muted ||
+      !this.client.account.instance.capabilities?.includes("media.levels.v1") ||
+      now - this.levelSentAt < 100 ||
+      (level === this.levelSent && now - this.levelSentAt < 500)
+    )
+      return;
+    this.levelSending = true;
+    this.levelSentAt = now;
+    this.levelSent = level;
+    void this.client
+      .command(
+        { type: "media.level", participant_id: id, level },
+        "media.level.accepted",
+      )
+      .catch(() => {
+        this.levelSent = undefined;
+      })
+      .finally(() => {
+        this.levelSending = false;
+      });
+  };
   private offSpeaking?: () => void;
   private speakingParticipant?: string;
   private sourceMeters = new Map<
@@ -150,6 +234,7 @@ export class Call {
         this.synchronizeStateInBackground();
       }
     });
+    this.levelTimer = setInterval(this.updateMicrophoneLevels, 100);
   }
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
@@ -248,6 +333,7 @@ export class Call {
       this.sourceMeters.delete(key);
     }
     this.speaking.sample();
+    this.updateMicrophoneLevels();
     this.cues.observe(this.snapshot);
     for (const fn of this.listeners) fn();
   }
@@ -695,6 +781,26 @@ export class Call {
   }
   private event(event: WireEvent) {
     if (this.ended) return;
+    if (event.type === "media.level") {
+      const id = String(event.participant_id);
+      const participant = this.snapshot.participants.find(
+        (p) => p.participant_id === id,
+      );
+      if (
+        this.snapshot.status === "connected" &&
+        participant &&
+        id !== this.snapshot.participantId &&
+        !participant.state.muted &&
+        typeof event.level === "number" &&
+        Number.isInteger(event.level) &&
+        event.level >= 0 &&
+        event.level <= 100
+      ) {
+        this.levelReceived.set(id, performance.now());
+        this.setMicrophoneLevel(id, event.level);
+      }
+      return;
+    }
     if (event.type === "connection.lost") {
       this.generation++;
       this.resetStateSynchronization();
@@ -1146,6 +1252,7 @@ export class Call {
     if (this.ended) return;
     clearVoiceReconnect(this.client, this.room);
     this.ended = true;
+    clearInterval(this.levelTimer);
     this.viewingQualities.clear();
     this.offLoopback();
     this.resetStateSynchronization();

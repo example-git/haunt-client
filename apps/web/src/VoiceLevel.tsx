@@ -28,13 +28,34 @@ export function VoiceLevel({
   }[purpose];
   useEffect(() => {
     const update = () => {
-      const value = call.speaking.level(id);
-      ref.current?.style.setProperty("--level", `${value}%`);
-      ref.current?.setAttribute("aria-valuenow", String(value));
+      const value =
+        purpose === "audio"
+          ? call.microphoneLevel(participant)
+          : call.speaking.level(id);
+      const element = ref.current;
+      if (!element) return;
+      element.style.setProperty("--level", `${value ?? 0}%`);
+      element.dataset.unavailable = String(value === undefined);
+      if (value === undefined) {
+        element.removeAttribute("aria-valuenow");
+        element.setAttribute("aria-valuetext", "Unavailable");
+      } else {
+        element.setAttribute("aria-valuenow", String(value));
+        element.removeAttribute("aria-valuetext");
+      }
+      element.title = !available
+        ? `No ${label} is being shared`
+        : value === undefined
+          ? `${label} level unavailable`
+          : purpose === "audio"
+            ? `${local ? "Outgoing" : "Sender"} microphone level`
+            : `${local ? "Outgoing " : ""}${label} level${local ? "" : " · includes your playback volume"}`;
     };
     update();
-    return call.speaking.subscribeLevel(id, update);
-  }, [call, id]);
+    return purpose === "audio"
+      ? call.subscribeMicrophoneLevel(participant, update)
+      : call.speaking.subscribeLevel(id, update);
+  }, [call, id, participant, purpose, available, label, local]);
   return (
     <div
       ref={ref}
@@ -43,12 +64,6 @@ export function VoiceLevel({
       aria-label={`${name} ${label} level`}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={0}
-      title={
-        !available
-          ? `No ${label} is being shared`
-          : `${local ? "Outgoing " : ""}${label} level${local ? "" : " · includes your playback volume"}`
-      }
     >
       <i />
     </div>
