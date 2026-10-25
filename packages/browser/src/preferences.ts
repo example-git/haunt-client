@@ -154,6 +154,16 @@ function read(): ClientPreferences {
           ([key, mode]) => key.length <= 256 && validVideoMode(mode),
         ),
       ) as Record<string, VideoMode>;
+    if (
+      typeof window !== "undefined" &&
+      window.hauntDesktop?.nativeCaptureAvailable
+    )
+      next.cameraModes = Object.fromEntries(
+        Object.entries(next.cameraModes).map(([id, mode]) => [
+          id,
+          mode.fps >= 0.5 ? { ...mode, fps: Math.round(mode.fps) } : mode,
+        ]),
+      );
     if (validVideoMode(raw.screenMode)) next.screenMode = raw.screenMode;
     for (const field of [
       "enabled",
@@ -216,6 +226,13 @@ export function setPreferences(patch: Partial<ClientPreferences>) {
     Object.values(patch.cameraModes).some((mode) => !validVideoMode(mode))
   )
     throw Error("Invalid camera video setting.");
+  if (
+    patch.cameraModes &&
+    typeof window !== "undefined" &&
+    window.hauntDesktop?.nativeCaptureAvailable &&
+    Object.values(patch.cameraModes).some((mode) => !Number.isInteger(mode.fps))
+  )
+    throw Error("Choose a whole-number camera frame rate.");
   if (
     "chatDisplay" in patch &&
     patch.chatDisplay !== "default" &&

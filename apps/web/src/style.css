@@ -2632,6 +2632,10 @@ dialog.image-viewer {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+.context-menu .menu-check {
+  display: inline-block;
+  width: 1.25em;
+}
 .context-menu hr {
   border: 0;
   border-top: 1px solid var(--line);

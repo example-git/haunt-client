@@ -67,9 +67,13 @@ export function VideoSettings({
     };
     changed();
     navigator.mediaDevices?.addEventListener("devicechange", changed);
+    const offNative = window.hauntDesktop?.onNativeEvent?.((event) => {
+      if (event.kind === "devices") changed();
+    });
     return () => {
       generation.current++;
       navigator.mediaDevices?.removeEventListener("devicechange", changed);
+      offNative?.();
     };
   }, [cameraDevice]);
   const options = camera

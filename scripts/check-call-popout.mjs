@@ -150,6 +150,26 @@ export async function checkCallPopout(browser, fixtures) {
       const popup = await opened;
       popup.on("pageerror", (error) => errors.push(error.message));
       await expect(popup.locator(".call-tile")).toHaveCount(2);
+      await popup
+        .locator(".call-tile .call-avatar")
+        .first()
+        .click({ button: "right" });
+      await expect(popup.getByRole("menu")).toBeVisible();
+      await expect(alice.getByRole("menu")).toHaveCount(0);
+      await expect(
+        popup.getByRole("menuitem", { name: "View profile", exact: true }),
+      ).toBeVisible();
+      await popup.keyboard.press("Escape");
+      await popup
+        .getByRole("button", { name: "Deafen", exact: true })
+        .click({ button: "right" });
+      await expect(
+        popup.getByRole("menu", { name: "Audio devices", exact: true }),
+      ).toBeVisible();
+      await expect(
+        popup.getByRole("group", { name: "Output device", exact: true }),
+      ).toBeVisible();
+      await popup.keyboard.press("Escape");
       await expect(alice.locator(".call-detached-notice")).toBeVisible();
       await expect(popup.locator("html")).toHaveAttribute(
         "data-native-window",

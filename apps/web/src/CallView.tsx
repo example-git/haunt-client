@@ -1,6 +1,6 @@
 import { openProfile } from "./Profile";
 import { UserName } from "./UserName";
-import { CaptureSettings } from "./VideoSettings";
+import { CaptureSettings, VideoSettings } from "./VideoSettings";
 import { VoiceModerationMenu, VoiceRestrictions } from "./VoiceModeration";
 import { createPortal } from "react-dom";
 import { Titlebar } from "./Titlebar";
@@ -45,7 +45,16 @@ import { useContextMenu, MenuAction } from "./ContextMenu";
 import { useSpeaking } from "./Speaking";
 import { VoiceLevel } from "./VoiceLevel";
 import { VoiceChatToggle } from "./VoiceChatToggle";
-import { followAudioOutput } from "@haunt/browser/audio-output";
+import {
+  followAudioOutput,
+  supportsAudioOutput,
+} from "@haunt/browser/audio-output";
+import {
+  getPreferences,
+  setPreferences,
+  subscribePreferences,
+} from "@haunt/browser/preferences";
+import type { NativeDevice } from "@haunt/browser/media/native-types";
 import { audioActivityKey } from "@haunt/browser/media/speaking";
 import type { AudioSource } from "@haunt/browser/volumes";
 
@@ -216,6 +225,7 @@ function CallTile({
           : `${name} voice tile`
       }
       aria-pressed={tile.stream ? focused : undefined}
+      aria-haspopup="menu"
       {...context}
       onClick={(e) => {
         if (tile.stream && !(e.target as HTMLElement).closest("button, select"))
@@ -240,10 +250,6 @@ function CallTile({
         ) : (
           <div
             className="call-avatar"
-            onContextMenu={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
             onDragStart={(event) => event.preventDefault()}
           >
             <Avatar instance={call.client} user={user} size="large" />
@@ -359,6 +365,167 @@ function CallTile({
         )}
       </div>
     </div>
+  );
+}
+
+function CallTileMenu({
+  call,
+  tile,
+  focused,
+  onFocus,
+  onProfile,
+  onSettings,
+  onError,
+}: {
+  call: Call;
+  tile: Tile;
+  focused: boolean;
+  onFocus: () => void;
+  onProfile: () => void;
+  onSettings: () => void;
+  onError: (error: string) => void;
+}) {
+  const state = useSyncExternalStore(call.subscribe, call.getSnapshot);
+  const [captureSettings, setCaptureSettings] = useState(false);
+  const participant = state.participants.find(
+    (p) => p.participant_id === tile.participant,
+  );
+  const run = (task: Promise<unknown>) =>
+    void task.catch((error) => onError(friendlyError(error)));
+  if (tile.purpose === "avatar")
+    return (
+      <>
+        <MenuAction onClick={onProfile}>View profile</MenuAction>
+        {tile.local ? (
+          <>
+            <MenuAction
+              disabled={
+                state.status !== "connected" ||
+                state.state.deafened ||
+                state.restriction.muted ||
+                state.restriction.deafened
+              }
+              onClick={() =>
+                run(call.setState({ muted: !call.snapshot.state.muted }))
+              }
+            >
+              {state.state.muted ? "Unmute microphone" : "Mute microphone"}
+            </MenuAction>
+            <MenuAction
+              disabled={
+                state.status !== "connected" ||
+                state.microphoneMonitoring ||
+                state.restriction.deafened
+              }
+              onClick={() =>
+                run(call.setState({ deafened: !call.snapshot.state.deafened }))
+              }
+            >
+              {state.state.deafened ? "Undeafen" : "Deafen"}
+            </MenuAction>
+            <MenuAction onClick={onSettings}>Audio & video settings</MenuAction>
+          </>
+        ) : (
+          <>
+            <UserVolume
+              instance={call.client}
+              user={tile.user}
+              source="audio"
+            />
+            {participant && (
+              <VoiceModerationMenu
+                instance={call.client}
+                channel={call.room}
+                participant={participant}
+                onError={onError}
+              />
+            )}
+          </>
+        )}
+      </>
+    );
+  const purpose = tile.purpose;
+  const camera = purpose === "camera";
+  const label = camera ? "camera" : "screen share";
+  const sources = tile.local
+    ? state.local
+    : state.remote.filter((source) => source.participant === tile.participant);
+  const active = sources.some((source) => source.purpose === purpose);
+  const audio = camera ? "camera_audio" : "screen_audio";
+  const quality = state.qualities[`${tile.participant}:${purpose}`];
+  return (
+    <>
+      <MenuAction disabled={!active} onClick={onFocus}>
+        {focused ? "Shrink" : "Expand"} {label}
+      </MenuAction>
+      {tile.local ? (
+        <>
+          <button
+            role="menuitem"
+            aria-expanded={captureSettings}
+            disabled={!active}
+            onClick={() => setCaptureSettings(!captureSettings)}
+          >
+            {camera ? "Camera" : "Screen-share"} capture settings
+          </button>
+          {captureSettings && <VideoSettings purpose={purpose} call={call} />}
+          <MenuAction
+            danger
+            disabled={!active || state.busy || state.status !== "connected"}
+            onClick={() => {
+              if (
+                call.snapshot.local.some((source) => source.purpose === purpose)
+              )
+                run(call.toggleVideo(purpose));
+            }}
+          >
+            {camera ? "Turn off camera" : "Stop sharing screen"}
+          </MenuAction>
+        </>
+      ) : (
+        <>
+          {quality?.layers.length ? (
+            <div role="group" aria-label="Viewing quality">
+              <div className="context-menu-title">Viewing quality</div>
+              {[
+                { id: "auto", label: "Auto" },
+                ...quality.layers.map((layer) => ({
+                  id: layer.id,
+                  label: `${layer.width} × ${layer.height} · ${layer.fps} FPS`,
+                })),
+              ].map((option) => (
+                <MenuAction
+                  key={option.id}
+                  checked={quality.mode === option.id}
+                  disabled={!active}
+                  onClick={() =>
+                    run(
+                      call.setViewingQuality(
+                        tile.participant,
+                        purpose,
+                        option.id,
+                      ),
+                    )
+                  }
+                >
+                  {option.label}
+                </MenuAction>
+              ))}
+            </div>
+          ) : (
+            <small>Single quality</small>
+          )}
+          {sources.some((source) => source.purpose === audio) && (
+            <UserVolume
+              instance={call.client}
+              user={tile.user}
+              source={audio}
+            />
+          )}
+          <MenuAction onClick={onProfile}>View profile</MenuAction>
+        </>
+      )}
+    </>
   );
 }
 
@@ -586,32 +753,25 @@ export function CallPanel({
     state.participants.find((p) => p.participant_id === id)?.user_id ?? "";
   const name = (id: string) =>
     displayName(call.client.snapshot.users.find((u) => u.id === userID(id)));
-  const options = (id: string) =>
+  const options = (tile: Tile) =>
     menu(
-      name(id),
-      userID(id) === call.client.account.login.user.id ? (
-        <>
-          <MenuAction
-            disabled={state.state.deafened}
-            onClick={() => action(call.setState({ muted: !state.state.muted }))}
-          >
-            {state.state.muted ? "Unmute microphone" : "Mute microphone"}
-          </MenuAction>
-          <MenuAction onClick={settings}>Audio & video settings</MenuAction>
-        </>
-      ) : (
-        <>
-          <UserVolume instance={call.client} user={userID(id)} />
-          <VoiceModerationMenu
-            instance={call.client}
-            channel={call.room}
-            participant={state.participants.find(
-              (p) => p.participant_id === id,
-            )!}
-            onError={setError}
-          />
-        </>
-      ),
+      `${displayName(call.client.snapshot.users.find((user) => user.id === tile.user))} · ${tile.purpose === "avatar" ? "Voice" : tile.purpose === "camera" ? "Camera" : "Screen share"}`,
+      <CallTileMenu
+        key={tile.id}
+        call={call}
+        tile={tile}
+        focused={focused === tile.id}
+        onFocus={() =>
+          setFocus((current) => (current === tile.id ? undefined : tile.id))
+        }
+        onProfile={() => {
+          if (detached)
+            void window.hauntDesktop?.windowControl("focus", "main");
+          openProfile(call.client, tile.user);
+        }}
+        onSettings={settings}
+        onError={setError}
+      />,
     );
   const settings = () => {
     if (detached) void window.hauntDesktop?.windowControl("focus", "main");
@@ -712,7 +872,7 @@ export function CallPanel({
                   current === tile.id ? undefined : tile.id,
                 )
               }
-              context={options(tile.participant)}
+              context={options(tile)}
             />
           ))}
         </div>
@@ -861,6 +1021,124 @@ export function CallPanel({
   );
 }
 
+function CallDeviceMenu({
+  camera = false,
+  outputFirst = false,
+}: {
+  camera?: boolean;
+  outputFirst?: boolean;
+}) {
+  const prefs = useSyncExternalStore(subscribePreferences, getPreferences);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>();
+  const [native, setNative] = useState<{
+    cameras: NativeDevice[];
+    audio: NativeDevice[];
+  }>();
+  const [error, setError] = useState("");
+  const nativeCamera = camera && window.hauntDesktop?.nativeCaptureAvailable;
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const browser = await navigator.mediaDevices.enumerateDevices();
+        if (active) setDevices(browser);
+        if (nativeCamera) {
+          const catalog = await window.hauntDesktop!.nativeDevices();
+          if (active) setNative(catalog);
+        }
+      } catch (error) {
+        if (active) setError(friendlyError(error));
+      }
+    };
+    const changed = () => void refresh();
+    changed();
+    navigator.mediaDevices?.addEventListener("devicechange", changed);
+    const off = window.hauntDesktop?.onNativeEvent?.((event) => {
+      if (active && event.kind === "devices" && event.devices)
+        setNative(event.devices);
+    });
+    return () => {
+      active = false;
+      off?.();
+      navigator.mediaDevices?.removeEventListener("devicechange", changed);
+    };
+  }, [nativeCamera]);
+  const fields = camera
+    ? (["camera", "cameraAudio"] as const)
+    : outputFirst
+      ? (["audioOutput", "microphone"] as const)
+      : (["microphone", "audioOutput"] as const);
+  return (
+    <>
+      {fields.map((field) => {
+        const label =
+          field === "microphone"
+            ? "Input device"
+            : field === "audioOutput"
+              ? "Output device"
+              : field === "camera"
+                ? "Camera"
+                : "Camera audio source";
+        const kind =
+          field === "audioOutput"
+            ? "audiooutput"
+            : field === "camera"
+              ? "videoinput"
+              : "audioinput";
+        const available = nativeCamera
+          ? (field === "camera" ? native?.cameras : native?.audio)?.map(
+              (device) => ({
+                deviceId: `swift:${device.id}`,
+                label: device.label,
+              }),
+            )
+          : devices?.filter(
+              (device) =>
+                device.kind === kind &&
+                device.deviceId &&
+                device.deviceId !== "default",
+            );
+        const disabled = field === "audioOutput" && !supportsAudioOutput();
+        return (
+          <div key={field} role="group" aria-label={label}>
+            <div className="context-menu-title">{label}</div>
+            <MenuAction
+              checked={!prefs[field]}
+              disabled={disabled}
+              onClick={() => setPreferences({ [field]: "" })}
+            >
+              {field === "cameraAudio" ? "None" : "System default"}
+            </MenuAction>
+            {prefs[field] &&
+              available &&
+              !available.some((device) => device.deviceId === prefs[field]) && (
+                <MenuAction checked disabled onClick={() => {}}>
+                  Saved device (unavailable)
+                </MenuAction>
+              )}
+            {available?.map((device, index) => (
+              <MenuAction
+                key={device.deviceId}
+                checked={prefs[field] === device.deviceId}
+                disabled={disabled}
+                onClick={() => setPreferences({ [field]: device.deviceId })}
+              >
+                {device.label || `${label} ${index + 1}`}
+              </MenuAction>
+            ))}
+            {!available && !error && <small>Loading devices…</small>}
+            {disabled && (
+              <small>This browser uses your system output device.</small>
+            )}
+          </div>
+        );
+      })}
+      {camera && <small>Camera changes apply when capture starts.</small>}
+      <ErrorNotice error={error} />
+    </>
+  );
+}
+
 function CallControls({
   showSettings = true,
   call,
@@ -887,6 +1165,8 @@ function CallControls({
     >
       <button
         className={state.state.muted ? "toggled" : ""}
+        aria-haspopup="menu"
+        {...menu("Audio devices", <CallDeviceMenu />)}
         aria-label={state.state.muted ? "Unmute microphone" : "Mute microphone"}
         aria-pressed={state.state.muted}
         disabled={
@@ -907,6 +1187,8 @@ function CallControls({
       </button>
       <button
         className={state.state.deafened ? "toggled" : ""}
+        aria-haspopup="menu"
+        {...menu("Audio devices", <CallDeviceMenu outputFirst />)}
         aria-label="Deafen"
         aria-pressed={state.state.deafened}
         disabled={
@@ -934,6 +1216,8 @@ function CallControls({
       <div className="capture-control">
         <button
           className={!state.state.camera_off ? "toggled" : ""}
+          aria-haspopup="menu"
+          {...menu("Camera devices", <CallDeviceMenu camera />)}
           aria-label={
             state.state.camera_off ? "Turn on camera" : "Turn off camera"
           }
@@ -960,6 +1244,8 @@ function CallControls({
       {showSettings && (
         <button
           aria-label="Audio & video settings"
+          aria-haspopup="menu"
+          {...menu("Audio devices", <CallDeviceMenu />)}
           title="Audio & video settings"
           onClick={onSettings}
         >

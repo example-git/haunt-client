@@ -1,8 +1,11 @@
-import { expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import vm from "node:vm";
 import fs from "node:fs";
 const require = createRequire(import.meta.url);
+afterEach(() => vi.useRealTimers());
 const {
   PacketReader,
   stereoPCM,
@@ -114,6 +117,256 @@ function packet(type: number, data: Buffer) {
   data.copy(b, 24);
   return b;
 }
+function nativeShell(cadence = 59.94) {
+  const handlers = new Map<string, Function>();
+  const children: any[] = [];
+  const captures: any[] = [];
+  const spawn = vi.fn(() => {
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stderr: new PassThrough(),
+      stdio: [null, null, null, new PassThrough(), new PassThrough()],
+      exitCode: null,
+      signalCode: null as string | null,
+      kill(signal: string) {
+        if (this.signalCode) return;
+        this.signalCode = signal;
+        queueMicrotask(() => child.emit("close", null, signal));
+      },
+    });
+    children.push(child);
+    return child;
+  });
+  const wrapper = { exports: {} as any };
+  vm.runInNewContext(
+    fs.readFileSync(
+      new URL("../apps/desktop/swiftcapture.cjs", import.meta.url),
+      "utf8",
+    ),
+    {
+      module: wrapper,
+      require: (name: string) =>
+        name === "node:child_process"
+          ? { ...require(name), spawn }
+          : require(name),
+      Buffer,
+      setTimeout,
+      clearTimeout,
+    },
+  );
+  class ObservedCapture extends wrapper.exports.Capture {
+    constructor(...args: any[]) {
+      super(...args);
+      captures.push(this);
+    }
+  }
+  const contents = Object.assign(new EventEmitter(), { send: vi.fn() });
+  const catalog = {
+    cameras: [
+      {
+        id: "camera",
+        label: "Camera",
+        formats: [
+          { width: 1920, height: 1080, minFPS: cadence, maxFPS: cadence },
+        ],
+      },
+    ],
+    audio: [] as { id: string; label: string }[],
+  };
+  const listSources = vi.fn(async () => structuredClone(catalog));
+  const parent = Object.assign(new EventEmitter(), {
+    isDestroyed: () => false,
+    webContents: contents,
+  });
+  const module = { exports: {} as any };
+  const entry = new URL("../apps/desktop/native-media.cjs", import.meta.url);
+  const localRequire = createRequire(entry);
+  vm.runInNewContext(fs.readFileSync(entry, "utf8"), {
+    module,
+    __dirname: new URL("../apps/desktop/", import.meta.url).pathname,
+    process: { platform: "darwin", arch: "arm64" },
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    Uint8Array,
+    require: (name: string) => {
+      if (name === "electron")
+        return {
+          app: Object.assign(new EventEmitter(), { isPackaged: false }),
+          ipcMain: {
+            handle: (name: string, fn: Function) => handlers.set(name, fn),
+            on: vi.fn(),
+          },
+          systemPreferences: { getMediaAccessStatus: () => "granted" },
+        };
+      if (name === "./swiftcapture.cjs")
+        return {
+          Capture: ObservedCapture,
+          listSources,
+        };
+      if (name === "./capture-picker.cjs") return {};
+      return localRequire(name);
+    },
+  });
+  module.exports.installNativeMedia(parent, () => {});
+  const request = {
+    id: "00000000-0000-0000-0000-000000000001",
+    purpose: "camera",
+    device: "swift:camera",
+    width: 1920,
+    height: 1080,
+    fps: 60,
+  };
+  return {
+    spawn,
+    children,
+    captures,
+    contents,
+    catalog,
+    listSources,
+    devices: () => handlers.get("native:devices")!({}, true),
+    dispose: () => parent.emit("closed"),
+    start: (patch = {}) =>
+      handlers.get("native:start")!({}, { ...request, ...patch }),
+    stop: () => handlers.get("native:stop")!({}, request.id),
+    configure: (mode: object) =>
+      handlers.get("native:configure")!({}, request.id, mode),
+    ready(index = children.length - 1) {
+      children[index].stdio[3].write(
+        packet(
+          1,
+          Buffer.from(
+            JSON.stringify({
+              codec: "h264",
+              format: "annexb",
+              width: 1920,
+              height: 1080,
+              fps: 60,
+              parameterSets: ["Z0LgKg=="],
+            }),
+          ),
+        ),
+      );
+    },
+  };
+}
+it.each([59.94, 60.001])(
+  "starts and restarts native capture from a %s FPS catalog",
+  async (cadence) => {
+    const shell = nativeShell(cadence);
+    for (let i = 0; i < 2; i++) {
+      const started = shell.start();
+      await vi.waitFor(() => expect(shell.children).toHaveLength(i + 1));
+      const args = (
+        shell.spawn.mock.calls[i] as unknown as [string, string[]]
+      )[1];
+      expect(
+        args.slice(
+          args.indexOf("--webcam-fps"),
+          args.indexOf("--webcam-fps") + 2,
+        ),
+      ).toEqual(["--webcam-fps", "60"]);
+      shell.ready();
+      await expect(started).resolves.toMatchObject({
+        video: { width: 1920, height: 1080, fps: 60 },
+      });
+      expect(shell.captures[i].listenerCount("stopped")).toBe(0);
+      shell.children[i].stdio[3].write(
+        packet(2, Buffer.from([0, 0, 1, 0x65, 7])),
+      );
+      expect(shell.contents.send).toHaveBeenCalledWith(
+        "native:event",
+        expect.objectContaining({ kind: "video" }),
+      );
+      await expect(
+        shell.configure({ width: 640, height: 480, fps: 60 }),
+      ).rejects.toThrow("unavailable");
+      expect(shell.captures[i].closed).toBe(false);
+      await shell.stop();
+    }
+    expect(shell.listSources).toHaveBeenCalledOnce();
+    shell.dispose();
+  },
+);
+it.each(["process", "packet"])(
+  "preserves a %s startup failure and allows retry",
+  async (kind) => {
+    const shell = nativeShell();
+    const cause = new Error("Fixture failure");
+    const started = shell.start();
+    const rejected = expect(started).rejects.toThrow(cause.message);
+    await vi.waitFor(() => expect(shell.children).toHaveLength(1));
+    if (kind === "process") shell.children[0].emit("error", cause);
+    else
+      shell.children[0].stdio[3].write(packet(4, Buffer.from(cause.message)));
+    await rejected;
+    if (kind === "process") await expect(started).rejects.toBe(cause);
+    expect(shell.contents.send).toHaveBeenCalledWith(
+      "native:event",
+      expect.objectContaining({ kind: "error", message: cause.message }),
+    );
+    expect(shell.captures[0].listenerCount("stopped")).toBe(0);
+    const retried = shell.start();
+    await vi.waitFor(() => expect(shell.children).toHaveLength(2));
+    shell.ready();
+    await expect(retried).resolves.toMatchObject({ video: { fps: 60 } });
+    await shell.stop();
+    shell.dispose();
+  },
+);
+it("settles a cancelled startup and releases the camera for retry", async () => {
+  const shell = nativeShell();
+  const started = shell.start();
+  const rejected = expect(started).rejects.toThrow();
+  await vi.waitFor(() => expect(shell.children).toHaveLength(1));
+  await shell.stop();
+  await rejected;
+  const retried = shell.start();
+  await vi.waitFor(() => expect(shell.children).toHaveLength(2));
+  shell.ready();
+  await expect(retried).resolves.toMatchObject({ video: { fps: 60 } });
+  await shell.stop();
+  shell.dispose();
+});
+it("shares the native catalog and only publishes changed periodic snapshots", async () => {
+  vi.useFakeTimers();
+  const shell = nativeShell();
+  const [first, second] = await Promise.all([shell.devices(), shell.devices()]);
+  expect(second).toBe(first);
+  expect(shell.listSources).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(shell.listSources).toHaveBeenCalledTimes(2);
+  expect(await shell.devices()).toBe(first);
+  expect(shell.contents.send).not.toHaveBeenCalled();
+  shell.catalog.audio.push({ id: "input", label: "Input" });
+  await vi.advanceTimersByTimeAsync(30000);
+  expect((await shell.devices()).audio).toEqual(shell.catalog.audio);
+  expect(shell.contents.send).toHaveBeenCalledOnce();
+  expect(shell.contents.send).toHaveBeenCalledWith(
+    "native:event",
+    expect.objectContaining({ kind: "devices", devices: shell.catalog }),
+  );
+  shell.listSources.mockRejectedValueOnce(
+    new Error("Fixture discovery failure"),
+  );
+  await vi.advanceTimersByTimeAsync(30000);
+  expect((await shell.devices()).audio).toEqual(shell.catalog.audio);
+  expect(shell.contents.send).toHaveBeenCalledOnce();
+  shell.dispose();
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(shell.listSources).toHaveBeenCalledTimes(4);
+});
+it("rejects unsupported native camera requests before starting a worker", async () => {
+  const shell = nativeShell();
+  await expect(shell.start({ fps: 59.94 })).rejects.toThrow("whole-number");
+  await expect(shell.start({ width: 640, height: 480 })).rejects.toThrow(
+    "unavailable",
+  );
+  await expect(shell.start({ fps: 30 })).rejects.toThrow("unavailable");
+  expect(shell.spawn).not.toHaveBeenCalled();
+  shell.dispose();
+});
 it("reads split and coalesced SCAP packets and bounds allocations before reading the body", () => {
   const packets: any[] = [];
   const reader = new PacketReader((p: any) => packets.push(p));

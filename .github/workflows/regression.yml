@@ -9,6 +9,10 @@ on:
         description: Exercise call layouts and capture theme screenshots
         type: boolean
         default: false
+      native_capture:
+        description: Exercise native capture and media delivery with fixture devices
+        type: boolean
+        default: false
   workflow_call:
 permissions:
   contents: read
@@ -35,7 +39,7 @@ jobs:
           path: test-results/
           retention-days: 14
   calls:
-    if: inputs.calls
+    if: inputs.calls || inputs.native_capture
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -77,16 +81,20 @@ jobs:
       - run: npm run build && npm run build:standalone
         id: build
       - name: Check native window corners
+        if: inputs.calls
         run: dbus-run-session -- xvfb-run -a -s "-screen 0 1600x1000x24 -nolisten tcp" node scripts/check-window-shape.mjs
       - name: Exercise calls and detached views
-        if: always() && steps.build.outcome == 'success'
+        if: always() && inputs.calls && steps.build.outcome == 'success'
         run: |
           for check in calls call-popout; do
             HAUNT_CLIENT_CHECK="$check" dbus-run-session -- npm run test:integration
           done
       - name: Exercise names and appearance
-        if: always() && steps.build.outcome == 'success'
+        if: always() && inputs.calls && steps.build.outcome == 'success'
         run: HAUNT_CLIENT_CHECK=media-appearance dbus-run-session -- npm run test:integration
+      - name: Exercise native capture and media delivery
+        if: always() && inputs.native_capture && steps.build.outcome == 'success'
+        run: HAUNT_CLIENT_CHECK=native-media dbus-run-session -- npm run test:integration
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -573,7 +573,18 @@ export async function checkCallControls(browser, fixtures) {
             path: `test-results/call-filled-${name}.png`,
           });
           await person.locator(".call-avatar").click({ button: "right" });
-          await expect(bob.getByRole("menu")).toHaveCount(0);
+          await expect(bob.getByRole("menu")).toBeVisible();
+          await expect(
+            bob.getByLabel("Microphone volume", { exact: true }),
+          ).toBeVisible();
+          await expect(
+            bob.getByLabel("Camera audio volume", { exact: true }),
+          ).toHaveCount(0);
+          await expect(
+            bob.getByRole("menuitem", { name: /^Expand / }),
+          ).toHaveCount(0);
+          await bob.keyboard.press("Escape");
+          await expect(person).toBeFocused();
         }
         await fs.writeFile(
           "test-results/call-presentation.json",
@@ -589,6 +600,116 @@ export async function checkCallControls(browser, fixtures) {
         await bob.setViewportSize({ width: 1120, height: 800 });
       }
       await expect(bob.getByRole("menu")).toHaveCount(0);
+      for (const control of [
+        "Mute microphone",
+        "Deafen",
+        "Audio & video settings",
+      ]) {
+        const button = bob
+          .locator(
+            control === "Audio & video settings"
+              ? ".call-panel.full"
+              : ".call-dock",
+          )
+          .getByRole("button", { name: control, exact: true });
+        await button.click({ button: "right" });
+        const devices = bob.getByRole("menu", {
+          name: "Audio devices",
+          exact: true,
+        });
+        await expect(devices).toBeVisible();
+        await expect(
+          devices.getByRole("group", { name: "Input device", exact: true }),
+        ).toBeVisible();
+        await expect(
+          devices.getByRole("group", { name: "Output device", exact: true }),
+        ).toBeVisible();
+        await expect(
+          devices.getByText("Loading devices…", { exact: true }),
+        ).toHaveCount(0);
+        await bob.keyboard.press("Escape");
+        await expect(button).toBeFocused();
+      }
+      await person.press("Shift+F10");
+      await expect(
+        bob.getByRole("menuitem", { name: "View profile", exact: true }),
+      ).toBeVisible();
+      await bob.keyboard.press("Escape");
+      const deviceChoices = await bob.evaluate(async () => {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const pick = (kind) =>
+          devices
+            .find(
+              (device) =>
+                device.kind === kind &&
+                device.deviceId &&
+                !["default", "communications"].includes(device.deviceId),
+            )
+            ?.toJSON();
+        window.callInputDevices = [];
+        window.callOutputDevices = [];
+        const get = navigator.mediaDevices.getUserMedia.bind(
+          navigator.mediaDevices,
+        );
+        navigator.mediaDevices.getUserMedia = async (constraints) => {
+          const stream = await get(constraints);
+          if (constraints.audio)
+            window.callInputDevices.push(
+              stream.getAudioTracks()[0].getSettings().deviceId,
+            );
+          return stream;
+        };
+        const sink = HTMLMediaElement.prototype.setSinkId;
+        HTMLMediaElement.prototype.setSinkId = async function (id) {
+          await sink.call(this, id);
+          window.callOutputDevices.push(id);
+        };
+        return { input: pick("audioinput"), output: pick("audiooutput") };
+      });
+      assert(
+        deviceChoices.input && deviceChoices.output,
+        "Capture and playback devices are enumerated",
+      );
+      const deviceButton = bob
+        .locator(".call-dock")
+        .getByRole("button", { name: "Deafen", exact: true });
+      for (const [group, device, property] of [
+        ["Input device", deviceChoices.input, "callInputDevices"],
+        ["Output device", deviceChoices.output, "callOutputDevices"],
+      ]) {
+        await deviceButton.click({ button: "right" });
+        await bob
+          .getByRole("group", { name: group, exact: true })
+          .getByRole("menuitemradio", { name: device.label, exact: true })
+          .click();
+        await expect
+          .poll(() =>
+            bob.evaluate(({ property, id }) => window[property].includes(id), {
+              property,
+              id: device.deviceId,
+            }),
+          )
+          .toBe(true);
+        await deviceButton.press("Shift+F10");
+        await expect(
+          bob
+            .getByRole("group", { name: group, exact: true })
+            .getByRole("menuitemradio", { name: device.label, exact: true }),
+        ).toHaveAttribute("aria-checked", "true");
+        await bob
+          .getByRole("group", { name: group, exact: true })
+          .getByRole("menuitemradio", { name: "System default", exact: true })
+          .click();
+      }
+      await expect
+        .poll(() =>
+          bob
+            .locator(".call-panel audio")
+            .evaluateAll((elements) =>
+              elements.every((element) => element.sinkId === ""),
+            ),
+        )
+        .toBe(true);
       await person.click();
       await expect(bob.locator(".call-tile.focused")).toHaveCount(0);
       await equalTiles();
@@ -862,6 +983,73 @@ export async function checkCallControls(browser, fixtures) {
       await bob.screenshot({
         path: `test-results/call-media-grid-${transport}.png`,
       });
+      for (const [purpose, source, label, level] of [
+        ["camera", "camera_audio", "Camera audio", 44],
+        ["screen", "screen_audio", "Screen-share audio", 61],
+      ]) {
+        const media = bob.locator(`.video-tile[data-tile-id$=":${purpose}"]`);
+        await media.locator("video").click({ button: "right" });
+        const context = bob.getByRole("menu");
+        await expect(context).toBeVisible();
+        await expect(
+          context.getByLabel(`${label} volume`, { exact: true }),
+        ).toBeVisible();
+        await expect(
+          context.getByLabel("Microphone volume", { exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          context.getByRole("menuitem", {
+            name: /Turn off camera|Stop sharing screen/,
+          }),
+        ).toHaveCount(0);
+        await slider(bob, label, 19);
+        await expect
+          .poll(() => audio(source).evaluate((el) => el.volume))
+          .toBe(0.19);
+        await expect
+          .poll(() => audio("audio").evaluate((el) => el.volume))
+          .toBe(0.27);
+        await slider(bob, label, level);
+        await bob.screenshot({
+          path: `test-results/tile-menu-${purpose}-${transport}.png`,
+        });
+        await context.getByRole("menuitem", { name: /^Expand / }).click();
+        await expect(media).toHaveAttribute("aria-pressed", "true");
+        await media.press("Shift+F10");
+        await bob.getByRole("menuitem", { name: /^Shrink / }).click();
+        await expect(media).toHaveAttribute("aria-pressed", "false");
+        const own = alice.locator(`.video-tile[data-tile-id$=":${purpose}"]`);
+        await own.click({ button: "right" });
+        const ownMenu = alice.getByRole("menu");
+        await expect(
+          ownMenu.getByRole("menuitem", {
+            name:
+              purpose === "camera" ? "Turn off camera" : "Stop sharing screen",
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(
+          ownMenu.getByLabel(`${label} volume`, { exact: true }),
+        ).toHaveCount(0);
+        await ownMenu
+          .getByRole("menuitem", {
+            name:
+              purpose === "camera"
+                ? "Camera capture settings"
+                : "Screen-share capture settings",
+            exact: true,
+          })
+          .click();
+        await expect(
+          ownMenu.getByLabel(
+            purpose === "camera"
+              ? "Camera resolution"
+              : "Screen share resolution",
+            { exact: true },
+          ),
+        ).toBeVisible();
+        await alice.keyboard.press("Escape");
+      }
       const videoFrames = await bob
         .locator(".call-panel video")
         .evaluateAll((elements) =>
@@ -922,8 +1110,10 @@ export async function checkCallControls(browser, fixtures) {
       await shareTile.click();
       await focusLayout();
       await alice
-        .locator(".call-dock")
-        .getByRole("button", { name: "Stop sharing screen", exact: true })
+        .locator('.video-tile[data-tile-id$=":screen"]')
+        .click({ button: "right" });
+      await alice
+        .getByRole("menuitem", { name: "Stop sharing screen", exact: true })
         .click();
       await expect(shareTile).toHaveCount(0);
       await expect(bob.locator(".call-tile.focused")).toHaveCount(0);
@@ -1035,8 +1225,10 @@ export async function checkCallControls(browser, fixtures) {
         .toEqual([392, 294, 330, 262, 196, 392, 587, 262, 392, 659]);
       // Reconfiguration and reconnect restore source levels from stable user IDs.
       await alice
-        .locator(".call-dock")
-        .getByRole("button", { name: "Turn off camera", exact: true })
+        .locator('.video-tile[data-tile-id$=":camera"]')
+        .click({ button: "right" });
+      await alice
+        .getByRole("menuitem", { name: "Turn off camera", exact: true })
         .click();
       await expect(audio("camera_audio")).toHaveCount(0);
       await expect(audio("screen_audio")).toHaveCount(1);

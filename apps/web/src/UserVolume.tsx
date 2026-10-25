@@ -6,20 +6,25 @@ import {
   subscribeVolumes,
   userVolumes,
   setUserVolume,
+  type AudioSource,
 } from "@haunt/browser/volumes";
 export function UserVolume({
   instance,
   user,
+  source,
 }: {
   instance: InstanceClient;
   user: string;
+  source?: AudioSource;
 }) {
   useSyncExternalStore(subscribeVolumes, getVolumes);
   const values = userVolumes(instance.scope, user);
   if (user === instance.account.login.user.id) return null;
   return (
     <>
-      <ModerationMenu instance={instance} user={user} />
+      {(!source || source === "audio") && (
+        <ModerationMenu instance={instance} user={user} />
+      )}
       <div className="user-volumes" role="group" aria-label="Playback volume">
         {(
           [
@@ -27,30 +32,32 @@ export function UserVolume({
             ["camera_audio", "Camera audio"],
             ["screen_audio", "Screen-share audio"],
           ] as const
-        ).map(([source, label]) => (
-          <label key={source}>
-            <span>
-              {label}
-              <output>{values[source]}%</output>
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              aria-label={`${label} volume`}
-              value={values[source]}
-              onChange={(e) =>
-                setUserVolume(
-                  instance.scope,
-                  user,
-                  source,
-                  Number(e.target.value),
-                )
-              }
-            />
-          </label>
-        ))}
+        )
+          .filter(([kind]) => !source || kind === source)
+          .map(([source, label]) => (
+            <label key={source}>
+              <span>
+                {label}
+                <output>{values[source]}%</output>
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                aria-label={`${label} volume`}
+                value={values[source]}
+                onChange={(e) =>
+                  setUserVolume(
+                    instance.scope,
+                    user,
+                    source,
+                    Number(e.target.value),
+                  )
+                }
+              />
+            </label>
+          ))}
         <small>Saved on this device</small>
       </div>
     </>

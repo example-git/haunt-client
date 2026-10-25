@@ -38,12 +38,14 @@ if (process.argv.includes("--list-sources")) {
           uniqueID: "fixture-camera",
           name: "Fixture capture card",
           connected: true,
-          formats: modes.map((mode) => ({
-            width: mode.width,
-            height: mode.height,
-            minFPS: mode.fps,
-            maxFPS: mode.fps,
-          })),
+          formats: modes.flatMap((mode) =>
+            [(mode.fps * 1000) / 1001, mode.fps + 0.001].map((fps) => ({
+              width: mode.width,
+              height: mode.height,
+              minFPS: fps,
+              maxFPS: fps,
+            })),
+          ),
         },
       ],
       audio: {

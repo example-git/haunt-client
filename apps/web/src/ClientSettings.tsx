@@ -425,6 +425,10 @@ export function ClientSettingsContent({
       void refresh().catch(() => {});
     };
     navigator.mediaDevices?.addEventListener("devicechange", changed);
+    const offNative = window.hauntDesktop?.onNativeEvent?.((event) => {
+      if (active && event.kind === "devices" && event.devices)
+        setNativeDevices(event.devices);
+    });
     for (const kind of ["audio", "video"] as const) {
       void (async () => {
         try {
@@ -455,6 +459,7 @@ export function ClientSettingsContent({
     return () => {
       active = false;
       permissionListeners.forEach((remove) => remove());
+      offNative?.();
       navigator.mediaDevices?.removeEventListener("devicechange", changed);
     };
   }, [tab]);
