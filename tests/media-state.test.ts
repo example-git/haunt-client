@@ -246,8 +246,13 @@ describe("reactive call safety", () => {
     ];
     vi.spyOn(call.speaking, "available").mockReturnValue(true);
     vi.spyOn(call.speaking, "level").mockReturnValue(67);
+    vi.spyOn(call.speaking, "inputLevel").mockImplementation((id) =>
+      id === "other" && incoming.enabled ? 49 : undefined,
+    );
     await vi.advanceTimersByTimeAsync(600);
     expect(call.microphoneLevel("self")).toBe(67);
+    expect(call.microphoneLevel("other")).toBe(49);
+    expect(call.microphoneLevelSource("other")).toBe("received");
     const reports = () =>
       vi
         .mocked(call.client.command)
@@ -257,10 +262,16 @@ describe("reactive call safety", () => {
       participant_id: "self",
       level: 67,
     });
+    await call.setState({ deafened: true });
+    expect(call.microphoneLevel("other")).toBeUndefined();
+    expect(call.microphoneLevel("self")).toBe(0);
+    await call.setState({ deafened: false });
+    expect(call.microphoneLevel("other")).toBe(49);
     const snapshot = call.snapshot;
     wire({ type: "media.level", participant_id: "other", level: 73 });
     expect(call.snapshot).toBe(snapshot);
     expect(call.microphoneLevel("other")).toBe(73);
+    expect(call.microphoneLevelSource("other")).toBe("sender");
     await call.setState({ deafened: true });
     expect([raw.enabled, processed.enabled, incoming.enabled]).toEqual([
       false,
@@ -288,6 +299,9 @@ describe("reactive call safety", () => {
     expect(call.microphoneLevel("other")).toBeUndefined();
     wire({ type: "media.level", participant_id: "other", level: 25 });
     await vi.advanceTimersByTimeAsync(2100);
+    expect(call.microphoneLevel("other")).toBeUndefined();
+    await call.setState({ deafened: false });
+    expect(incoming.enabled).toBe(true);
     expect(call.microphoneLevel("other")).toBeUndefined();
     wire({ type: "media.level", participant_id: "other", level: 25 });
     wire({ type: "media.participant.left", participant_id: "other" });

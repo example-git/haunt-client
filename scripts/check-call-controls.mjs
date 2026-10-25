@@ -211,6 +211,9 @@ export async function checkCallControls(browser, fixtures) {
         bob.getByRole("menuitem", { name: "Server settings", exact: true }),
       ).toHaveCount(0);
       await bob.keyboard.press("Escape");
+      await alice.evaluate(() => {
+        window.suppressLevelReports = true;
+      });
       await join(alice);
       await join(bob);
       await expect(audio("audio")).toHaveCount(1, { timeout: 30000 });
@@ -750,6 +753,18 @@ export async function checkCallControls(browser, fixtures) {
       await expect
         .poll(async () => Number(await meter.getAttribute("aria-valuenow")))
         .toBeGreaterThan(0);
+      await expect(meter).toHaveAttribute("title", "Received microphone level");
+      const deafen = bob
+        .locator(".call-dock")
+        .getByRole("button", { name: "Deafen", exact: true });
+      await deafen.click();
+      await expect(meter).toHaveAttribute("aria-valuetext", "Unavailable");
+      await expect(meter).not.toHaveAttribute("aria-valuenow");
+      await deafen.click();
+      await expect
+        .poll(async () => Number(await meter.getAttribute("aria-valuenow")))
+        .toBeGreaterThan(0);
+      await expect(meter).toHaveAttribute("title", "Received microphone level");
       await expect(
         alice.locator(".call-tile").filter({ hasText: name }),
       ).toHaveAttribute("data-speaking", "true");
@@ -894,6 +909,14 @@ export async function checkCallControls(browser, fixtures) {
       );
       await slider(bob, "Microphone", 0);
       await expect(person).toHaveAttribute("data-speaking", "false");
+      await expect
+        .poll(async () => Number(await meter.getAttribute("aria-valuenow")))
+        .toBeGreaterThan(0);
+      await expect(meter).toHaveAttribute("title", "Received microphone level");
+      await alice.evaluate(() => {
+        window.suppressLevelReports = false;
+      });
+      await expect(meter).toHaveAttribute("title", "Sender microphone level");
       await expect
         .poll(async () => Number(await meter.getAttribute("aria-valuenow")))
         .toBeGreaterThan(0);
@@ -1538,6 +1561,32 @@ export async function checkCallControls(browser, fixtures) {
           ]) {
             await bob.setViewportSize(viewport);
             await avatarGrid();
+            await bob.screenshot({
+              path: `test-results/call-five-grid-${viewport.width}.png`,
+            });
+            const tileGeometry = await bob
+              .locator(".avatar-tile")
+              .evaluateAll((tiles) =>
+                tiles.map((tile) => {
+                  const box = tile.getBoundingClientRect();
+                  const label = tile
+                    .querySelector(".call-tile-label")
+                    .getBoundingClientRect();
+                  const center = document.elementFromPoint(
+                    box.left + box.width / 2,
+                    box.top + box.height / 2,
+                  );
+                  return {
+                    box: box.toJSON(),
+                    label: label.toJSON(),
+                    center: center?.outerHTML.slice(0, 500),
+                  };
+                }),
+              );
+            await fs.writeFile(
+              `test-results/call-five-grid-${viewport.width}.json`,
+              JSON.stringify(tileGeometry, null, 2),
+            );
             assert(
               await bob.locator(".avatar-tile").evaluateAll((tiles) =>
                 tiles.every((tile) => {

@@ -24,6 +24,8 @@ export class SpeakingActivity {
   private listeners = new Map<string, Set<() => void>>();
   private closed = false;
   private levels = new Map<string, number>();
+  private inputLevels = new Map<string, number>();
+  inputLevel = (id: string) => this.inputLevels.get(id);
   private levelListeners = new Map<string, Set<() => void>>();
   private lastMeter = -Infinity;
   level = (id: string) => this.levels.get(id) ?? 0;
@@ -111,6 +113,7 @@ export class SpeakingActivity {
     previous?.right?.disconnect();
     previous?.splitter?.disconnect();
     this.inputs.set(id, input);
+    this.inputLevels.delete(id);
     this.set(id, false);
     this.setLevel(id, 0);
     this.timer ??= setInterval(this.sample, 50);
@@ -121,6 +124,7 @@ export class SpeakingActivity {
       input.splitter?.disconnect();
       if (this.inputs.get(id) !== input) return;
       this.inputs.delete(id);
+      this.inputLevels.delete(id);
       this.set(id, false);
       this.setLevel(id, 0);
       if (!this.inputs.size) {
@@ -138,12 +142,12 @@ export class SpeakingActivity {
       const gain = input.gain();
       if (
         this.context?.state !== "running" ||
-        !(gain > 0) ||
         !input.track.enabled ||
         input.track.muted ||
         input.track.readyState === "ended"
       ) {
         input.lastVoice = -Infinity;
+        this.inputLevels.delete(id);
         this.set(id, false);
         this.setLevel(id, 0);
         continue;
@@ -157,7 +161,15 @@ export class SpeakingActivity {
         for (const value of input.samples) rightEnergy += value * value;
         energy = Math.max(energy, rightEnergy);
       }
-      const rms = Math.sqrt(energy / input.samples.length) * gain;
+      const sourceRMS = Math.sqrt(energy / input.samples.length);
+      if (meter) this.inputLevels.set(id, normalizedAudioLevel(sourceRMS));
+      if (!(gain > 0)) {
+        input.lastVoice = -Infinity;
+        this.set(id, false);
+        this.setLevel(id, 0);
+        continue;
+      }
+      const rms = sourceRMS * gain;
       if (meter) this.setLevel(id, normalizedAudioLevel(rms));
       // -46 dB to start, -50 dB to sustain, then 220 ms release. This is an
       // audible-level indicator, not speech recognition; sustained noise can light it.
@@ -176,6 +188,7 @@ export class SpeakingActivity {
       input.splitter?.disconnect();
     }
     this.inputs.clear();
+    this.inputLevels.clear();
     for (const id of this.active) this.set(id, false);
     for (const id of this.levels.keys()) this.setLevel(id, 0);
     void this.context?.close().catch(() => {});

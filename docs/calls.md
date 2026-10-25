@@ -31,9 +31,12 @@ is removed. Camera and screen audio remain independent of microphone mute.
 Microphone tile meters use the sender's post-filter, post-gain level on servers
 advertising `media.levels.v1`. Receiver volume and deafen do not change the reading.
 Muted microphones stop reporting and display zero; deafen also mutes the sender's
-microphone. Missing reports become unavailable after two seconds. Camera and
-screen-share meters still measure received playback. A microphone level reports
-sender activity, not confirmation of audio delivery.
+microphone. Missing reports become unavailable after two seconds. Participants
+that have never sent a level report use received microphone audio before playback
+volume instead. This fallback is unavailable while deafened or without an audio
+feed. The meter tooltip distinguishes received levels from sender reports. Camera
+and screen-share meters still measure received playback. A sender report indicates
+microphone activity, not confirmation of audio delivery.
 
 After relaunch, a reconnect banner offers the last successfully joined voice
 channel only after an authenticated check confirms current View and Connect

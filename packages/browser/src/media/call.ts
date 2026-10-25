@@ -71,6 +71,8 @@ export class Call {
   }
   readonly speaking = new SpeakingActivity();
   private microphoneLevels = new Map<string, number>();
+  private levelSources = new Map<string, "sender" | "received">();
+  private reportingParticipants = new Set<string>();
   private levelListeners = new Map<string, Set<() => void>>();
   private levelReceived = new Map<string, number>();
   private levelTimer: ReturnType<typeof setInterval>;
@@ -78,6 +80,7 @@ export class Call {
   private levelSentAt = 0;
   private levelSent?: number;
   microphoneLevel = (id: string) => this.microphoneLevels.get(id);
+  microphoneLevelSource = (id: string) => this.levelSources.get(id);
   subscribeMicrophoneLevel(id: string, listener: () => void) {
     const listeners = this.levelListeners.get(id) ?? new Set();
     listeners.add(listener);
@@ -87,16 +90,31 @@ export class Call {
       if (!listeners.size) this.levelListeners.delete(id);
     };
   }
-  private setMicrophoneLevel(id: string, level: number | undefined) {
-    if (this.microphoneLevel(id) === level) return;
-    if (level === undefined) this.microphoneLevels.delete(id);
-    else this.microphoneLevels.set(id, level);
+  private setMicrophoneLevel(
+    id: string,
+    level: number | undefined,
+    source: "sender" | "received" = "sender",
+  ) {
+    if (
+      this.microphoneLevel(id) === level &&
+      (level === undefined || this.levelSources.get(id) === source)
+    )
+      return;
+    if (level === undefined) {
+      this.microphoneLevels.delete(id);
+      this.levelSources.delete(id);
+    } else {
+      this.microphoneLevels.set(id, level);
+      this.levelSources.set(id, source);
+    }
     this.levelListeners.get(id)?.forEach((listener) => listener());
   }
   private updateMicrophoneLevels = () => {
     const state = this.snapshot;
     const now = performance.now();
     const present = new Set(state.participants.map((p) => p.participant_id));
+    for (const id of this.reportingParticipants)
+      if (!present.has(id)) this.reportingParticipants.delete(id);
     for (const id of this.microphoneLevels.keys()) {
       if (state.status !== "connected" || !present.has(id)) {
         this.levelReceived.delete(id);
@@ -105,6 +123,7 @@ export class Call {
     }
     if (state.status !== "connected") {
       this.levelReceived.clear();
+      this.reportingParticipants.clear();
       this.levelSent = undefined;
       return;
     }
@@ -117,6 +136,12 @@ export class Call {
         this.setMicrophoneLevel(
           id,
           this.speaking.available(id) ? this.speaking.level(id) : undefined,
+        );
+      } else if (!this.reportingParticipants.has(id)) {
+        this.setMicrophoneLevel(
+          id,
+          state.state.deafened ? undefined : this.speaking.inputLevel(id),
+          "received",
         );
       } else if (now - (this.levelReceived.get(id) ?? -Infinity) >= 2000) {
         this.levelReceived.delete(id);
@@ -796,6 +821,7 @@ export class Call {
         event.level >= 0 &&
         event.level <= 100
       ) {
+        this.reportingParticipants.add(id);
         this.levelReceived.set(id, performance.now());
         this.setMicrophoneLevel(id, event.level);
       }

@@ -97,9 +97,11 @@ describe("local microphone activity", () => {
     analysers[0].amplitude = 0.1;
     vi.advanceTimersByTime(150);
     expect(activity.level("alice")).toBe(67);
+    expect(activity.inputLevel("alice")).toBe(67);
     gain = 0.1;
     vi.advanceTimersByTime(100);
     expect(activity.level("alice")).toBe(33);
+    expect(activity.inputLevel("alice")).toBe(67);
     meter.mockClear();
     for (let i = 0; i < 20; i++) {
       analysers[0].amplitude = i / 20;
@@ -107,8 +109,10 @@ describe("local microphone activity", () => {
     }
     expect(meter.mock.calls.length).toBeLessThanOrEqual(10);
     gain = 0;
-    activity.sample();
+    analysers[0].amplitude = 0.1;
+    vi.advanceTimersByTime(100);
     expect(activity.level("alice")).toBe(0);
+    expect(activity.inputLevel("alice")).toBe(67);
     expect(activity.isSpeaking("alice")).toBe(false);
     activity.close();
   });
@@ -123,6 +127,7 @@ describe("local microphone activity", () => {
     first.getAudioTracks()[0].enabled = false;
     activity.sample();
     expect(activity.isSpeaking("alice")).toBe(false);
+    expect(activity.inputLevel("alice")).toBeUndefined();
     first.getAudioTracks()[0].enabled = true;
     activity.sample();
     expect(activity.isSpeaking("alice")).toBe(true);
@@ -133,6 +138,7 @@ describe("local microphone activity", () => {
     context.state = "suspended";
     activity.sample();
     expect(activity.isSpeaking("alice")).toBe(false);
+    expect(activity.inputLevel("alice")).toBeUndefined();
     context.state = "running";
     const next = stream();
     const remove = activity.observe("alice", next, () => 1);
@@ -143,6 +149,7 @@ describe("local microphone activity", () => {
     Object.assign(next.getAudioTracks()[0], { readyState: "ended" });
     activity.sample();
     expect(activity.isSpeaking("alice")).toBe(false);
+    expect(activity.inputLevel("alice")).toBeUndefined();
     remove();
     activity.close();
     expect(context.close).toHaveBeenCalledOnce();

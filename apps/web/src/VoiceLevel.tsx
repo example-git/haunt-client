@@ -48,7 +48,7 @@ export function VoiceLevel({
         : value === undefined
           ? `${label} level unavailable`
           : purpose === "audio"
-            ? `${local ? "Outgoing" : "Sender"} microphone level`
+            ? `${local ? "Outgoing" : call.microphoneLevelSource(participant) === "received" ? "Received" : "Sender"} microphone level`
             : `${local ? "Outgoing " : ""}${label} level${local ? "" : " · includes your playback volume"}`;
     };
     update();
