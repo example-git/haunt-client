@@ -13,6 +13,10 @@ on:
         description: Exercise native capture and media delivery with fixture devices
         type: boolean
         default: false
+      mobile:
+        description: Exercise mobile PWA colors, touch navigation and zoom
+        type: boolean
+        default: false
   workflow_call:
 permissions:
   contents: read
@@ -39,7 +43,7 @@ jobs:
           path: test-results/
           retention-days: 14
   calls:
-    if: inputs.calls || inputs.native_capture
+    if: inputs.calls || inputs.native_capture || inputs.mobile
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -95,6 +99,15 @@ jobs:
       - name: Exercise native capture and media delivery
         if: always() && inputs.native_capture && steps.build.outcome == 'success'
         run: HAUNT_CLIENT_CHECK=native-media dbus-run-session -- npm run test:integration
+      - name: Exercise mobile PWA and existing browser interactions
+        if: always() && inputs.mobile && steps.build.outcome == 'success'
+        run: |
+          for check in mobile-web ui-refresh image-viewer; do
+            HAUNT_CLIENT_CHECK="$check" dbus-run-session -- npm run test:integration
+          done
+      - name: Check standalone offline cache and updates
+        if: always() && inputs.mobile && steps.build.outcome == 'success'
+        run: npm run test:standalone
       - uses: actions/upload-artifact@v4
         if: always()
         with:
