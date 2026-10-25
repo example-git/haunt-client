@@ -71,8 +71,9 @@ export class AttachmentDraft {
         break;
       }
       const type =
-        file.type ||
-        extensions[file.name.split(".").pop()?.toLowerCase() ?? ""];
+        !file.type || file.type === "application/octet-stream"
+          ? extensions[file.name.split(".").pop()?.toLowerCase() ?? ""]
+          : file.type;
       const limit = dm ? (type?.startsWith("image/") ? 20*1024*1024 : 0) : type?.startsWith("image/")
         ? this.instance.account.instance.limits.image_max_bytes
         : type?.startsWith("video/")
@@ -90,7 +91,7 @@ export class AttachmentDraft {
         );
         continue;
       }
-      if (!file.type)
+      if (file.type !== type)
         file = new File([file], file.name, {
           type,
           lastModified: file.lastModified,

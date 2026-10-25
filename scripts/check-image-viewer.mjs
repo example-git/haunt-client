@@ -52,7 +52,7 @@ export async function checkImageViewer(browser, fixtures) {
       );
       const picture = {
         name: `viewer-${index}.png`,
-        mimeType: "image/png",
+        mimeType: index === 1 ? "application/octet-stream" : "image/png",
         buffer: Buffer.from(data, "base64"),
       };
       pictures.push(picture);
