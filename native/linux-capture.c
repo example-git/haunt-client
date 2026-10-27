@@ -31,12 +31,16 @@ static GDBusConnection *bus;
 static char *session;
 static int remote_fd = -1, status;
 static GstElement *video, *audio, *mixer;
+static GstElement *portal_video, *portal_target;
+static GMutex portal_lock;
 static pa_mainloop *pulse_loop;
 static pa_context *pulse;
 static GHashTable *taps, *seen_apps;
 static GString *outputs, *apps;
 static char *default_sink, *audio_id;
 static guint pulse_timer;
+static GThread *pulse_thread;
+static gint pulse_stopping;
 static int listing, pulse_done, pulse_ready, source_width, source_height;
 static int output_width = 1920, output_height = 1080, fps = 60;
 static unsigned long xid;
@@ -59,14 +63,14 @@ static int xerror(Display *display, XErrorEvent *event);
 
 static void fail(const char *message) {
   fprintf(stderr, "%s\n", message);
-  status = 1;
+  g_atomic_int_set(&status, 1);
   if (request_loop) g_main_loop_quit(request_loop);
   if (loop) g_main_loop_quit(loop);
 }
 
 static gboolean stop(gpointer unused) {
   (void)unused;
-  stopping = TRUE;
+  g_atomic_int_set(&stopping, TRUE);
   if (request_loop) g_main_loop_quit(request_loop);
   g_main_loop_quit(loop);
   return G_SOURCE_REMOVE;
@@ -203,7 +207,7 @@ static GstFlowReturn sample(GstAppSink *sink, gpointer userdata) {
   if ((fd == 4 || video_configured) && GST_CLOCK_TIME_IS_VALID(pts))
     packet(fd, 2, !GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT), (fd == 3 ? video_origin : timestamp_origin) + pts, map.data, map.size);
   gst_buffer_unmap(buffer, &map); gst_sample_unref(s);
-  return status ? GST_FLOW_ERROR : GST_FLOW_OK;
+  return g_atomic_int_get(&status) ? GST_FLOW_ERROR : GST_FLOW_OK;
 }
 
 static gboolean gst_message(GstBus *gst_bus, GstMessage *message, gpointer unused) {
@@ -392,7 +396,7 @@ static gboolean window_frame(gpointer unused) {
   gint strides[GST_VIDEO_MAX_PLANES] = {image->bytes_per_line};
   gst_buffer_add_video_meta_full(buffer, GST_VIDEO_FRAME_FLAG_NONE, format, window_width, window_height, 1, offsets, strides);
   GST_BUFFER_DURATION(buffer) = GST_SECOND / fps;
-  if (gst_app_src_push_buffer(GST_APP_SRC(source), buffer) != GST_FLOW_OK && !stopping)
+  if (gst_app_src_push_buffer(GST_APP_SRC(source), buffer) != GST_FLOW_OK && !g_atomic_int_get(&stopping))
     fail("Selected window capture stopped");
   gst_object_unref(source);
   return G_SOURCE_CONTINUE;
@@ -409,6 +413,54 @@ static gboolean open_window(void) {
   return TRUE;
 }
 
+static GstFlowReturn portal_frame(GstAppSink *sink, gpointer unused) {
+  (void)unused;
+  GstSample *frame = gst_app_sink_pull_sample(sink);
+  if (!frame) return GST_FLOW_EOS;
+  g_mutex_lock(&portal_lock);
+  GstElement *target = portal_target ? gst_object_ref(portal_target) : NULL;
+  g_mutex_unlock(&portal_lock);
+  if (target) {
+    GstBuffer *buffer = gst_buffer_copy(gst_sample_get_buffer(frame));
+    GST_BUFFER_PTS(buffer) = GST_CLOCK_TIME_NONE;
+    GST_BUFFER_DTS(buffer) = GST_CLOCK_TIME_NONE;
+    gst_app_src_set_caps(GST_APP_SRC(target), gst_sample_get_caps(frame));
+    GstFlowReturn result = gst_app_src_push_buffer(GST_APP_SRC(target), buffer);
+    if (result != GST_FLOW_OK && result != GST_FLOW_FLUSHING && !g_atomic_int_get(&stopping))
+      fail("Screen capture encoder stopped accepting frames");
+    gst_object_unref(target);
+  }
+  gst_sample_unref(frame);
+  return GST_FLOW_OK;
+}
+
+static gboolean start_portal_video(void) {
+  if (portal_video) return TRUE;
+  GError *error = NULL;
+  portal_video = gst_parse_launch("pipewiresrc name=source ! video/x-raw ! appsink name=frames emit-signals=true sync=false max-buffers=1 drop=true", &error);
+  if (error) { fail(error->message); g_error_free(error); return FALSE; }
+  GstElement *source = gst_bin_get_by_name(GST_BIN(portal_video), "source");
+  char *node = g_strdup_printf("%u", node_id);
+  g_object_set(source, "fd", remote_fd, "path", node, "do-timestamp", TRUE,
+    "always-copy", TRUE, "keepalive-time", MAX(1, 1000 / fps), NULL);
+  g_free(node); gst_object_unref(source);
+  GstElement *sink = gst_bin_get_by_name(GST_BIN(portal_video), "frames");
+  g_signal_connect(sink, "new-sample", G_CALLBACK(portal_frame), NULL);
+  gst_object_unref(sink);
+  GstBus *messages = gst_element_get_bus(portal_video);
+  gst_bus_add_watch(messages, gst_message, NULL); gst_object_unref(messages);
+  if (gst_element_set_state(portal_video, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
+    fail("Cannot start PipeWire screen capture"); return FALSE;
+  }
+  return TRUE;
+}
+
+static void set_portal_target(GstElement *source) {
+  g_mutex_lock(&portal_lock);
+  gst_object_replace((GstObject **)&portal_target, source ? GST_OBJECT(source) : NULL);
+  g_mutex_unlock(&portal_lock);
+}
+
 static gboolean make_video(void) {
   double scale = MIN(1.0, MIN((double)output_width / source_width, (double)output_height / source_height));
   int w = MAX(2, ((int)(source_width * scale) / 2) * 2);
@@ -422,22 +474,25 @@ static gboolean make_video(void) {
   char *description = g_strdup_printf(
     "%s name=source ! queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
     "videorate ! video/x-raw,framerate=%d/1 ! videoconvert ! videoscale ! video/x-raw,format=NV12,width=%d,height=%d,pixel-aspect-ratio=1/1 ! %s",
-    remote_fd >= 0 ? "pipewiresrc" : xid ? "appsrc" : "ximagesrc", fps, w, h, chain);
+    remote_fd >= 0 || xid ? "appsrc" : "ximagesrc", fps, w, h, chain);
   g_free(chain);
   GError *error = NULL;
   video = gst_parse_launch(description, &error); g_free(description);
   if (error) { fail(error->message); g_error_free(error); return FALSE; }
   configure_encoder(video, video_encoder, w, h);
   GstElement *source = gst_bin_get_by_name(GST_BIN(video), "source");
-  if (remote_fd >= 0) {
-    char *node = g_strdup_printf("%u", node_id);
-    g_object_set(source, "fd", remote_fd, "path", node, "do-timestamp", TRUE,
-      "always-copy", TRUE, "keepalive-time", MAX(1, 1000 / fps), NULL); g_free(node);
-  } else if (xid) g_object_set(source, "is-live", TRUE, "do-timestamp", TRUE, "format", GST_FORMAT_TIME, "max-buffers", (guint64)2, "leaky-type", 2, NULL);
+  if (remote_fd >= 0 || xid) g_object_set(source, "is-live", TRUE, "do-timestamp", TRUE, "format", GST_FORMAT_TIME, "max-buffers", (guint64)2, "leaky-type", 2, NULL);
   else g_object_set(source, "startx", screen_x, "starty", screen_y, "endx", screen_x + screen_width - 1, "endy", screen_y + screen_height - 1, "use-damage", FALSE, NULL);
+  if (remote_fd >= 0) set_portal_target(source);
   gst_object_unref(source); video_configured = FALSE;
   video_origin = (guint64)g_get_monotonic_time() * 1000;
   if (!play(video, 3)) return FALSE;
+  if (remote_fd >= 0) {
+    if (!start_portal_video()) return FALSE;
+    GstElement *portal_source = gst_bin_get_by_name(GST_BIN(portal_video), "source");
+    g_object_set(portal_source, "keepalive-time", MAX(1, 1000 / fps), NULL);
+    gst_object_unref(portal_source);
+  }
   if (xid) window_timer = g_timeout_add(MAX(1, 1000 / fps), window_frame, NULL);
   return TRUE;
 }
@@ -465,7 +520,7 @@ static void read_audio(pa_stream *stream, size_t available, void *userdata) {
     if (data) gst_buffer_fill(buffer, 0, data, bytes); else gst_buffer_memset(buffer, 0, 0, bytes);
     GST_BUFFER_DURATION(buffer) = gst_util_uint64_scale(bytes / 8, GST_SECOND, 48000);
     GstFlowReturn result = gst_app_src_push_buffer(GST_APP_SRC(tap->source), buffer);
-    if (result != GST_FLOW_OK && !stopping) fail("Audio mixer stopped");
+    if (result != GST_FLOW_OK && !g_atomic_int_get(&stopping)) fail("Audio mixer stopped");
     pa_stream_drop(stream);
   }
 }
@@ -590,7 +645,7 @@ static void pulse_state(pa_context *context, void *unused) {
     if (operation) pa_operation_unref(operation);
   } else if (pa_context_get_state(context) == PA_CONTEXT_FAILED || pa_context_get_state(context) == PA_CONTEXT_TERMINATED) {
     pulse_done = 1;
-    if (!listing && !stopping) fail("Connect to PulseAudio or PipeWire PulseAudio service");
+    if (!listing && !g_atomic_int_get(&stopping)) fail("Connect to PulseAudio or PipeWire PulseAudio service");
   }
 }
 
@@ -613,6 +668,20 @@ static void connect_pulse(void) {
   }
 }
 
+static gpointer run_pulse(gpointer unused) {
+  (void)unused;
+  connect_pulse();
+  while (!g_atomic_int_get(&pulse_stopping) && pulse_iterate(NULL)) g_usleep(5000);
+  return NULL;
+}
+
+static gboolean start_pulse(gpointer unused) {
+  (void)unused;
+  pulse_timer = 0;
+  pulse_thread = g_thread_new("capture-audio", run_pulse, NULL);
+  return G_SOURCE_REMOVE;
+}
+
 static gboolean make_audio(void) {
   if (!audio_id) return TRUE;
   char trailing;
@@ -625,8 +694,8 @@ static gboolean make_audio(void) {
   mixer = gst_bin_get_by_name(GST_BIN(audio), "mix");
   timestamp_origin = (guint64)g_get_monotonic_time() * 1000;
   if (!play(audio, 4)) return FALSE;
-  connect_pulse(); pulse_timer = g_timeout_add(5, pulse_iterate, NULL);
-  return !status;
+  pulse_timer = g_idle_add(start_pulse, NULL);
+  return !g_atomic_int_get(&status);
 }
 
 static void portal_response(GDBusConnection *connection, const char *sender, const char *object, const char *interface, const char *signal, GVariant *parameters, gpointer unused) {
@@ -650,14 +719,14 @@ static GVariant *portal_request(const char *method, GVariant *parameters, const 
   if (reply) {
     g_variant_unref(reply);
     guint timeout = g_timeout_add_seconds(120, request_timeout, NULL);
-    if (!response && !stopping) g_main_loop_run(request_loop);
+    if (!response && !g_atomic_int_get(&stopping)) g_main_loop_run(request_loop);
     if (g_main_context_find_source_by_id(NULL, timeout)) g_source_remove(timeout);
   } else { fail(error->message); g_error_free(error); }
   g_dbus_connection_signal_unsubscribe(bus, subscription);
   g_main_loop_unref(request_loop); request_loop = NULL;
-  if (response_code || !response || stopping) {
+  if (response_code || !response || g_atomic_int_get(&stopping)) {
     g_dbus_connection_call(bus, "org.freedesktop.portal.Desktop", path, "org.freedesktop.portal.Request", "Close", NULL, NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL, NULL);
-    if (!status) fail(response_code == 1 || stopping ? "Capture cancelled" : "Screen capture portal denied the request");
+    if (!g_atomic_int_get(&status)) fail(response_code == 1 || g_atomic_int_get(&stopping) ? "Capture cancelled" : "Screen capture portal denied the request");
     g_clear_pointer(&response, g_variant_unref);
   }
   g_free(path); return response;
@@ -701,7 +770,7 @@ static gboolean open_portal(guint kind) {
   guint actual = 0;
   if (g_variant_lookup(properties, "source_type", "u", &actual) && actual != kind) fail("Portal returned a different capture type");
   g_variant_unref(properties); g_variant_unref(entry); g_variant_unref(streams); g_variant_unref(result);
-  if (status) return FALSE;
+  if (g_atomic_int_get(&status)) return FALSE;
   GUnixFDList *fds = NULL;
   g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
   result = g_dbus_connection_call_with_unix_fd_list_sync(bus, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.ScreenCast", "OpenPipeWireRemote", g_variant_new("(oa{sv})", session, &options), G_VARIANT_TYPE("(h)"), G_DBUS_CALL_FLAGS_NONE, 15000, NULL, &fds, NULL, &error);
@@ -800,6 +869,7 @@ static gboolean control(GIOChannel *channel, GIOCondition condition, gpointer un
   if (!strcmp(line, "stop\n")) { g_free(line); return stop(NULL); }
   if (sscanf(line, "configure %d %d %d %c", &w, &h, &rate, &extra) != 3 || w < 2 || h < 2 || w > 8192 || h > 8192 || (rate != 15 && rate != 30 && rate != 60)) fail("Invalid capture mode");
   else if (video) {
+    set_portal_target(NULL);
     if (window_timer) { g_source_remove(window_timer); window_timer = 0; }
     GstBus *messages = gst_element_get_bus(video);
     gst_bus_remove_watch(messages); gst_object_unref(messages);
@@ -840,13 +910,17 @@ int main(int argc, char **argv) {
     if (selected && (source_width < 2 || source_height < 2)) fail("Capture source did not report its size");
     timestamp_origin = (guint64)g_get_monotonic_time() * 1000;
     video_origin = timestamp_origin;
-    if (selected && !status && make_video() && make_audio()) g_main_loop_run(loop);
+    if (selected && !g_atomic_int_get(&status) && make_video() && make_audio()) g_main_loop_run(loop);
     g_io_channel_unref(input);
-  } else status = 2;
-  stopping = TRUE;
+  } else g_atomic_int_set(&status, 2);
+  g_atomic_int_set(&stopping, TRUE);
   if (window_timer) g_source_remove(window_timer);
   if (pulse_timer && g_main_context_find_source_by_id(NULL, pulse_timer)) g_source_remove(pulse_timer);
+  g_atomic_int_set(&pulse_stopping, TRUE);
+  if (pulse_thread) g_thread_join(pulse_thread);
   g_hash_table_remove_all(taps);
+  set_portal_target(NULL);
+  if (portal_video) { gst_element_set_state(portal_video, GST_STATE_NULL); gst_object_unref(portal_video); }
   if (video) { gst_element_set_state(video, GST_STATE_NULL); gst_object_unref(video); }
   if (window_display) {
     if (window_pixmap) XFreePixmap(window_display, window_pixmap);
@@ -862,5 +936,5 @@ int main(int argc, char **argv) {
   g_hash_table_unref(taps); g_hash_table_unref(seen_apps);
   g_string_free(outputs, TRUE); g_string_free(apps, TRUE); g_free(default_sink);
   g_main_loop_unref(loop);
-  return status;
+  return g_atomic_int_get(&status);
 }

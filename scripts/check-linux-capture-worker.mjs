@@ -136,7 +136,10 @@ try {
   let pcm = [],
     video = [],
     failure,
-    configs = [];
+    configs = [],
+    configuring = false,
+    silentSamples = 0,
+    longestSilence = 0;
   const start = (audioSource) => {
     pcm = [];
     video = [];
@@ -161,6 +164,14 @@ try {
       if (video.length < 60) video.push(packet.data);
     });
     capture.on("audio", (packet) => {
+      if (configuring) {
+        let energy = 0;
+        for (let i = 0; i < packet.data.length; i += 2)
+          energy += packet.data[i] ** 2;
+        const frames = packet.data.length / 2;
+        silentSamples = energy / frames < 0.001 ? silentSamples + frames : 0;
+        longestSilence = Math.max(longestSilence, silentSamples);
+      }
       for (let i = 0; i < packet.data.length; i += 2) pcm.push(packet.data[i]);
       if (pcm.length > 48000) pcm.splice(0, pcm.length - 48000);
     });
@@ -172,6 +183,10 @@ try {
         pcm.length >= 24000 &&
         present.every((f) => amplitude(pcm.slice(-24000), f) > 0.07) &&
         absent.every((f) => amplitude(pcm.slice(-24000), f) < 0.005)
+      );
+    }).catch((error) => {
+      throw Error(
+        `${error.message}\n${JSON.stringify(Object.fromEntries([...present, ...absent].map((f) => [f, amplitude(pcm.slice(-24000), f)])))}`,
       );
     });
     return Object.fromEntries(
@@ -216,7 +231,13 @@ try {
   const multiple = await measure([997, 701], [1601]);
   first.stdin.write("remove 997\n");
   const removed = await measure([701], [997, 1601]);
+  configuring = true;
   const changed = await capture.configure({ width: 320, height: 240, fps: 15 });
+  configuring = false;
+  assert(
+    longestSilence / 48 < 200,
+    `Video configuration silenced audio for ${longestSilence / 48} ms`,
+  );
   assert(changed.width <= 320 && changed.height <= 240 && changed.fps === 15);
   await measure([701], [1601]);
   capture.stop();
@@ -246,6 +267,7 @@ try {
     entire,
     mode: changed,
     initialMode,
+    configureSilenceMs: longestSilence / 48,
     playbackPreserved: true,
   };
   await fs.writeFile(
