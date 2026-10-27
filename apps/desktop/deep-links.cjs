@@ -1,10 +1,10 @@
 const { localHTTPHost } = require("./network.cjs");
-function parseDeepLink(raw) {
+function parseDeepLink(raw, scheme = "haunt") {
   if (typeof raw !== "string" || raw.length > 4096)
     throw Error("Invalid Haunt link.");
   const url = new URL(raw);
   if (
-    url.protocol !== "haunt:" ||
+    url.protocol !== scheme + ":" ||
     url.hostname !== "open" ||
     !["", "/"].includes(url.pathname) ||
     url.username ||
@@ -36,13 +36,14 @@ function parseDeepLink(raw) {
   return { server: server.origin, channel, message };
 }
 function installDeepLinks(app, ipcMain, validateSender) {
+  const scheme = app.getName?.() === "Haunt Dev" ? "haunt-dev" : "haunt";
   let parent,
     ready = false;
   const queued = [];
   const receive = (raw) => {
     let value;
     try {
-      value = parseDeepLink(raw);
+      value = parseDeepLink(raw, scheme);
     } catch (error) {
       value = { error: error.message };
     }
@@ -63,9 +64,10 @@ function installDeepLinks(app, ipcMain, validateSender) {
     receive(url);
   });
   app.on("second-instance", (_event, argv) => {
-    for (const arg of argv) if (arg.startsWith("haunt:")) receive(arg);
+    for (const arg of argv) if (arg.startsWith(scheme + ":")) receive(arg);
   });
-  for (const arg of process.argv) if (arg.startsWith("haunt:")) receive(arg);
+  for (const arg of process.argv)
+    if (arg.startsWith(scheme + ":")) receive(arg);
   ipcMain.handle("links:ready", (event) => {
     validateSender(event);
     ready = true;
@@ -73,7 +75,7 @@ function installDeepLinks(app, ipcMain, validateSender) {
   });
   ipcMain.handle("links:open", (event, raw) => {
     validateSender(event);
-    parseDeepLink(raw);
+    parseDeepLink(raw, scheme);
     receive(raw);
   });
   return (window) => {
@@ -85,7 +87,7 @@ function installDeepLinks(app, ipcMain, validateSender) {
       },
     );
     if (app.isPackaged && process.env.HAUNT_DESKTOP_TEST !== "1")
-      app.setAsDefaultProtocolClient("haunt");
+      app.setAsDefaultProtocolClient(scheme);
   };
 }
 module.exports = { parseDeepLink, installDeepLinks };

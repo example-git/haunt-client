@@ -123,7 +123,7 @@ export async function checkDesktopTools(
     .click();
   await expect(page.locator(`#message-${id}`)).toHaveClass(/highlight/);
   await page
-    .getByRole("button", { name: "Search downloaded messages", exact: true })
+    .getByRole("searchbox", { name: "Search downloaded messages", exact: true })
     .click();
   await page
     .getByLabel("Search downloaded messages", { exact: true })

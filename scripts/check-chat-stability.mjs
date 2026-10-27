@@ -331,6 +331,108 @@ try {
     await expect(input).toHaveValue("Keep typed draft and selection");
     await expect(input).toBeFocused();
   }
+  const comparePixels = (before, after) =>
+    page.evaluate(
+      async ([before, after]) => {
+        const pixels = async (base64) => {
+          const image = await createImageBitmap(
+            await (await fetch(`data:image/png;base64,${base64}`)).blob(),
+          );
+          const canvas = document.createElement("canvas");
+          canvas.width = image.width;
+          canvas.height = image.height;
+          const context = canvas.getContext("2d");
+          context.drawImage(image, 0, 0);
+          image.close();
+          return context.getImageData(0, 0, canvas.width, canvas.height).data;
+        };
+        const a = await pixels(before),
+          b = await pixels(after);
+        let max = 0,
+          edgePixels = 0;
+        for (let i = 0; i < a.length; i += 4) {
+          const delta = Math.max(
+            ...[0, 1, 2, 3].map((channel) =>
+              Math.abs(a[i + channel] - b[i + channel]),
+            ),
+          );
+          max = Math.max(max, delta);
+          if (delta > 4) edgePixels++;
+        }
+        return a.length === b.length && max <= 10 && edgePixels <= 4;
+      },
+      [before.toString("base64"), after.toString("base64")],
+    );
+  const rail = page.locator(".server-rail");
+  const peopleSearch = page.getByRole("combobox", {
+    name: "Search direct messages",
+  });
+  for (const effect of ["opaque", "transparent", "material"]) {
+    await page.evaluate((effect) => {
+      document.documentElement.dataset.windowEffect = effect;
+    }, effect);
+    await peopleSearch.press("Escape");
+    await peopleSearch.blur();
+    await frames();
+    const before = await rail.screenshot({ animations: "disabled" });
+    const bounds = await rail.boundingBox();
+    await peopleSearch.focus();
+    await expect(
+      page.getByRole("listbox", { name: "People across your servers" }),
+    ).toBeVisible();
+    for (let frame = 0; frame < 8; frame++) {
+      await peopleSearch.press(frame % 2 ? "ArrowUp" : "ArrowDown");
+      await frames();
+      const after = await rail.screenshot({ animations: "disabled" });
+      assert.deepEqual(await rail.boundingBox(), bounds);
+      const unchanged = await comparePixels(before, after);
+      if (!unchanged) {
+        await fs.writeFile(
+          path.join(output, `rail-${effect}-before.png`),
+          before,
+        );
+        await fs.writeFile(
+          path.join(output, `rail-${effect}-after.png`),
+          after,
+        );
+      }
+      assert.ok(
+        unchanged,
+        `Search must not repaint the server rail (${effect}, frame ${frame})`,
+      );
+    }
+    await peopleSearch.press("Escape");
+    await expect(peopleSearch).toBeFocused();
+    await expect(
+      page.getByRole("listbox", { name: "People across your servers" }),
+    ).toHaveCount(0);
+    report.push({ view: `people-search-${effect}`, stableRailFrames: 8 });
+  }
+  await page.evaluate(() => {
+    document.documentElement.dataset.windowEffect = "opaque";
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(rail).toBeHidden();
+  await page.getByRole("button", { name: "Show servers", exact: true }).click();
+  await expect(rail).toBeVisible();
+  await expect
+    .poll(async () => Math.round((await rail.boundingBox()).x))
+    .toBe(0);
+  assert.equal(Math.round((await rail.boundingBox()).width), 62);
+  await page
+    .getByRole("button", {
+      name: "Direct messages and notifications",
+      exact: true,
+    })
+    .click();
+  await expect(rail).toBeHidden();
+  await expect(peopleSearch).toBeVisible();
+  await page.screenshot({ path: path.join(output, "mobile-home.png") });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(rail).toBeVisible();
+  assert.equal(Math.round((await rail.boundingBox()).x), 0);
+  await page.screenshot({ path: path.join(output, "desktop-home.png") });
+  report.push({ view: "mobile-navigation", openedAndClosed: true });
   await page
     .getByRole("button", { name: "Message Alice via Community", exact: true })
     .click();

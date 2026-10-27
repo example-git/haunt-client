@@ -191,10 +191,15 @@ async function migrateCredentials(
   writeState(directory, { version: 1, name: "Haunt" });
 }
 
-function initializeProfile(app) {
+function initializeProfile(app, channel = "stable") {
   if (global[initialized]) return global[initialized];
-  app.setName("Haunt");
-  const profileName = app.isPackaged ? "haunt" : "haunt-development";
+  const development = channel === "dev";
+  app.setName(development ? "Haunt Dev" : "Haunt");
+  const profileName = development
+    ? "haunt-dev"
+    : app.isPackaged
+      ? "haunt"
+      : "haunt-development";
   const legacyName = app.isPackaged
     ? LEGACY_PROFILE_NAME
     : LEGACY_DEVELOPMENT_PROFILE_NAME;
@@ -209,7 +214,11 @@ function initializeProfile(app) {
         ? app.getPath("userData")
         : path.join(app.getPath("appData"), profileName)),
   );
-  if (!testProfile && (!override || path.basename(directory) === profileName)) {
+  if (
+    !development &&
+    !testProfile &&
+    (!override || path.basename(directory) === profileName)
+  ) {
     const legacy = path.join(path.dirname(directory), legacyName);
     if (exists(legacy)) {
       // Refuse to move a profile still owned by a running previous client.
@@ -228,6 +237,7 @@ function initializeProfile(app) {
   let migration;
   const profile = {
     migrateCredentials(safeStorage) {
+      if (development) return Promise.resolve();
       migration ??= migrateCredentials(
         directory,
         safeStorage,

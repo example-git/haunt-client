@@ -17,6 +17,24 @@ export { clientPost } from "./provider-posts";
 import { cachedMedia, mediaKey, retryMedia } from "./media-cache";
 export { mediaTask } from "./media-queue";
 const cards = new Map<string, { at: number; cards: Embed[] }>();
+const resolvedCards = new Map<string, { at: number; cards: Embed[] }>();
+function messageEmbedKey(instance: InstanceClient, message: Message) {
+  return mediaKey(
+    instance,
+    "resolved-embeds-v1",
+    message.conversation_id,
+    message.id,
+    message.edited_at ?? message.created_at,
+    message.security ?? "",
+    message.body,
+  );
+}
+export function cachedMessageEmbeds(
+  instance: InstanceClient,
+  message: Message,
+) {
+  return resolvedCards.get(messageEmbedKey(instance, message))?.cards;
+}
 export async function messageEmbeds(
   instance: InstanceClient,
   message: Message,
@@ -24,6 +42,15 @@ export async function messageEmbeds(
 ): Promise<Embed[]> {
   if (["encrypted", "unavailable", "pending"].includes(message.security ?? ""))
     return [];
+  const key = messageEmbedKey(instance, message);
+  const cached = resolvedCards.get(key);
+  if (
+    cached &&
+    (instance.snapshot.status === "offline" ||
+      Date.now() - cached.at <
+        (cached.cards.some((card) => card.local) ? 60000 : 300000))
+  )
+    return cached.cards;
   const links = [
     ...new Set(
       messageLinks(message.body ?? "")
@@ -80,7 +107,7 @@ export async function messageEmbeds(
       }),
   );
   const [server, posts] = await Promise.all([serverPromise, postsPromise]);
-  return [
+  const value = [
     ...server
       .filter((card) => !clientPost(card.url))
       .map((card) => ({ ...card, local: undefined })),
@@ -88,6 +115,13 @@ export async function messageEmbeds(
   ]
     .sort((a, b) => a.index - b.index)
     .slice(0, 3);
+  signal.throwIfAborted();
+  resolvedCards.delete(key);
+  if (value.length && value.every((card) => card.status !== "unavailable"))
+    resolvedCards.set(key, { at: Date.now(), cards: value });
+  while (resolvedCards.size > 256)
+    resolvedCards.delete(resolvedCards.keys().next().value!);
+  return value;
 }
 
 async function serverMessageEmbeds(

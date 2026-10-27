@@ -29,6 +29,7 @@ import {
   attachmentMetadata,
   attachmentMedia,
   messageEmbeds,
+  cachedMessageEmbeds,
   previewImage,
   previewVideo,
   clientPost,
@@ -49,7 +50,11 @@ function useVisible(enabled = true) {
   useEffect(() => {
     const element = ref.current;
     if (!enabled || !element) return;
-    if (typeof IntersectionObserver === "undefined") {
+    if (
+      (element.closest("[data-message-row]") &&
+        element.getClientRects().length > 0) ||
+      typeof IntersectionObserver === "undefined"
+    ) {
       setVisible(true);
       return;
     }
@@ -263,6 +268,10 @@ function PostMedia({
     attempt,
     embed,
   ]);
+  const aspect =
+    media?.width && media.height
+      ? `${media.width} / ${media.height}`
+      : "16 / 9";
   if (avatar)
     return image ? (
       <img
@@ -271,10 +280,15 @@ function PostMedia({
         alt=""
         referrerPolicy="no-referrer"
       />
-    ) : null;
+    ) : (
+      <span className="embed-avatar" aria-hidden="true" />
+    );
   if (media?.kind === "video" || media?.kind === "audio")
     return (
-      <div className="embed-native-video">
+      <div
+        className="embed-native-video"
+        style={{ "--embed-media-aspect": aspect } as CSSProperties}
+      >
         {video && media.kind === "audio" ? (
           <audio
             ref={(element) =>
@@ -352,31 +366,33 @@ function PostMedia({
         )}
       </div>
     );
-  if (image)
-    return (
-      <ImagePreview className="embed-picture" label="Enlarge preview image">
-        <img
-          src={image}
-          referrerPolicy="no-referrer"
-          alt={media?.alt || embed.image_alt || "Post image"}
-          onError={() => {
-            setImage(undefined);
-            setError(true);
-          }}
-        />
-      </ImagePreview>
-    );
   return (
-    <div className="embed-media-status" role="status">
-      {error ? (
-        <button
-          className="text-button"
-          onClick={() => setAttempt((value) => value + 1)}
-        >
-          Retry image
-        </button>
+    <div className="embed-media-frame" style={{ aspectRatio: aspect }}>
+      {image ? (
+        <ImagePreview className="embed-picture" label="Enlarge preview image">
+          <img
+            src={image}
+            referrerPolicy="no-referrer"
+            alt={media?.alt || embed.image_alt || "Post image"}
+            onError={() => {
+              setImage(undefined);
+              setError(true);
+            }}
+          />
+        </ImagePreview>
       ) : (
-        "Loading image…"
+        <div className="embed-media-status" role="status">
+          {error ? (
+            <button
+              className="text-button"
+              onClick={() => setAttempt((value) => value + 1)}
+            >
+              Retry image
+            </button>
+          ) : (
+            "Loading image…"
+          )}
+        </div>
       )}
     </div>
   );
@@ -517,7 +533,7 @@ function PreviewCard({
         </div>
       ) : player ? (
         <button
-          className="embed-play"
+          className={`embed-play embed-player-poster ${embed.player?.startsWith("twitch-") ? "embed-twitch" : ""}`}
           aria-label={`Play ${embed.site_name || "embedded"} video: ${embed.title || host}`}
           onClick={() => setPlaying(true)}
         >
@@ -532,14 +548,23 @@ function PreviewCard({
             <Play size={28} fill="currentColor" /> Play video
           </span>
         </button>
-      ) : image ? (
-        <ImagePreview className="embed-picture" label="Enlarge preview image">
-          <img
-            src={image}
-            alt={embed.image_alt || embed.title || "Link preview"}
-            onError={() => setImage(undefined)}
-          />
-        </ImagePreview>
+      ) : embed.image ? (
+        <div className="embed-media-frame embed-link-image">
+          {image ? (
+            <ImagePreview
+              className="embed-picture"
+              label="Enlarge preview image"
+            >
+              <img
+                src={image}
+                alt={embed.image_alt || embed.title || "Link preview"}
+                onError={() => setImage(undefined)}
+              />
+            </ImagePreview>
+          ) : (
+            <div className="embed-media-status">Image preview</div>
+          )}
+        </div>
       ) : null}
       <ExternalLink className="embed-open" href={embed.url}>
         <LinkIcon size={12} /> Open {host}
@@ -560,16 +585,18 @@ export function MessageEmbeds({
     (link) => link.preview && (supported || clientPost(link.url)),
   );
   const { ref, visible } = useVisible(eligible),
-    [embeds, setEmbeds] = useState<Embed[]>([]),
+    [embeds, setEmbeds] = useState<Embed[]>(
+      () => cachedMessageEmbeds(instance, message) ?? [],
+    ),
     [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">(
-      "idle",
+      embeds.length ? "ready" : "idle",
     ),
     [attempt, setAttempt] = useState(0),
     [hidden, setHidden] = useState(false);
   useEffect(() => {
     if (!visible || !eligible) return;
     const controller = new AbortController();
-    setStatus("loading");
+    if (!embeds.length) setStatus("loading");
     void messageEmbeds(instance, message, controller.signal)
       .then((value) => {
         if (!controller.signal.aborted) {

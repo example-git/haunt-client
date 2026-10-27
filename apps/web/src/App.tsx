@@ -1944,25 +1944,28 @@ export function ConversationView({
     [historyBefore, setHistoryBefore] = useState<number>(),
     [olderAvailable, setOlderAvailable] = useState(true),
     [loadingHistory, setLoadingHistory] = useState(false),
+    [awayFromLatest, setAwayFromLatest] = useState(false),
     [replyingTo, setReplyingTo] = useState<Message>(),
     [highlighted, setHighlighted] = useState(""),
+    [jump, setJump] = useState<{ id: string } | { latest: true }>(),
     [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
   const dropTarget = useRef<HTMLDivElement>(null);
-  const bottom = useRef<HTMLDivElement>(null),
-    list = useRef<HTMLDivElement>(null),
-    previousHeight = useRef(0),
-    stick = useRef(true),
-    pendingReplyJump = useRef<string | undefined>(undefined);
+  const list = useRef<HTMLDivElement>(null),
+    historyNavigation = useRef(0),
+    stick = useRef(true);
   useEffect(() => {
+    historyNavigation.current++;
     setHistoryBefore(undefined);
     setOlderAvailable(true);
+    setLoadingHistory(false);
     setLimit(100);
-    pendingReplyJump.current = undefined;
+    setJump(undefined);
     stick.current = true;
+    setAwayFromLatest(false);
   }, [instance, conversation]);
   useEffect(() => {
     let live = true;
@@ -1994,24 +1997,6 @@ export function ConversationView({
     limit,
     historyBefore,
   ]);
-  useLayoutEffect(() => {
-    if (pendingReplyJump.current && revealReply(pendingReplyJump.current)) {
-      pendingReplyJump.current = undefined;
-      return;
-    }
-    if (stick.current && list.current)
-      list.current.scrollTop = list.current.scrollHeight;
-  }, [messages, pending.length]);
-  useEffect(() => {
-    const element = list.current;
-    if (!element) return;
-    const observer = new ResizeObserver(() => {
-      if (stick.current && list.current)
-        list.current.scrollTop = list.current.scrollHeight;
-    });
-    for (const row of element.children) observer.observe(row);
-    return () => observer.disconnect();
-  }, [messages, pending]);
   const acknowledge = () => {
     if (
       visible &&
@@ -2032,33 +2017,31 @@ export function ConversationView({
     acknowledge();
     return subscribeWindowActivity(acknowledge, document);
   }, [messages, conversation, state.status, visible]);
-  function revealReply(id: string) {
-    const owner = list.current?.ownerDocument;
-    if (!owner) return false;
-    const target = owner.getElementById(`message-${id}`);
-    if (!target) return false;
-    target.scrollIntoView({ behavior: "instant", block: "center" });
-    setHighlighted(id);
-    owner.defaultView?.setTimeout(
-      () => setHighlighted((current) => (current === id ? "" : current)),
-      1600,
-    );
-    return true;
-  }
   const navigateReply = async (id: string) => {
+    const navigation = ++historyNavigation.current;
+    setLoadingHistory(false);
     stick.current = false;
-    if (revealReply(id)) return;
+    setAwayFromLatest(true);
     const target =
       messages.find((message) => message.id === id) ??
       (await instance.message(conversation, id));
+    if (navigation !== historyNavigation.current) return;
     if (!target)
       throw Error(
         "This message is unavailable or you no longer have access to it.",
       );
-    await instance.loadOlder(conversation, target.seq + 1);
-    pendingReplyJump.current = id;
-    setLimit(100);
-    setHistoryBefore(target.seq + 1);
+    if (!messages.slice(-limit).some((message) => message.id === id)) {
+      await instance.loadOlder(conversation, target.seq + 1);
+      if (navigation !== historyNavigation.current) return;
+      setLimit(100);
+      setHistoryBefore(target.seq + 1);
+    }
+    setJump({ id });
+    setHighlighted(id);
+    window.setTimeout(
+      () => setHighlighted((current) => (current === id ? "" : current)),
+      1600,
+    );
   };
   useEffect(() => {
     const open = () => {
@@ -2080,35 +2063,11 @@ export function ConversationView({
       <div
         className={`messages ${compact ? "chat-display-compact" : ""}`}
         ref={list}
-        onScroll={() => {
-          const e = list.current!;
-          const resized = previousHeight.current !== e.scrollHeight;
-          previousHeight.current = e.scrollHeight;
-          // Scroll anchoring can move the viewport when an image loads or the
-          // oldest row drops out of the 100-message window. Preserve following
-          // through that layout change; scrolling back still disables it.
-          if (resized && stick.current) e.scrollTop = e.scrollHeight;
-          else
-            stick.current =
-              historyBefore === undefined &&
-              e.scrollHeight - e.scrollTop - e.clientHeight < 120;
-          acknowledge();
-        }}
+        tabIndex={0}
+        aria-label={`${title} messages`}
       >
         <div className="history-note">
           <span>Downloaded messages stay on this device</span>
-          {historyBefore !== undefined && (
-            <button
-              className="text-button"
-              onClick={() => {
-                stick.current = true;
-                setHistoryBefore(undefined);
-                setLimit(100);
-              }}
-            >
-              Return to latest messages
-            </button>
-          )}
         </div>
         {(messages.length > limit ||
           (olderAvailable && !!messages.length && messages[0].seq > 1)) && (
@@ -2116,7 +2075,9 @@ export function ConversationView({
             className="text-button load-more"
             disabled={loadingHistory}
             onClick={() => {
+              const navigation = ++historyNavigation.current;
               stick.current = false;
+              setAwayFromLatest(true);
               setLoadingHistory(true);
               const before = messages[0].seq;
               void instance
@@ -2126,12 +2087,16 @@ export function ConversationView({
                     before,
                     limit: 100,
                   });
+                  if (navigation !== historyNavigation.current) return;
                   setOlderAvailable(!!page?.has_more || local.length === 100);
                   if (limit < 1000) setLimit(limit + 100);
                   else setHistoryBefore(messages[messages.length - 100].seq);
                 })
                 .catch((error) => setError(friendlyError(error)))
-                .finally(() => setLoadingHistory(false));
+                .finally(() => {
+                  if (navigation === historyNavigation.current)
+                    setLoadingHistory(false);
+                });
             }}
           >
             {loadingHistory ? "Loading older messages…" : "Show older messages"}
@@ -2142,7 +2107,12 @@ export function ConversationView({
           items={messages.slice(-limit)}
           scroll={list}
           following={stick}
-          focus={pendingReplyJump.current}
+          focus={jump}
+          atLatest={historyBefore === undefined}
+          onFollowingChange={(following) => {
+            setAwayFromLatest(!following);
+            if (following) acknowledge();
+          }}
         >
           {(message, index, items) => (
             <Fragment key={message.id}>
@@ -2200,10 +2170,12 @@ export function ConversationView({
             className="text-button load-more"
             disabled={loadingHistory}
             onClick={() => {
+              const navigation = ++historyNavigation.current;
               setLoadingHistory(true);
               void instance
                 .loadNewer(conversation, messages.at(-1)?.seq ?? 0)
                 .then((page) => {
+                  if (navigation !== historyNavigation.current) return;
                   if (page?.messages.length) {
                     setHistoryBefore(page.messages.at(-1)!.seq + 1);
                   } else {
@@ -2213,7 +2185,10 @@ export function ConversationView({
                   }
                 })
                 .catch((error) => setError(friendlyError(error)))
-                .finally(() => setLoadingHistory(false));
+                .finally(() => {
+                  if (navigation === historyNavigation.current)
+                    setLoadingHistory(false);
+                });
             }}
           >
             Show newer messages
@@ -2250,8 +2225,25 @@ export function ConversationView({
             )}
           </div>
         ))}
-        <div ref={bottom} />
       </div>
+      {(awayFromLatest || historyBefore !== undefined) && (
+        <div className="history-latest">
+          <button
+            className="primary"
+            onClick={() => {
+              historyNavigation.current++;
+              setLoadingHistory(false);
+              setJump({ latest: true });
+              stick.current = true;
+              setAwayFromLatest(false);
+              setHistoryBefore(undefined);
+              setLimit(100);
+            }}
+          >
+            Return to latest messages
+          </button>
+        </div>
+      )}
       <ErrorNotice error={error} />
       {writable ? (
         <Composer

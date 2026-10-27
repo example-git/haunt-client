@@ -284,17 +284,20 @@ class Updater extends EventEmitter {
     this.config = config;
     this.runtime = runtime;
     this.baseline = version;
+    this.development = config.channel === "dev" || /-dev\.\d+$/.test(version);
     this.platform = platform;
     this.arch = arch;
     this.getResponse = getResponse;
     this.state = {};
     this.sources = new Map();
     this.status = {
-      phase: config.publicKey ? "idle" : "disabled",
+      phase: !this.development && config.publicKey ? "idle" : "disabled",
       current: version,
-      message: config.publicKey
-        ? ""
-        : "This build does not have a release verification key.",
+      message: this.development
+        ? "Development builds use manual downloads."
+        : config.publicKey
+          ? ""
+          : "This build does not have a release verification key.",
     };
   }
   snapshot = () => ({ ...this.status });
@@ -329,6 +332,7 @@ class Updater extends EventEmitter {
     return info;
   }
   async boot() {
+    if (this.development) return;
     await fsp.mkdir(this.directory, { recursive: true, mode: 0o700 });
     try {
       this.state = await readSmall(path.join(this.directory, "state.json"));
@@ -435,6 +439,7 @@ class Updater extends EventEmitter {
     return this.running;
   }
   source(value) {
+    if (this.development) return;
     if (!value || typeof value.id !== "string" || value.id.length > 512)
       throw Error("Invalid update source");
     if (value.remove) {
@@ -503,6 +508,7 @@ class Updater extends EventEmitter {
     return { envelope, info: this.info(envelope), source };
   }
   check() {
+    if (this.development) return Promise.resolve(this.snapshot());
     if (
       !this.config.publicKey ||
       this.status.phase === "ready" ||

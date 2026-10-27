@@ -230,6 +230,13 @@ export async function checkScreen(executablePath, afterCheck) {
           await picker
             .getByRole("button", { name: "Cancel", exact: true })
             .click();
+        else if (sourceKind === "window")
+          await picker
+            .getByRole("button", {
+              name: "Haunt owned capture fixture",
+              exact: true,
+            })
+            .click();
         else
           await picker
             .locator(`button.source[data-kind="${sourceKind}"]`)

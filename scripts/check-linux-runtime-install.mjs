@@ -34,7 +34,7 @@ if (process.argv[2] === "prepare") {
     "release",
     "list",
     "--repo",
-    config.repository,
+    "example-git/haunt",
     "--limit",
     "100",
     "--json",
@@ -43,20 +43,18 @@ if (process.argv[2] === "prepare") {
   const tag = JSON.parse(stdout)
     .filter(
       (r) =>
-        !r.isDraft &&
-        !r.isPrerelease &&
-        /^client-v\d+\.\d+\.\d+$/.test(r.tagName),
+        !r.isDraft && !r.isPrerelease && /^v\d+\.\d+\.\d+$/.test(r.tagName),
     )
     .map((r) => r.tagName)
-    .filter((t) => compare(t.slice(8), current.version) < 0)
-    .sort((a, b) => compare(b.slice(8), a.slice(8)))[0];
+    .filter((t) => compare(t.slice(1), current.version) < 0)
+    .sort((a, b) => compare(b.slice(1), a.slice(1)))[0];
   assert(tag, "An earlier published Linux package is required");
   await run("gh", [
     "release",
     "download",
     tag,
     "--repo",
-    config.repository,
+    "example-git/haunt",
     "--pattern",
     "haunt-updates.json",
     "--dir",
@@ -71,7 +69,7 @@ if (process.argv[2] === "prepare") {
     "linux",
     process.arch,
   );
-  assert.equal(previous.version, tag.slice(8));
+  assert.equal(previous.version, tag.slice(1));
   for (const descriptor of [previous.installer, previous.rpm]) {
     assert(descriptor, "The previous release must provide both Linux formats");
     await run(
@@ -81,7 +79,7 @@ if (process.argv[2] === "prepare") {
         "download",
         tag,
         "--repo",
-        config.repository,
+        "example-git/haunt",
         "--pattern",
         descriptor.file,
         "--dir",

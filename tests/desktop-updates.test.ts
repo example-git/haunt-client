@@ -113,6 +113,47 @@ async function fixture(
     },
   };
 }
+
+it("development builds never query stable sources or activate cached updates", async () => {
+  const f = await fixture();
+  const request = vi.fn();
+  const updater = new Updater({
+    directory: f.updater.directory,
+    config: { ...config, channel: "dev" },
+    runtime,
+    version: "0.17.9-dev.42",
+    getResponse: request,
+  });
+  await fs.writeFile(
+    path.join(f.updater.directory, "state.json"),
+    JSON.stringify({ pending: manifest() }),
+  );
+  expect(await updater.boot()).toBeUndefined();
+  updater.source({
+    id: "stable",
+    origin: "https://example.test",
+    manifestURL: "https://example.test/haunt-updates.json",
+  });
+  expect((await updater.check()).phase).toBe("disabled");
+  expect(updater.sources.size).toBe(0);
+  expect(request).not.toHaveBeenCalled();
+  expect(
+    JSON.parse(
+      await fs.readFile(path.join(f.updater.directory, "state.json"), "utf8"),
+    ).pending,
+  ).toBeDefined();
+});
+
+it("stable clients reject signed development releases", () => {
+  expect(() =>
+    verifyManifest(
+      manifest("linux", "x64", "0.17.9-dev.42"),
+      config,
+      "linux",
+      "x64",
+    ),
+  ).toThrow("Invalid release metadata");
+});
 describe("verified desktop archive updates", () => {
   for (const [platform, arch] of [
     ["win32", "x64"],

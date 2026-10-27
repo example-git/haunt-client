@@ -34,6 +34,39 @@ const storage = {
   },
 };
 describe("desktop profile migration", () => {
+  it("keeps development installs separate from stable and legacy profiles", async () => {
+    const { parent, legacy, current } = fixture();
+    fs.mkdirSync(current);
+    fs.writeFileSync(
+      path.join(current, "sessions.encrypted"),
+      "stable sessions",
+    );
+    const values: Record<string, string> = {
+      appData: parent,
+      userData: current,
+    };
+    const app = {
+      isPackaged: true,
+      setName: vi.fn(),
+      commandLine: { hasSwitch: () => false },
+      getPath: (name: string) => values[name],
+      setPath: (name: string, value: string) => {
+        values[name] = value;
+      },
+      requestSingleInstanceLock: vi.fn(),
+      releaseSingleInstanceLock: vi.fn(),
+    };
+    const profile = initializeProfile(app, "dev");
+    await profile.migrateCredentials(storage);
+    expect(app.setName).toHaveBeenCalledWith("Haunt Dev");
+    expect(values.userData).toBe(path.join(parent, "haunt-dev"));
+    expect(values.sessionData).toBe(values.userData);
+    expect(fs.existsSync(legacy)).toBe(true);
+    expect(
+      fs.readFileSync(path.join(current, "sessions.encrypted"), "utf8"),
+    ).toBe("stable sessions");
+    expect(app.requestSingleInstanceLock).not.toHaveBeenCalled();
+  });
   it("moves the complete profile once and preserves nested browser/updater data", () => {
     const { legacy, current } = fixture();
     for (const name of [

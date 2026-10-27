@@ -10,20 +10,17 @@ storage and networking; Electron integrations remain native-only.
 
 ## Cloudflare deployment
 
-The **Deploy standalone web** GitHub Actions workflow builds and tests the client,
-then publishes static assets to the `haunt-web` Worker on `workers.dev`. It runs
-after **Client version** succeeds, using that push's generated version commit.
-It can also be started manually. The workflow summary contains the public URL.
+The hub's **Hub stable release** workflow builds and tests standalone web with the
+other release targets. Deployment loads that verified artifact instead of
+rebuilding a moving branch. Development web builds are downloadable archives and
+do not deploy to the production Worker.
 
-Configure these repository secrets:
-
-- `CLOUDFLARE_API_TOKEN`: a Workers deployment token scoped to the destination account.
-- `CLOUDFLARE_ACCOUNT_ID`: that account's ID.
+Configure `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the hub repository.
+The component's manual deployment workflow remains available for maintenance.
 
 Cloudflare serves application files and update metadata. Authentication, messages,
-uploads, and calls connect directly to the chosen community servers. Successful
-deployments record the public origin in `web-deployment.json`. Server and sync
-Actions builds compile that origin into their trusted-client configuration.
+uploads, and calls connect directly to the chosen community servers. The configured public origin lives in `web-deployment.json`. Server and sync
+builds compile that origin into their trusted-client configuration.
 Local builds and additional hosts can use `HAUNT_CLIENT_ORIGINS` on community
 servers and `HAUNT_SYNC_TRUSTED_CLIENT_ORIGINS` on sync services. Credentials
 remain scoped to the selected service; no traffic proxy is included.
