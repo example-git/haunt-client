@@ -262,6 +262,11 @@ try {
     page.getByRole("button", { name: "Loading older messages…" }),
   ).toHaveCount(0);
   await assertAnchor(beforePrepend, "prepend downloaded history");
+  await expect(
+    page.locator('[data-message-row="message-400"] .embed-card'),
+  ).toBeVisible();
+  await expect(page.locator(".embed-loading")).toHaveCount(0);
+  await assertAnchor(beforePrepend, "prepended embeds finish expanding");
   await page
     .getByRole("searchbox", { name: "Search downloaded messages", exact: true })
     .fill("Archive item 12");

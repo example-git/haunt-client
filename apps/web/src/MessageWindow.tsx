@@ -68,6 +68,7 @@ export function MessageWindow({
     ];
     const row =
       rows.find((row) => row.dataset.messageRow === focusAnchor.current) ??
+      rows.find((row) => row.dataset.messageRow === anchor.current?.id) ??
       rows.find((row) => {
         const rect = row.getBoundingClientRect();
         return rect.bottom > bounds.top && rect.top < bounds.bottom;
@@ -102,8 +103,10 @@ export function MessageWindow({
               node.scrollHeight - node.clientHeight,
             ),
         ) > 1
-      )
+      ) {
         focusAnchor.current = undefined;
+        anchor.current = undefined;
+      }
       if (node.scrollHeight - node.scrollTop - node.clientHeight >= 120)
         following.current = false;
       remember();
