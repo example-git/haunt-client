@@ -261,7 +261,9 @@ export async function checkVoiceSettings(browser, fixtures) {
 
     // Actual encrypted export/import into independent browser storage.
     await settings(member, "Backup & restore");
-    const form = member.locator(".backup-settings form").first();
+    const form = member.locator(".backup-settings form").filter({
+      has: member.getByRole("button", { name: "Export encrypted backup" }),
+    });
     await form
       .getByLabel("Backup password", { exact: true })
       .fill("test backup password");
@@ -281,7 +283,9 @@ export async function checkVoiceSettings(browser, fixtures) {
     await restored
       .getByRole("button", { name: "Backup & restore", exact: true })
       .click();
-    const importing = restored.locator(".backup-settings form").nth(1);
+    const importing = restored.locator(".backup-settings form").filter({
+      has: restored.getByRole("button", { name: "Preview backup" }),
+    });
     await importing.getByLabel("Backup file").setInputFiles(file);
     await importing
       .getByLabel("Backup password", { exact: true })

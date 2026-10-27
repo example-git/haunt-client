@@ -201,7 +201,9 @@ export async function checkOnboarding(
     await guest
       .getByRole("button", { name: "Backup & restore", exact: true })
       .click();
-    const exporting = guest.locator(".backup-settings form").first();
+    const exporting = guest.locator(".backup-settings form").filter({
+      has: guest.getByRole("button", { name: "Export encrypted backup" }),
+    });
     await exporting
       .getByLabel("Backup password", { exact: true })
       .fill("backup-pass8");
@@ -238,7 +240,9 @@ export async function checkOnboarding(
     await restored
       .getByRole("button", { name: "Backup & restore", exact: true })
       .click();
-    const importing = restored.locator(".backup-settings form").nth(1);
+    const importing = restored.locator(".backup-settings form").filter({
+      has: restored.getByRole("button", { name: "Preview backup" }),
+    });
     await importing.getByLabel("Backup file").setInputFiles(filename);
     await importing
       .getByLabel("Backup password", { exact: true })
