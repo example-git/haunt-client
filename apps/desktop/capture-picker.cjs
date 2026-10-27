@@ -34,7 +34,12 @@ async function chooseCapture(parent, audioRequested, options = {}) {
     });
     const allowAudio =
       audioRequested &&
-      (process.platform === "win32" || options.native === true);
+      (options.linuxNative
+        ? !options.linuxNative.audioError &&
+          options.linuxNative.audioSources.length > 0
+        : process.platform === "win32" ||
+          options.native === true ||
+          options.linuxAudio?.outputs.length > 0);
     let finished = false;
     const finish = (selection = {}) => {
       if (finished) return;
@@ -54,13 +59,22 @@ async function chooseCapture(parent, audioRequested, options = {}) {
         return;
       event.sender.send("capture:sources", {
         allowAudio,
+        audioOutputs:
+          options.linuxNative?.audioSources ?? options.linuxAudio?.outputs,
+        audioError:
+          options.linuxNative?.audioError ?? options.linuxAudio?.error,
+        linuxNative: !!options.linuxNative,
         audioLabel: options.native
           ? "Share audio"
           : "Share system audio (all apps)",
         sources: sources.map((s, index) => ({
           index,
           name: s.name,
-          kind: s.id.startsWith("screen:") ? "screen" : "window",
+          kind:
+            s.id.startsWith("screen:") || s.id === "portal:screen"
+              ? "screen"
+              : "window",
+          audioId: s.audioId,
           thumbnail: s.thumbnail?.toDataURL(),
           icon: s.appIcon?.toDataURL(),
         })),
@@ -77,9 +91,23 @@ async function chooseCapture(parent, audioRequested, options = {}) {
         return;
       }
       if (!Number.isInteger(value?.index) || !sources[value.index]) return;
+      const output = (
+        options.linuxNative?.audioSources ?? options.linuxAudio?.outputs
+      )?.find((row) => row.id === value.output);
+      if (
+        allowAudio &&
+        value.audio === true &&
+        (options.linuxAudio || options.linuxNative) &&
+        !output
+      )
+        return;
       finish({
         video: sources[value.index],
-        ...(allowAudio && value.audio === true ? { audio: "loopback" } : {}),
+        ...(allowAudio && value.audio === true
+          ? options.linuxAudio || options.linuxNative
+            ? { linuxAudio: output }
+            : { audio: "loopback" }
+          : {}),
       });
     };
     const navigated = (_event, _url, _inPlace, isMainFrame) => {
@@ -92,9 +120,11 @@ async function chooseCapture(parent, audioRequested, options = {}) {
     picker.once("closed", () => finish());
     picker.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     picker.webContents.on("will-navigate", (event) => event.preventDefault());
-    picker.once("ready-to-show", () => picker.show());
     void picker
       .loadFile(path.join(__dirname, "capture-picker.html"))
+      .then(() => {
+        if (!finished && !picker.isDestroyed()) picker.show();
+      })
       .catch(() => finish());
   });
 }

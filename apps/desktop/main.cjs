@@ -12,6 +12,9 @@ const {
   Menu,
   Tray,
   nativeTheme,
+  clipboard,
+  ClipboardItem,
+  globalShortcut,
 } = require("electron");
 const fs = require("node:fs/promises");
 const {
@@ -40,7 +43,11 @@ const {
 } = require("./notifications.cjs");
 const { chooseCapture } = require("./capture-picker.cjs");
 const { installNativeMedia } = require("./native-media.cjs");
+const { installLinuxAudio } = require("./linux-audio.cjs");
 const { DiskMediaCache } = require("./media-cache.cjs");
+const { installDesktopTools } = require("./desktop-tools.cjs");
+const { installDeepLinks } = require("./deep-links.cjs");
+const { installDesktopCalls } = require("./desktop-calls.cjs");
 const { initializeProfile, runKeyMigrationHelper } = require("./profile.cjs");
 if (runKeyMigrationHelper(app, safeStorage)) return;
 let profile;
@@ -61,12 +68,20 @@ if (process.platform === "win32") {
 if (process.platform === "linux" && !app.isReady())
   app.setDesktopName(require("../../package.json").desktopName);
 const APP_ORIGIN = "https://app.chatxo.local";
+if (process.platform === "linux" && !app.isReady())
+  app.commandLine.appendSwitch(
+    "enable-features",
+    [app.commandLine.getSwitchValue("enable-features"), "GlobalShortcutsPortal"]
+      .filter(Boolean)
+      .join(","),
+  );
 const testMode = !app.isPackaged && process.env.HAUNT_DESKTOP_TEST === "1";
 if (!global[Symbol.for("haunt.updater")] && !app.requestSingleInstanceLock())
   app.quit();
 let window;
 let callWindow;
 let statusTray;
+let linuxAudio;
 const CALL_URL = APP_ORIGIN + "/call-window.html";
 let volatileAccounts = [];
 const trusted = (raw) => {
@@ -114,6 +129,7 @@ function validateAccounts(accounts) {
       throw Error("Invalid saved account");
   }
 }
+const attachDeepLinks = installDeepLinks(app, ipcMain, validateSender);
 async function startMain() {
   await profile.migrateCredentials(safeStorage);
   let linuxDesktopError;
@@ -270,7 +286,7 @@ async function startMain() {
         headers.set("Content-Type", "application/manifest+json");
       headers.set(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src https: wss: http: ws:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-src https://www.youtube-nocookie.com; form-action 'none'",
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' https: http: blob:; connect-src 'self' blob: https: wss: http: ws:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://player.twitch.tv https://clips.twitch.tv https://streamable.com; form-action 'none'",
       );
       headers.set("X-Content-Type-Options", "nosniff");
       return new Response(request.method === "HEAD" ? null : response.body, {
@@ -328,14 +344,25 @@ async function startMain() {
         request.frame !== window?.webContents.mainFrame ||
         capturePending
       ) {
-        callback({});
+        callback(null);
         return;
       }
       capturePending = true;
       try {
-        callback(await chooseCapture(window, request.audioRequested));
+        linuxAudio?.select();
+        const audio =
+          request.audioRequested && linuxAudio
+            ? await linuxAudio.outputs()
+            : undefined;
+        const chosen = await chooseCapture(window, request.audioRequested, {
+          linuxAudio: audio,
+        });
+        if (linuxAudio) {
+          linuxAudio.select(chosen.linuxAudio);
+          callback(chosen.video ? { video: chosen.video } : null);
+        } else callback(chosen.video ? chosen : null);
       } catch {
-        callback({});
+        callback(null);
       } finally {
         capturePending = false;
       }
@@ -750,6 +777,36 @@ async function startMain() {
     event.preventDefault(),
   );
   installNativeMedia(window, validateSender);
+  installDesktopCalls({
+    app,
+    ipcMain,
+    globalShortcut,
+    parent: window,
+    validateSender,
+    tray: statusTray,
+  });
+  attachDeepLinks(window);
+  await installDesktopTools({
+    fetch: (url, options) =>
+      net.fetch(url, { ...options, bypassCustomProtocolHandlers: true }),
+    app,
+    ipcMain,
+    parent: window,
+    session: ses,
+    dialog,
+    shell,
+    clipboard,
+    ClipboardItem,
+    nativeImage,
+    validateSender,
+    mediaCache,
+  });
+  linuxAudio = installLinuxAudio({
+    app,
+    ipcMain,
+    parent: window,
+    validateSender,
+  });
   global[Symbol.for("haunt.updater")]?.attach(window, validateSender);
   await window.loadURL(APP_ORIGIN);
 }

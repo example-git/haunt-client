@@ -83,11 +83,28 @@ button:hover {
 }
 footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
   gap: 16px;
   border-top: 1px solid #44454b;
 }
+select {
+  max-width: 100%;
+  font: inherit;
+  color: inherit;
+  background: #2d2e32;
+  padding: 8px;
+  border: 1px solid #52535a;
+  border-radius: 6px;
+}
+#audio-error {
+  flex-basis: 100%;
+  color: #eac3ab;
+}
 [hidden] {
   display: none !important;
+}
+button.source[aria-pressed="true"] {
+  outline: 2px solid #8ab4f8;
 }

@@ -12,11 +12,22 @@ function localHTTPHost(host) {
   const family = isIP(ip);
   return !!family && localIPs.check(ip, family === 6 ? "ipv6" : "ipv4");
 }
+function embedVideoRequest(details) {
+  const url = new URL(details.url);
+  return (
+    details.resourceType === "media" &&
+    /^\/api\/v1\/conversations\/[a-f0-9-]{36}\/messages\/[a-f0-9-]{36}\/embeds\/video$/.test(
+      url.pathname,
+    ) &&
+    /^[a-f0-9]{48}$/.test(url.searchParams.get("ticket") || "")
+  );
+}
 function allowInsecureRequest(details, webContentsId) {
   const url = new URL(details.url);
   return (
     details.webContentsId === webContentsId &&
-    ["xhr", "webSocket"].includes(details.resourceType) &&
+    (["xhr", "webSocket"].includes(details.resourceType) ||
+      embedVideoRequest(details)) &&
     ["http:", "ws:"].includes(url.protocol) &&
     !url.username &&
     !url.password &&
@@ -73,7 +84,8 @@ function fromApp(source, appOrigin) {
 function appAPIRequest(details, appOrigin, windowIds) {
   if (
     !windowIds.includes(details.webContentsId) ||
-    !["xhr", "webSocket"].includes(details.resourceType)
+    (!["xhr", "webSocket"].includes(details.resourceType) &&
+      !embedVideoRequest(details))
   )
     return null;
   const source =
@@ -104,6 +116,50 @@ function uiCorsHeaders(original, appOrigin) {
   return headers;
 }
 async function forwardDesktopRequest(request, appOrigin, fetch) {
+  const provider = new URL(request.url);
+  if (
+    provider.origin === "https://cdn.bsky.app" &&
+    provider.pathname.startsWith("/img/") &&
+    !provider.username &&
+    !provider.password &&
+    request.method === "GET" &&
+    fromApp(request.headers.get("Origin"), appOrigin)
+  ) {
+    const response = await fetch(
+      new Request(request.url, {
+        credentials: "omit",
+        redirect: "error",
+        referrerPolicy: "no-referrer",
+        signal: request.signal,
+      }),
+    );
+    const type = response.headers.get("Content-Type")?.split(";")[0];
+    if (
+      !response.ok ||
+      !/^image\/(jpeg|png|gif|webp|avif)$/.test(type) ||
+      !response.body
+    ) {
+      await response.body?.cancel();
+      return new Response(null, {
+        status: 502,
+        headers: uiCorsHeaders({}, appOrigin),
+      });
+    }
+    let bytes = 0;
+    const body = response.body.pipeThrough(
+      new TransformStream({
+        transform(chunk, controller) {
+          bytes += chunk.byteLength;
+          if (bytes > 4 * 1024 * 1024)
+            throw Error("Provider image exceeds 4 MiB.");
+          controller.enqueue(chunk);
+        },
+      }),
+    );
+    return new Response(body, {
+      headers: uiCorsHeaders({ "Content-Type": type }, appOrigin),
+    });
+  }
   const origin = apiTarget(request.url);
   const isAPI =
     origin &&

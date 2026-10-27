@@ -10,6 +10,43 @@ ipcRenderer.on("native:event", (_event, value) => {
 });
 contextBridge.exposeInMainWorld("hauntDesktop", {
   platform: process.platform,
+  calls: {
+    settings: (value) => ipcRenderer.invoke("calls:settings", value),
+    state: (value) => ipcRenderer.invoke("calls:state", value),
+    subscribe: (callback) => {
+      const receive = (_event, value) => callback(value);
+      ipcRenderer.on("calls:event", receive);
+      return () => ipcRenderer.removeListener("calls:event", receive);
+    },
+  },
+  links: {
+    open: (url) => ipcRenderer.invoke("links:open", url),
+    ready: () => ipcRenderer.invoke("links:ready"),
+    subscribe: (callback) => {
+      const receive = (_event, value) => callback(value);
+      ipcRenderer.on("links:open", receive);
+      return () => ipcRenderer.removeListener("links:open", receive);
+    },
+  },
+  linuxAudio:
+    process.platform === "linux"
+      ? {
+          start: (id) => ipcRenderer.invoke("linux-audio:start", id),
+          stop: (id) => ipcRenderer.invoke("linux-audio:stop", id),
+          subscribe: (callback) => {
+            const receive = (_event, value) => {
+              try {
+                callback(value);
+              } finally {
+                if (value.data) ipcRenderer.send("linux-audio:ack", value.id);
+              }
+            };
+            ipcRenderer.on("linux-audio:event", receive);
+            return () =>
+              ipcRenderer.removeListener("linux-audio:event", receive);
+          },
+        }
+      : undefined,
   appearance: { set: (value) => ipcRenderer.invoke("appearance:set", value) },
   updates: {
     source: (value) => ipcRenderer.invoke("updates:source", value),
@@ -28,7 +65,27 @@ contextBridge.exposeInMainWorld("hauntDesktop", {
   mediaCacheWrite: (key, value) =>
     ipcRenderer.invoke("media-cache:write", key, value),
   mediaDiagnostics: () => ipcRenderer.invoke("media:diagnostics"),
+  downloads: {
+    start: (url, name) => ipcRenderer.invoke("downloads:start", url, name),
+    list: () => ipcRenderer.invoke("downloads:list"),
+    action: (id, action) => ipcRenderer.invoke("downloads:action", id, action),
+    subscribe: (callback) => {
+      const receive = (_event, value) => callback(value);
+      ipcRenderer.on("downloads:state", receive);
+      return () => ipcRenderer.removeListener("downloads:state", receive);
+    },
+  },
+  storage: {
+    state: () => ipcRenderer.invoke("desktop:storage"),
+    budget: (bytes) => ipcRenderer.invoke("desktop:cache-budget", bytes),
+    clear: () => ipcRenderer.invoke("desktop:clear-cache"),
+    chooseDownloads: () => ipcRenderer.invoke("desktop:download-directory"),
+    reveal: (kind) => ipcRenderer.invoke("desktop:reveal-storage", kind),
+  },
+  copyImage: (bytes) => ipcRenderer.invoke("media:copy-image", bytes),
   nativeCaptureAvailable: ipcRenderer.sendSync("native:available") === true,
+  nativeScreenCaptureAvailable:
+    ipcRenderer.sendSync("native:screen-available") === true,
   nativeDevices: (requestPermission) =>
     ipcRenderer.invoke("native:devices", requestPermission),
   nativeStart: (request) => ipcRenderer.invoke("native:start", request),

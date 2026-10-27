@@ -1,0 +1,59 @@
+name: Linux bundled runtime installation
+on:
+  push:
+    branches: [dev]
+    paths:
+      - .github/workflows/linux-packages.yml
+      - electron-builder.config.json
+      - scripts/update-runtime.mjs
+      - scripts/build-linux-*.mjs
+      - scripts/check-linux-runtime-install.mjs
+      - scripts/ci/check-linux-runtime-install.sh
+      - native/linux-*.c
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      HAUNT_UPDATE_PUBLIC_KEY: ${{ vars.HAUNT_UPDATE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: native/media-worker/go.mod
+          cache-dependency-path: native/media-worker/go.sum
+      - name: Install native build dependencies
+        run: |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxcomposite-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire
+      - run: npm ci
+      - run: npm test -- --run tests/desktop-updates.test.ts tests/desktop-installer.test.ts tests/native-runtime.test.ts
+      - run: npm run build
+      - run: npm run electron:stage
+      - run: npx electron-builder --linux --publish never
+      - run: npm run electron:check
+      - run: npm run updates:pack
+      - name: Download verified previous installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-linux-runtime-install.mjs prepare
+      - name: Install and update without system GStreamer
+        run: docker run --rm -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash scripts/ci/check-linux-runtime-install.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-runtime-install-${{ matrix.os }}
+          path: test-results/linux-runtime-install-*.json
+          retention-days: 14

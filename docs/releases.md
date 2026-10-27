@@ -125,7 +125,8 @@ running. Opening settings alone never blocks installation. Sessions, caches,
 preferences and encryption keys stay outside the update directory.
 
 A fingerprint separates routine JS/UI changes from changes to Electron, the fixed
-launcher, packaging configuration, entitlements or native helpers. A different
+launcher, packaging configuration, entitlements, native helpers or bundled Linux
+library and plugin contents. A different
 fingerprint downloads a full baseline installer instead. A dismissible popup
 explains that the latest full app is required, shows platform-specific steps, and
 provides download/open-installer controls. Dismissing it keeps the title-bar update
@@ -158,3 +159,22 @@ wasm-bindgen 0.2.129; rebuilding it requires the matching wasm-bindgen CLI and
 Rust's wasm32 target. Ordinary client builds verify the committed helper/WASM
 artifacts and do not require those compilers. Changing a bundled native helper
 changes the update runtime identity and requires a full installer on that target.
+
+Linux desktop staging compiles the capture, publisher, audio and shortcut helpers
+on the target architecture. Alongside Go, a C compiler and `pkg-config`, Ubuntu
+build hosts need:
+
+```sh
+sudo apt-get install libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxcomposite-dev \
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-tools \
+  gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+  gstreamer1.0-plugins-ugly gstreamer1.0-pipewire
+```
+
+Staging bundles the required GStreamer, PipeWire and PulseAudio libraries and
+plugins with their license notices in both the RPM and AppImage. Installation
+supplies this app-local runtime even when system GStreamer is absent. Updates
+replace the complete package whenever its native runtime contents change;
+JS/UI-only updates reuse the installed runtime. NVIDIA drivers and optional V4L2/NVMM vendor
+plugins come from the user's installed driver or SDK. Wayland capture requires a
+running screen-sharing portal and PipeWire service; X11 audio supports PulseAudio.

@@ -1,3 +1,12 @@
+import { mediaTask } from "@haunt/browser/media-queue";
+import { MessageWindow } from "./MessageWindow";
+import { HistorySearch } from "./HistorySearch";
+import {
+  messageLink,
+  targetMessage,
+  takeMessageTarget,
+  type DesktopLink,
+} from "@haunt/browser/deep-links";
 import { UserName } from "./UserName";
 import { useMobilePanels } from "./useMobilePanels";
 import { PanelResize, usePanelWidths } from "./PanelResize";
@@ -12,6 +21,7 @@ import {
 } from "@haunt/browser/message-dates";
 import { SyncHealthNotice } from "./SyncHealthNotice";
 import { DesktopDownload } from "./DesktopDownload";
+import { DesktopCallBridge } from "./DesktopCalls";
 import { resumeSync, subscribeSync, syncStatus } from "./sync-runtime";
 import {
   DesktopUpdateNotice,
@@ -250,6 +260,7 @@ function ServerButton({
   const menu = useContextMenu();
   const [settings, setSettings] = useState<string>(),
     [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [linkError, setLinkError] = useState("");
   return (
     <>
       {settings && (
@@ -258,6 +269,11 @@ function ServerButton({
           initialTab={settings}
           onClose={() => setSettings(undefined)}
         />
+      )}
+      {linkError && (
+        <Modal title="Server link" onClose={() => setLinkError("")}>
+          <p role="alert">{linkError}</p>
+        </Modal>
       )}
       {notificationsOpen && (
         <Modal
@@ -272,6 +288,15 @@ function ServerButton({
           instance.account.instance.name,
           <>
             <MenuAction onClick={onClick}>Open server</MenuAction>
+            <MenuAction
+              onClick={() => {
+                void copyText(messageLink(instance.origin)).catch((error) =>
+                  setLinkError(friendlyError(error)),
+                );
+              }}
+            >
+              Copy server link
+            </MenuAction>
             <ServerMenuEntries
               instance={instance}
               onSelect={setSettings}
@@ -397,6 +422,20 @@ export function App() {
     return () => window.removeEventListener("haunt:reconnect", reconnect);
   }, []);
   const [call, setCall] = useState<Call>();
+  const [desktopLink, setDesktopLink] = useState<DesktopLink>();
+  useEffect(() => {
+    const links = window.hauntDesktop?.links;
+    if (!links) return;
+    const off = links.subscribe(setDesktopLink);
+    void links
+      .ready()
+      .then((queued) => {
+        if (queued.length) setDesktopLink(queued.at(-1));
+      })
+      .catch((error) => setError(friendlyError(error)));
+    return off;
+  }, []);
+
   useEffect(() => (call ? attachNarrator(call) : undefined), [call]);
   useEffect(() => {
     const update = () => {
@@ -593,6 +632,33 @@ export function App() {
     for (const [id, instance] of client.instances)
       instance.setForeground(view === "server" && id === selected);
   }, [instances, selected, view]);
+  useEffect(() => {
+    if (!desktopLink || restoring) return;
+    if (desktopLink.error) {
+      setError(desktopLink.error);
+      setDesktopLink(undefined);
+      return;
+    }
+    const target = [...client.instances.values()].find(
+      (candidate) => candidate.origin === desktopLink.server,
+    );
+    if (!target) {
+      setConnectInitial({ origin: desktopLink.server });
+      setConnect(true);
+      return;
+    }
+    setDesktopLink(undefined);
+    if (desktopLink.channel) {
+      if (desktopLink.message) targetMessage(desktopLink);
+      routing.current.open({
+        instance: target.account.instance.instance_id,
+        conversation: desktopLink.channel,
+      });
+    } else {
+      setView("server");
+      setSelected(target.account.instance.instance_id);
+    }
+  }, [desktopLink, restoring, instances]);
   const instance = client.instances.get(selected);
   const joined = (value: InstanceClient) => {
     setView("server");
@@ -946,8 +1012,18 @@ export function App() {
       {connect && (
         <Connect
           initial={connectInitial}
-          onClose={() => setConnect(false)}
+          onClose={() => {
+            setConnect(false);
+            setDesktopLink(undefined);
+          }}
           onConnect={joined}
+        />
+      )}
+      {window.hauntDesktop?.calls && (
+        <DesktopCallBridge
+          call={call}
+          onError={setError}
+          onLeave={() => setCall(undefined)}
         />
       )}
       {call && (
@@ -1866,7 +1942,8 @@ export function ConversationView({
     [error, setError] = useState(""),
     [limit, setLimit] = useState(100),
     [historyBefore, setHistoryBefore] = useState<number>(),
-    [references, setReferences] = useState(new Map<string, Message>()),
+    [olderAvailable, setOlderAvailable] = useState(true),
+    [loadingHistory, setLoadingHistory] = useState(false),
     [replyingTo, setReplyingTo] = useState<Message>(),
     [highlighted, setHighlighted] = useState(""),
     [now, setNow] = useState(Date.now);
@@ -1882,6 +1959,7 @@ export function ConversationView({
     pendingReplyJump = useRef<string | undefined>(undefined);
   useEffect(() => {
     setHistoryBefore(undefined);
+    setOlderAvailable(true);
     setLimit(100);
     pendingReplyJump.current = undefined;
     stick.current = true;
@@ -1895,39 +1973,27 @@ export function ConversationView({
       }),
       instance.pending(),
     ])
-      .then(async ([items, drafts]) => {
-        const missing = [
-          ...new Set(
-            items
-              .slice(-limit)
-              .flatMap((message) =>
-                message.reply_to_id &&
-                !items.some((item) => item.id === message.reply_to_id)
-                  ? [message.reply_to_id]
-                  : [],
-              ),
-          ),
-        ];
-        const replies = await Promise.all(
-          missing.map((id) => instance.message(conversation, id)),
-        );
+      .then(([items, drafts]) => {
         if (live) {
           setMessages(items);
-          setReferences(
-            new Map(
-              replies
-                .filter((message): message is Message => !!message)
-                .map((message) => [message.id, message]),
+          setPending(
+            drafts.filter(
+              (message) => message.conversation_id === conversation,
             ),
           );
-          setPending(drafts.filter((m) => m.conversation_id === conversation));
         }
       })
       .catch((e) => setError(friendlyError(e)));
     return () => {
       live = false;
     };
-  }, [instance, conversation, state.revision, limit, historyBefore]);
+  }, [
+    instance,
+    conversation,
+    state.messageRevisions?.[conversation] ?? state.revision,
+    limit,
+    historyBefore,
+  ]);
   useLayoutEffect(() => {
     if (pendingReplyJump.current && revealReply(pendingReplyJump.current)) {
       pendingReplyJump.current = undefined;
@@ -1971,7 +2037,7 @@ export function ConversationView({
     if (!owner) return false;
     const target = owner.getElementById(`message-${id}`);
     if (!target) return false;
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.scrollIntoView({ behavior: "instant", block: "center" });
     setHighlighted(id);
     owner.defaultView?.setTimeout(
       () => setHighlighted((current) => (current === id ? "" : current)),
@@ -1979,18 +2045,38 @@ export function ConversationView({
     );
     return true;
   }
-  const navigateReply = (id: string) => {
+  const navigateReply = async (id: string) => {
     stick.current = false;
     if (revealReply(id)) return;
     const target =
-      references.get(id) ?? messages.find((message) => message.id === id);
-    if (!target) return;
+      messages.find((message) => message.id === id) ??
+      (await instance.message(conversation, id));
+    if (!target)
+      throw Error(
+        "This message is unavailable or you no longer have access to it.",
+      );
+    await instance.loadOlder(conversation, target.seq + 1);
     pendingReplyJump.current = id;
     setLimit(100);
     setHistoryBefore(target.seq + 1);
   };
+  useEffect(() => {
+    const open = () => {
+      const id = takeMessageTarget(instance.origin, conversation);
+      if (id)
+        void navigateReply(id).catch((error) => setError(friendlyError(error)));
+    };
+    open();
+    window.addEventListener("haunt:message-link", open);
+    return () => window.removeEventListener("haunt:message-link", open);
+  }, [instance, conversation]);
   return (
     <div className="conversation-view" ref={dropTarget}>
+      <HistorySearch
+        instance={instance}
+        conversation={conversation}
+        onNavigate={navigateReply}
+      />
       <div
         className={`messages ${compact ? "chat-display-compact" : ""}`}
         ref={list}
@@ -2003,7 +2089,9 @@ export function ConversationView({
           // through that layout change; scrolling back still disables it.
           if (resized && stick.current) e.scrollTop = e.scrollHeight;
           else
-            stick.current = e.scrollHeight - e.scrollTop - e.clientHeight < 120;
+            stick.current =
+              historyBefore === undefined &&
+              e.scrollHeight - e.scrollTop - e.clientHeight < 120;
           acknowledge();
         }}
       >
@@ -2022,66 +2110,116 @@ export function ConversationView({
             </button>
           )}
         </div>
-        {messages.length > limit && (
+        {(messages.length > limit ||
+          (olderAvailable && !!messages.length && messages[0].seq > 1)) && (
           <button
             className="text-button load-more"
+            disabled={loadingHistory}
             onClick={() => {
               stick.current = false;
-              setLimit(limit + 100);
+              setLoadingHistory(true);
+              const before = messages[0].seq;
+              void instance
+                .loadOlder(conversation, before)
+                .then(async (page) => {
+                  const local = await instance.messages(conversation, {
+                    before,
+                    limit: 100,
+                  });
+                  setOlderAvailable(!!page?.has_more || local.length === 100);
+                  if (limit < 1000) setLimit(limit + 100);
+                  else setHistoryBefore(messages[messages.length - 100].seq);
+                })
+                .catch((error) => setError(friendlyError(error)))
+                .finally(() => setLoadingHistory(false));
             }}
           >
-            Show older downloaded messages
+            {loadingHistory ? "Loading older messages…" : "Show older messages"}
           </button>
         )}
-        {messages.slice(-limit).map((message, index, items) => (
-          <Fragment key={message.id}>
-            {(index === 0 ||
-              messageDay(items[index - 1].created_at) !==
-                messageDay(message.created_at)) && (
-              <div
-                className="message-day-divider"
-                role="separator"
-                aria-label={messageDayLabel(message.created_at)}
-              >
-                <time dateTime={message.created_at}>
-                  {messageDayLabel(message.created_at)}
-                </time>
-              </div>
-            )}
-            <MessageRow
-              compact={compact}
-              now={now}
-              instance={instance}
-              message={message}
-              reply={
-                messages.find((item) => item.id === message.reply_to_id) ??
-                references.get(message.reply_to_id ?? "")
-              }
-              highlighted={highlighted === message.id}
-              canReply={
-                writable &&
-                !!instance.account.instance.capabilities?.includes(
-                  "messages.replies",
-                )
-              }
-              onReply={setReplyingTo}
-              onNavigateReply={navigateReply}
-              grouped={
-                index > 0 &&
-                messageDay(items[index - 1].created_at) ===
-                  messageDay(message.created_at) &&
-                !message.reply_to_id &&
-                items[index - 1].author_id === message.author_id &&
-                items[index - 1].security === message.security &&
-                items[index - 1].securityError === message.securityError &&
-                items[index - 1].deleted === message.deleted &&
-                Date.parse(message.created_at) -
-                  Date.parse(items[index - 1].created_at) <
-                  300_000
-              }
-            />
-          </Fragment>
-        ))}
+        <MessageWindow
+          key={`${instance.scope}:${conversation}`}
+          items={messages.slice(-limit)}
+          scroll={list}
+          following={stick}
+          focus={pendingReplyJump.current}
+        >
+          {(message, index, items) => (
+            <Fragment key={message.id}>
+              {(index === 0 ||
+                messageDay(items[index - 1].created_at) !==
+                  messageDay(message.created_at)) && (
+                <div
+                  className="message-day-divider"
+                  role="separator"
+                  aria-label={messageDayLabel(message.created_at)}
+                >
+                  <time dateTime={message.created_at}>
+                    {messageDayLabel(message.created_at)}
+                  </time>
+                </div>
+              )}
+              <MessageRow
+                compact={compact}
+                now={now}
+                instance={instance}
+                message={message}
+                reply={messages.find((item) => item.id === message.reply_to_id)}
+                highlighted={highlighted === message.id}
+                canReply={
+                  writable &&
+                  !!instance.account.instance.capabilities?.includes(
+                    "messages.replies",
+                  )
+                }
+                onReply={setReplyingTo}
+                onNavigateReply={(id) =>
+                  void navigateReply(id).catch((error) =>
+                    setError(friendlyError(error)),
+                  )
+                }
+                grouped={
+                  index > 0 &&
+                  messageDay(items[index - 1].created_at) ===
+                    messageDay(message.created_at) &&
+                  !message.reply_to_id &&
+                  items[index - 1].author_id === message.author_id &&
+                  items[index - 1].security === message.security &&
+                  items[index - 1].securityError === message.securityError &&
+                  items[index - 1].deleted === message.deleted &&
+                  Date.parse(message.created_at) -
+                    Date.parse(items[index - 1].created_at) <
+                    300_000
+                }
+              />
+            </Fragment>
+          )}
+        </MessageWindow>
+        {historyBefore !== undefined && (
+          <button
+            className="text-button load-more"
+            disabled={loadingHistory}
+            onClick={() => {
+              setLoadingHistory(true);
+              void instance
+                .loadNewer(conversation, messages.at(-1)?.seq ?? 0)
+                .then((page) => {
+                  if (page?.messages.length) {
+                    setHistoryBefore(page.messages.at(-1)!.seq + 1);
+                  } else {
+                    stick.current = true;
+                    setHistoryBefore(undefined);
+                    setLimit(100);
+                  }
+                })
+                .catch((error) => setError(friendlyError(error)))
+                .finally(() => setLoadingHistory(false));
+            }}
+          >
+            Show newer messages
+          </button>
+        )}
+
         {(historyBefore === undefined ? pending : []).map((message) => (
           <div className="pending-message" key={message.request_id}>
             <p>{message.body || "Attachment message"}</p>
@@ -2145,7 +2283,7 @@ function MessageRow({
   now,
   instance,
   message,
-  reply,
+  reply: suppliedReply,
   grouped,
   highlighted,
   canReply,
@@ -2163,6 +2301,30 @@ function MessageRow({
   onReply: (message: Message) => void;
   onNavigateReply: (id: string) => void;
 }) {
+  const [resolvedReply, setResolvedReply] = useState<Message>(),
+    [replyAttempt, setReplyAttempt] = useState(0);
+  const reply = suppliedReply ?? resolvedReply;
+  useEffect(() => {
+    setResolvedReply(undefined);
+    if (suppliedReply || !message.reply_to_id || message.deleted) return;
+    const abort = new AbortController();
+    void mediaTask(
+      () => instance.message(message.conversation_id, message.reply_to_id!),
+      abort.signal,
+    )
+      .then((value) => {
+        if (!abort.signal.aborted) setResolvedReply(value);
+      })
+      .catch(() => {});
+    return () => abort.abort();
+  }, [
+    instance,
+    message.reply_to_id,
+    message.deleted,
+    suppliedReply,
+    instance.snapshot.messageRevisions?.[message.conversation_id],
+    replyAttempt,
+  ]);
   const user = instance.snapshot.users.find((u) => u.id === message.author_id),
     own = message.author_id === instance.account.login.user.id;
   const replyUser = instance.snapshot.users.find(
@@ -2205,6 +2367,19 @@ function MessageRow({
             }}
           >
             Copy text
+          </MenuAction>
+          <MenuAction
+            onClick={() => {
+              void copyText(
+                messageLink(
+                  instance.origin,
+                  message.conversation_id,
+                  message.id,
+                ),
+              ).catch((error) => setError(friendlyError(error)));
+            }}
+          >
+            Copy message link
           </MenuAction>
         </>
       )}
@@ -2320,13 +2495,16 @@ function MessageRow({
           <button
             type="button"
             className="message-reply-reference"
-            disabled={!reply}
             aria-label={
               reply
                 ? `Reply to ${displayName(replyUser)}: ${reply.deleted ? "Message deleted" : reply.body || "Attachment message"}`
                 : "Original message unavailable"
             }
-            onClick={() => onNavigateReply(message.reply_to_id!)}
+            onClick={() =>
+              reply
+                ? onNavigateReply(message.reply_to_id!)
+                : setReplyAttempt((value) => value + 1)
+            }
           >
             {reply ? (
               <>
@@ -2345,9 +2523,7 @@ function MessageRow({
                 </span>
               </>
             ) : (
-              <span className="reply-preview">
-                Original message unavailable
-              </span>
+              <span className="reply-preview">Load original message</span>
             )}
           </button>
         )}
@@ -2448,7 +2624,10 @@ function MessageRow({
       )}
       {remove && (
         <Modal title="Delete this message?" onClose={() => setRemove(false)}>
-          <p>This clears the message for everyone in the conversation.</p>
+          <p>
+            This removes the message from live chat. Saved archive copies may
+            remain.
+          </p>
           <div className="button-row">
             <button
               className="danger"

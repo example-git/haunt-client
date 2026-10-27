@@ -21,10 +21,31 @@ export async function checkScreen(executablePath, afterCheck) {
     { detached: true, stdio: ["ignore", "pipe", "pipe"] },
   );
   xvfb.stderr.on("data", () => {});
-  let desktop, cleaning, wm, captureWindow;
+  let desktop,
+    cleaning,
+    wm,
+    captureWindow,
+    diagnostics = "";
   const cleanup = () =>
     (cleaning ??= (async () => {
-      await desktop?.close().catch(() => {});
+      let closeError, closeTimer;
+      try {
+        await Promise.race([
+          desktop?.close(),
+          new Promise((_, reject) => {
+            closeTimer = setTimeout(
+              () =>
+                reject(Error("Owned Electron did not exit within 15 seconds")),
+              15000,
+            );
+          }),
+        ]);
+      } catch (error) {
+        closeError = error;
+        desktop?.process().kill("SIGKILL");
+      } finally {
+        clearTimeout(closeTimer);
+      }
       for (const child of [captureWindow, wm, xvfb]) {
         if (!child?.pid) continue;
         const signal = (value) => {
@@ -54,6 +75,7 @@ export async function checkScreen(executablePath, afterCheck) {
         await exited;
       }
       await fs.rm(scratch, { recursive: true, force: true });
+      if (closeError) throw closeError;
     })());
   activeCleanup = cleanup;
   try {
@@ -81,6 +103,7 @@ export async function checkScreen(executablePath, afterCheck) {
       DBUS_SESSION_BUS_ADDRESS: "",
       SESSION_MANAGER: "",
       GDK_BACKEND: "x11",
+      LIBGL_ALWAYS_SOFTWARE: "1",
       XDG_CONFIG_HOME: path.join(scratch, "wm-config"),
       XDG_CACHE_HOME: path.join(scratch, "wm-cache"),
     };
@@ -117,7 +140,6 @@ export async function checkScreen(executablePath, afterCheck) {
         ...(afterCheck
           ? [
               "--use-fake-device-for-media-stream",
-              "--use-fake-ui-for-media-stream",
               `--use-file-for-fake-audio-capture=${path.resolve("tests/fixtures/noise-speech.wav")}`,
             ]
           : []),
@@ -131,6 +153,7 @@ export async function checkScreen(executablePath, afterCheck) {
         DISPLAY: `:${display}`,
         WAYLAND_DISPLAY: "",
         XDG_SESSION_TYPE: "x11",
+        LIBGL_ALWAYS_SOFTWARE: "1",
         DBUS_SESSION_BUS_ADDRESS: "",
         XDG_CONFIG_HOME: path.join(scratch, "config"),
         XDG_CACHE_HOME: path.join(scratch, "cache"),
@@ -140,7 +163,17 @@ export async function checkScreen(executablePath, afterCheck) {
       timeout: 30000,
     });
     desktop.process().stdout.on("data", (data) => process.stdout.write(data));
+    if (process.env.HAUNT_DESKTOP_SHUTDOWN_TRACE === "1")
+      await desktop.evaluate(({ app, BrowserWindow }) => {
+        for (const event of ["before-quit", "will-quit", "quit"])
+          app.on(event, () => console.log(`Desktop shutdown: ${event}`));
+        for (const window of BrowserWindow.getAllWindows())
+          window.on("closed", () =>
+            console.log("Desktop shutdown: window closed"),
+          );
+      });
     desktop.process().stderr.on("data", (data) => {
+      diagnostics = (diagnostics + data).slice(-24000);
       if (String(data).includes("CAPTURE")) process.stderr.write(data);
     });
     assert(
@@ -148,7 +181,13 @@ export async function checkScreen(executablePath, afterCheck) {
         scratch + path.sep,
       ),
     );
-    await desktop.evaluate(({ dialog, desktopCapturer }) => {
+    await desktop.evaluate(({ app, dialog, desktopCapturer }) => {
+      app.on("render-process-gone", (_event, _contents, details) =>
+        console.error("CAPTURE renderer exit", JSON.stringify(details)),
+      );
+      app.on("child-process-gone", (_event, details) =>
+        console.error("CAPTURE child exit", JSON.stringify(details)),
+      );
       globalThis.captureDiagnostics = { pickerCalls: 0, sourceCalls: 0 };
       dialog.showMessageBox = async () => {
         globalThis.captureDiagnostics.pickerCalls++;
@@ -331,6 +370,9 @@ export async function checkScreen(executablePath, afterCheck) {
       );
     }
     console.log("PASS native Electron picker cancellation");
+  } catch (error) {
+    console.error("Owned Electron diagnostics:", diagnostics);
+    throw error;
   } finally {
     await cleanup();
     activeCleanup = undefined;

@@ -1,12 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
-import { messageLinks, safeExternalURL, youtubePlayer } from "@haunt/core";
+import { messageLinks, safeExternalURL, youtubePlayer, providerPlayer } from "@haunt/core";
 import { mediaTask } from "../packages/browser/src/embeds";
 const { externalURL } = createRequire(import.meta.url)(
   "../apps/desktop/network.cjs",
 );
 
 describe("rich message links", () => {
+  it("constructs official players without allowing user-controlled iframe destinations", () => {
+    expect(providerPlayer({ url: "https://vimeo.com/123456/abc123def0", player: "vimeo", player_id: "123456", player_token: "abc123def0" }, "chat.example.com")).toBe("https://player.vimeo.com/video/123456?h=abc123def0&autoplay=1&dnt=1");
+    expect(providerPlayer({ url: "https://streamable.com/abc123", player: "streamable", player_id: "abc123" }, "chat.example.com")).toBe("https://streamable.com/e/abc123?autoplay=1");
+    const twitch = providerPlayer({ url: "https://twitch.tv/videos/1234", player: "twitch-video", player_id: "1234" }, "chat.example.com");
+    expect(new URL(twitch!).searchParams.get("parent")).toBe("chat.example.com");
+    expect(new URL(twitch!).searchParams.get("video")).toBe("v1234");
+    for (const url of ["https://vimeo.com.attacker.com/123456", "https://attacker.com/video", "https://attacker.com@vimeo.com/123456", "javascript:alert(1)"]) expect(providerPlayer({ url, player: "vimeo", player_id: "123456" }, "chat.example.com")).toBeUndefined();
+    for (const id of ["https://attacker.com", "123/evil", "123?src=evil", '123"']) expect(providerPlayer({ url: "https://vimeo.com/123", player: "vimeo", player_id: id }, "chat.example.com")).toBeUndefined();
+    expect(providerPlayer({ url: "https://vimeo.com/123", player: "vimeo", player_id: "123", player_token: "a&src=evil" }, "chat.example.com")).toBeUndefined();
+  });
   it("keeps punctuation outside links, preserves balanced paths, suppresses code and angle-wrapped previews", () => {
     const text =
       "See https://example.com/article_(test). `https://code.example.com` <https://quiet.example.com>";

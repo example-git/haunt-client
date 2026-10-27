@@ -5,7 +5,12 @@ import { Status, useAction } from "./Customization";
 type RuntimeSettings = Schemas["ConfigRuntimeSettings"];
 type Configuration = Schemas["HttpapiConfigurationResponse"];
 const MiB = 1024 * 1024;
-const limits: [Exclude<keyof RuntimeSettings["limits"],"dm">, string, number, number][] = [
+const limits: [
+  Exclude<keyof RuntimeSettings["limits"], "dm">,
+  string,
+  number,
+  number,
+][] = [
   ["image_max_bytes", "Maximum image upload (MiB)", MiB, 1 / MiB],
   ["video_max_bytes", "Maximum video upload (MiB)", MiB, 1 / MiB],
   [
@@ -260,7 +265,8 @@ export function StorageSettings({ instance }: { instance: InstanceClient }) {
   const [adding, setAdding] = useState(false),
     [rotating, setRotating] = useState("");
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<"local" | "s3">("s3");
+  const [preset, setPreset] = useState("s3");
+  const kind = preset === "local" ? "local" : "s3";
   const [path, setPath] = useState(""),
     [endpoint, setEndpoint] = useState(""),
     [region, setRegion] = useState("us-east-1"),
@@ -480,10 +486,28 @@ export function StorageSettings({ instance }: { instance: InstanceClient }) {
               Storage type
               <select
                 aria-label="Storage type"
-                value={kind}
-                onChange={(e) => setKind(e.target.value as "local" | "s3")}
+                value={preset}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setPreset(value);
+                  setEndpoint("");
+                  setRegion(
+                    value === "r2" ? "auto" : value === "b2" ? "" : "us-east-1",
+                  );
+                  setPathStyle(
+                    value === "minio" ||
+                      value === "r2" ||
+                      value === "b2" ||
+                      value === "custom",
+                  );
+                }}
               >
-                <option value="s3">Amazon S3 / S3-compatible</option>
+                <option value="s3">Amazon S3</option>
+                <option value="r2">Cloudflare R2</option>
+                <option value="b2">Backblaze B2</option>
+                <option value="spaces">DigitalOcean Spaces</option>
+                <option value="minio">MinIO / owner-hosted S3</option>
+                <option value="custom">Other S3-compatible storage</option>
                 <option value="local">
                   Server folder / mounted network share
                 </option>
@@ -512,11 +536,49 @@ export function StorageSettings({ instance }: { instance: InstanceClient }) {
                   Endpoint (leave empty for Amazon S3)
                   <input
                     type="url"
+                    required={preset !== "s3"}
+                    placeholder={
+                      preset === "r2"
+                        ? "https://ACCOUNT_ID.r2.cloudflarestorage.com"
+                        : preset === "b2"
+                          ? "https://s3.REGION.backblazeb2.com"
+                          : preset === "spaces"
+                            ? "https://REGION.digitaloceanspaces.com"
+                            : preset === "minio"
+                              ? "https://storage.your-domain.example"
+                              : undefined
+                    }
                     maxLength={1024}
                     value={endpoint}
                     onChange={(e) => setEndpoint(e.target.value)}
                   />
                 </label>
+                {preset === "r2" && (
+                  <p className="muted">
+                    Use the S3 API endpoint from your R2 dashboard and region
+                    “auto”.
+                  </p>
+                )}
+                {preset === "b2" && (
+                  <p className="muted">
+                    Use the bucket’s S3 endpoint and its matching region, for
+                    example “us-west-004”. The application key ID is the access
+                    key.
+                  </p>
+                )}
+                {preset === "spaces" && (
+                  <p className="muted">
+                    Use the regional Spaces endpoint without the bucket name.
+                    The endpoint selects the datacenter; “us-east-1” is the
+                    signing region.
+                  </p>
+                )}
+                {preset === "minio" && (
+                  <p className="muted">
+                    Use the storage API endpoint, not the management console.
+                    Path-style requests are enabled.
+                  </p>
+                )}
                 <label>
                   Region
                   <input

@@ -1,6 +1,7 @@
 import MarkdownIt from "markdown-it";
 import emojiRegex from "emoji-regex";
 import { safeExternalURL } from "@haunt/core";
+import { hauntLink } from "./deep-links";
 
 const markdown = new MarkdownIt({
   html: false,
@@ -8,7 +9,7 @@ const markdown = new MarkdownIt({
   linkify: false,
   maxNesting: 20,
 }).disable(["image", "table"]);
-markdown.validateLink = (url) => !!safeExternalURL(url);
+markdown.validateLink = (url) => !!(safeExternalURL(url) || hauntLink(url));
 
 // Stop plain-text runs at our added delimiter, leaving escaped pipes and code
 // to the parser's existing rules. Bare URLs use the client's strict linkifier.

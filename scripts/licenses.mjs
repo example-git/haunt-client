@@ -15,6 +15,7 @@ const names = [
   "lucide-react",
   "idb",
   "fflate",
+  "hls.js",
   "openapi-fetch",
   "@serenity-kit/opaque",
 ];

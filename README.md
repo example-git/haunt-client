@@ -94,6 +94,11 @@ Build on a supported host for the target platform. Desktop updates verify releas
 signatures, preserve user profiles, and support failed-startup rollback. See the
 [release guide](docs/releases.md) for packaging, versioning, and update behavior.
 
+Linux desktop builds also require Go, a C compiler, `pkg-config`, and the
+GStreamer, PulseAudio, GLib and X11 development packages listed in the release
+guide. Desktop staging builds native helpers and bundles the capture runtime
+for the host architecture.
+
 ## Repository layout
 
 - `apps/web/`: shared React interface.

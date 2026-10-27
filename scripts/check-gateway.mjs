@@ -125,12 +125,9 @@ export async function checkGateway(browser, fixtures) {
       entry().locator(".conversation-badge,.channel-ping"),
     ).toHaveCount(0);
     await connect(fixtures.ws);
-    // The fixture has 105 messages: wait for the second history page before
-    // measuring idle traffic, even on a busy host. Connection status alone
-    // does not mean the selected conversation has finished loading.
     await expect(
       page.getByRole("button", {
-        name: "Show older downloaded messages",
+        name: "Show older messages",
         exact: true,
       }),
     ).toBeVisible();

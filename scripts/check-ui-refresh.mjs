@@ -212,12 +212,58 @@ export async function checkUIRefresh(browser, fixtures) {
     if (await alice.getByRole("dialog").count()) await close(alice);
 
     // Production history, real UI reply composition and navigation.
-    await expect(owner.locator(".message-day-divider")).toHaveCount(3);
+    await owner.locator(".messages").evaluate((node) => {
+      node.scrollTop = 0;
+    });
     await owner
-      .getByRole("button", { name: "Show older downloaded messages" })
+      .getByRole("button", { name: "Show older messages", exact: true })
       .click();
-    await expect(owner.locator(".message")).toHaveCount(105);
-    await expect(owner.locator(".message-day-divider")).toHaveCount(3);
+    await expect(
+      owner.getByRole("button", { name: "Show older messages", exact: true }),
+    ).toHaveCount(0);
+    await owner.locator(".messages").evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await owner.waitForTimeout(150);
+    const dates = new Set();
+    const positions = [];
+    let atBottom = false;
+    while (!atBottom) {
+      for (const label of await owner
+        .locator(".message-day-divider")
+        .evaluateAll((nodes) =>
+          nodes.map((node) => node.getAttribute("aria-label")),
+        ))
+        dates.add(label);
+      atBottom = await owner.locator(".messages").evaluate((node) => {
+        const bottom =
+          node.scrollHeight - node.scrollTop - node.clientHeight < 2;
+        node.scrollTop += node.clientHeight / 2;
+        return bottom;
+      });
+      positions.push(
+        await owner.locator(".messages").evaluate((node) => ({
+          top: node.scrollTop,
+          height: node.scrollHeight,
+          viewport: node.clientHeight,
+          first: node.querySelector(".message")?.id,
+          dates: [...node.querySelectorAll(".message-day-divider")].map((el) =>
+            el.getAttribute("aria-label"),
+          ),
+        })),
+      );
+      await owner.waitForTimeout(80);
+    }
+    assert.equal(
+      dates.size,
+      3,
+      JSON.stringify({ dates: [...dates], positions }),
+    );
+    assert((await owner.locator("[data-message-row]").count()) < 80);
+    await owner.locator(".messages").evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await owner.waitForTimeout(100);
     const old = owner.locator(".message").first();
     await expect(old.locator("time").first()).toContainText(
       String(new Date().getFullYear()),
@@ -232,6 +278,9 @@ export async function checkUIRefresh(browser, fixtures) {
     await owner
       .getByRole("button", { name: "Send message", exact: true })
       .click();
+    await owner.locator(".messages").evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+    });
     const reply = owner.locator(".message.has-reply").last();
     await expect(reply).toBeVisible();
     const previewBox = await reply
@@ -240,10 +289,28 @@ export async function checkUIRefresh(browser, fixtures) {
     const metaBox = await reply.locator(".message-meta").boundingBox();
     assert(previewBox.y + previewBox.height <= metaBox.y + 1);
     assert.equal(await reply.locator(".reply-avatar").count(), 1);
-    await expect(owner.locator(".message-day-divider")).toHaveCount(4);
+    await expect(
+      owner.getByRole("separator", {
+        name: new Date().toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          timeZone: "UTC",
+        }),
+        exact: true,
+      }),
+    ).toBeVisible();
     await reply.locator(".message-reply-reference").click();
     await expect(owner.locator(`#${original}`)).toHaveClass(/highlighted/);
-    await reply.scrollIntoViewIfNeeded();
+    const latest = owner.getByRole("button", {
+      name: "Return to latest messages",
+      exact: true,
+    });
+    if (await latest.count()) await latest.click();
+    await owner.locator(".messages").evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+    });
+    await expect(reply).toBeVisible();
     await owner.screenshot({ path: "test-results/replies-dates.png" });
     report.chat = {
       calendarDividers: 4,

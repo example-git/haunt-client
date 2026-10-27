@@ -47,7 +47,7 @@ jobs:
           gh run download "$ARTIFACT_RUN" --repo "$GITHUB_REPOSITORY" --name "release-$target" --dir release/updates
       - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi plank openbox imagemagick desktop-file-utils x11-utils dunst tesseract-ocr xdotool pipewire pipewire-pulse wireplumber pulseaudio-utils
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi plank openbox imagemagick desktop-file-utils x11-utils dunst tesseract-ocr xdotool pipewire pipewire-pulse wireplumber pulseaudio-utils libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxcomposite-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire
       - name: Install macOS desktop tools
         if: runner.os == 'macOS'
         run: brew install tesseract imagemagick cliclick
@@ -66,6 +66,11 @@ jobs:
       - name: Verify Fedora RPM and KDE notifications
         if: ${{ !cancelled() && runner.os == 'Linux' && steps.source.outcome == 'success' }}
         run: docker run --rm --cap-add=SYS_ADMIN -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash scripts/ci/check-fedora-rpm.sh
+      - name: Verify bundled Linux runtime installation and update
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.source.outcome == 'success' }}
+        run: |
+          node scripts/check-linux-runtime-install.mjs prepare
+          docker run --rm -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash scripts/ci/check-linux-runtime-install.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:

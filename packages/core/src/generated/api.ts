@@ -811,7 +811,7 @@ export interface APIContract {
         path?: never;
         cookie?: never;
       };
-      get?: never;
+      get: OperationGetMessage;
       put: OperationEditMessage;
       post?: never;
       delete: OperationDeleteMessage;
@@ -844,6 +844,38 @@ export interface APIContract {
         cookie?: never;
       };
       get: OperationGetEmbedImage;
+      put?: never;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/conversations/{id}/messages/{message}/embeds/video": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationGetEmbedVideo;
+      put?: never;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/conversations/{id}/messages/{message}/embeds/video-ticket": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationGetEmbedVideoTicket;
       put?: never;
       post?: never;
       delete?: never;
@@ -1610,6 +1642,7 @@ export interface APIContract {
       ConfigICEServer: ConfigICEServer;
       ConfigPolicy: ConfigPolicy;
       ConfigRuntimeSettings: ConfigRuntimeSettings;
+      EmbedsMedia: EmbedsMedia;
       EmbedsPreview: EmbedsPreview;
       HttpapiActivateStorageRequest: HttpapiActivateStorageRequest;
       HttpapiAppealsResponse: HttpapiAppealsResponse;
@@ -1637,6 +1670,7 @@ export interface APIContract {
       HttpapiDMPurgeRequest: HttpapiDMPurgeRequest;
       HttpapiDisableMemberRequest: HttpapiDisableMemberRequest;
       HttpapiEditMessageRequest: HttpapiEditMessageRequest;
+      HttpapiEmbedTicketResponse: HttpapiEmbedTicketResponse;
       HttpapiEmbedsResponse: HttpapiEmbedsResponse;
       HttpapiEmojisResponse: HttpapiEmojisResponse;
       HttpapiErrorResponse: HttpapiErrorResponse;
@@ -1785,10 +1819,13 @@ export interface APIContract {
     commitDMEncryption: OperationCommitDMEncryption;
     getHistory: OperationGetHistory;
     createMessage: OperationCreateMessage;
+    getMessage: OperationGetMessage;
     editMessage: OperationEditMessage;
     deleteMessage: OperationDeleteMessage;
     getMessageEmbeds: OperationGetMessageEmbeds;
     getEmbedImage: OperationGetEmbedImage;
+    getEmbedVideo: OperationGetEmbedVideo;
+    getEmbedVideoTicket: OperationGetEmbedVideoTicket;
     markConversationRead: OperationMarkConversationRead;
     createDM: OperationCreateDM;
     listEmojis: OperationListEmojis;
@@ -2737,6 +2774,9 @@ export interface HttpapiStatsResponse {
     [k: string]: unknown;
   } | null;
   storage_lock: {
+    [k: string]: unknown;
+  } | null;
+  traffic: {
     [k: string]: unknown;
   } | null;
 }
@@ -4300,6 +4340,18 @@ export interface OperationGetHistory {
        */
       after?: number;
       limit?: number;
+      /**
+       * Return the nearest older page before this exclusive sequence, in ascending order.
+       */
+      before?: number;
+      /**
+       * Return the newest page in ascending order. Cannot be combined with other history cursors.
+       */
+      latest?: boolean;
+      /**
+       * Read retained edits and deletions after this durable event sequence. New messages use sequence paging. Continue using next_change while has_more is true.
+       */
+      changes_after?: number;
     };
     header?: never;
     path: {
@@ -4330,8 +4382,10 @@ export interface OperationGetHistory {
 export interface ChatHistory {
   event_cursor: number;
   gap: boolean;
+  has_more: boolean;
   last_seq: number;
   messages: ChatMessage[] | null;
+  next_change: number;
   pruned_through: number;
 }
 export interface ChatMessage {
@@ -4395,6 +4449,36 @@ export interface HttpapiCreateMessageRequest {
    */
   reply_to_id?: string;
   request_id: string;
+}
+export interface OperationGetMessage {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+      message: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": ChatMessage;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
 }
 export interface OperationEditMessage {
   parameters: {
@@ -4465,7 +4549,9 @@ export interface OperationDeleteMessage {
 }
 export interface OperationGetMessageEmbeds {
   parameters: {
-    query?: never;
+    query?: {
+      client_posts?: boolean;
+    };
     header?: never;
     path: {
       id: string;
@@ -4497,23 +4583,43 @@ export interface HttpapiEmbedsResponse {
   embeds: EmbedsPreview[] | null;
 }
 export interface EmbedsPreview {
+  author_handle?: string;
   author_name?: string;
+  avatar?: boolean;
+  avatar_key?: string;
   description?: string;
   image: boolean;
   image_alt?: string;
+  image_key?: string;
   index: number;
   kind: string;
+  media?: EmbedsMedia[];
+  player?: "vimeo" | "streamable" | "twitch-video" | "twitch-channel" | "twitch-clip";
+  player_id?: string;
+  player_token?: string;
+  provider?: string;
   published_at?: string;
   site_name?: string;
+  status?: string;
   theme_color?: string;
   title?: string;
   url: string;
   youtube_id?: string;
 }
+export interface EmbedsMedia {
+  alt?: string;
+  cache_key?: string;
+  height?: number;
+  kind: string;
+  poster?: boolean;
+  width?: number;
+}
 export interface OperationGetEmbedImage {
   parameters: {
     query: {
       index: number;
+      asset?: null | number;
+      avatar?: boolean;
     };
     header?: never;
     path: {
@@ -4555,6 +4661,91 @@ export interface OperationGetEmbedImage {
       };
     };
   };
+}
+export interface OperationGetEmbedVideo {
+  parameters: {
+    query: {
+      ticket: string;
+    };
+    header?: {
+      Range?: string;
+    };
+    path: {
+      id: string;
+      message: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    "206": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    "416": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content?: never;
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationGetEmbedVideoTicket {
+  parameters: {
+    query: {
+      index: number;
+      asset: number;
+    };
+    header?: never;
+    path: {
+      id: string;
+      message: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiEmbedTicketResponse;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface HttpapiEmbedTicketResponse {
+  expires_at: string;
+  ticket: string;
 }
 export interface OperationMarkConversationRead {
   parameters: {

@@ -9,8 +9,10 @@ import type {
 import pcmWorklet from "./native-pcm-worklet.js?url";
 
 export const nativeCaptures = new WeakMap<MediaStreamTrack, NativeCapture>();
-export const nativeCaptureAvailable = () =>
-  window.hauntDesktop?.nativeCaptureAvailable === true;
+export const nativeCaptureAvailable = (purpose: "camera" | "screen") =>
+  window.hauntDesktop?.nativeCaptureAvailable === true ||
+  (purpose === "screen" &&
+    window.hauntDesktop?.nativeScreenCaptureAvailable === true);
 
 export class NativeCapture {
   readonly id = crypto.randomUUID();

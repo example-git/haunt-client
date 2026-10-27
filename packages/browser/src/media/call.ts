@@ -31,6 +31,7 @@ import {
   type VideoMode,
 } from "./video-settings";
 import { MicrophoneCapture, type NoiseStatus } from "./microphone";
+import { LinuxShareAudio, linuxShares } from "./linux-share-audio";
 import { openMicrophone } from "./microphone-input";
 import {
   effectiveMediaState,
@@ -214,6 +215,8 @@ export class Call {
   private offDeviceChange?: () => void;
   private speakingTrack?: MediaStreamTrack;
   private voiceIntent: VoiceIntent = { muted: false, deafened: false };
+  private pushToTalk = false;
+  private pushToTalkPressed = false;
   private offLoopback: () => void;
   private stateTask?: Promise<void>;
   private synchronizedState?: MediaState;
@@ -274,7 +277,10 @@ export class Call {
     const restriction = patch.restriction ?? this.snapshot.restriction;
     const state = effectiveMediaState(
       {
-        muted: this.voiceIntent.muted || restriction.muted,
+        muted:
+          this.voiceIntent.muted ||
+          restriction.muted ||
+          (this.pushToTalk && !this.pushToTalkPressed),
         deafened: this.voiceIntent.deafened || restriction.deafened,
       },
       {
@@ -364,6 +370,11 @@ export class Call {
   }
   async start(waitForPlugin = true) {
     try {
+      if (window.hauntDesktop?.calls) {
+        const settings = await window.hauntDesktop.calls.settings();
+        this.setPushToTalk(settings.ptt, settings.pressed);
+        if (this.ended) return;
+      }
       if (!navigator.mediaDevices?.getUserMedia)
         throw Error(
           "Voice and video need the desktop app or a browser page served over HTTPS (or localhost).",
@@ -383,6 +394,7 @@ export class Call {
       this.pendingMicrophones.add(stream);
       stream.getAudioTracks()[0].enabled = !(
         this.voiceIntent.muted ||
+        (this.pushToTalk && !this.pushToTalkPressed) ||
         this.voiceIntent.deafened ||
         microphoneLoopbacks.getSnapshot()
       );
@@ -964,6 +976,7 @@ export class Call {
       ...this.snapshot.state,
       muted:
         this.voiceIntent.muted ||
+        (this.pushToTalk && !this.pushToTalkPressed) ||
         microphoneLoopbacks.getSnapshot() ||
         !this.tracks.get("audio") ||
         this.microphoneStream?.getAudioTracks()[0]?.readyState !== "live",
@@ -1006,6 +1019,17 @@ export class Call {
       () => finished(false),
     );
     return task;
+  }
+  setPushToTalk(enabled: boolean, pressed: boolean) {
+    if (
+      this.ended ||
+      (this.pushToTalk === enabled && this.pushToTalkPressed === pressed)
+    )
+      return;
+    this.pushToTalk = enabled;
+    this.pushToTalkPressed = pressed;
+    this.change();
+    this.synchronizeStateInBackground();
   }
   async setState(patch: Partial<VoiceIntent>) {
     if (
@@ -1060,6 +1084,7 @@ export class Call {
     this.tracks.delete(purpose);
     track.onended = null;
     nativeCaptures.get(track)?.close();
+    linuxShares.get(track)?.close();
     track.stop();
     const audioPurpose = purpose === "camera" ? "camera_audio" : "screen_audio";
     this.tracks.get(audioPurpose)?.stop();
@@ -1089,7 +1114,7 @@ export class Call {
                 prefs.cameraModes[prefs.camera],
               )
             : prefs.screenMode;
-        const native = nativeCaptureAvailable()
+        const native = nativeCaptureAvailable(purpose)
           ? await NativeCapture.open(purpose, sourceAudio, prefs)
           : undefined;
         if (native === null) return;
@@ -1155,10 +1180,16 @@ export class Call {
         if (!native && purpose === "screen") {
           try {
             await applyScreenMode(track, mode);
+            if (sourceAudio) await LinuxShareAudio.attach(stream);
           } catch (error) {
             stream.getTracks().forEach((source) => source.stop());
             throw error;
           }
+        }
+        if (this.ended) {
+          linuxShares.get(track)?.close();
+          stream.getTracks().forEach((source) => source.stop());
+          return;
         }
         this.tracks.set(purpose, track);
         if (purpose === "camera") this.cameraDevice = prefs.camera;
@@ -1177,6 +1208,12 @@ export class Call {
         };
         track.onended = ended;
         if (native) native.onended = () => ended();
+        const linux = linuxShares.get(track);
+        if (linux)
+          linux.onended = (error) => {
+            this.change({ error: error.message });
+            ended();
+          };
       }
       this.updateLocal();
       await this.synchronizeState();
@@ -1309,6 +1346,7 @@ export class Call {
     this.transport?.close();
     for (const track of this.tracks.values()) {
       nativeCaptures.get(track)?.close();
+      linuxShares.get(track)?.close();
       track.onended = null;
       track.stop();
     }

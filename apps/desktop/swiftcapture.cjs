@@ -72,6 +72,7 @@ function videoConfig(value) {
     width: value.width,
     height: value.height,
     fps: value.fps,
+    ...(typeof value.encoder === "string" ? { encoder: value.encoder } : {}),
     fmtp: `level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=${sps.subarray(1, 4).toString("hex")}`,
   };
 }
@@ -268,12 +269,13 @@ function argumentsFor(options) {
 }
 
 class Capture extends EventEmitter {
-  constructor(binary, options) {
+  constructor(binary, options, runtime = {}) {
     super();
     this.options = options;
     this.closed = false;
-    this.child = spawn(binary, argumentsFor(options), {
+    this.child = spawn(binary, runtime.args ?? argumentsFor(options), {
       stdio: ["pipe", "ignore", "pipe", "pipe", "pipe"],
+      ...(runtime.env ? { env: runtime.env } : {}),
     });
     this.finished = new Promise((resolve) => this.child.once("close", resolve));
     let stderr = "";

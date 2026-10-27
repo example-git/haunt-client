@@ -24,7 +24,7 @@ export class NativePublisher {
     const configs = [...tracks].map(([purpose, track]) => {
       mapping[purpose] = purpose;
       const capture = nativeCaptures.get(track);
-      if (!isAudioPurpose(purpose) && !capture)
+      if (!isAudioPurpose(purpose) && !capture && purpose !== "camera")
         throw Error("Native publisher requires native video sources");
       if (
         capture &&
@@ -37,7 +37,26 @@ export class NativePublisher {
           height: capture.config.height,
           fps: capture.config.fps,
         });
-      return { purpose, capture: capture?.id, layers: layers[purpose] };
+      if (
+        !capture &&
+        purpose === "camera" &&
+        this.context.client.account.instance.capabilities?.includes(
+          "media.layers.v1",
+        )
+      ) {
+        const settings = track.getSettings();
+        layers[purpose] = videoLayers({
+          width: settings.width!,
+          height: settings.height!,
+          fps: settings.frameRate!,
+        });
+      }
+      return {
+        purpose,
+        capture: capture?.id,
+        layers: layers[purpose],
+        ...(!capture && purpose === "camera" ? { codec: "avc1.42e033" } : {}),
+      };
     });
     this.off = this.bridge.onNativeEvent((event) => {
       if (event.id === this.id && event.kind === "keyframe")
@@ -71,10 +90,31 @@ export class NativePublisher {
       if (this.closed) return;
       for (const [purpose, track] of tracks) {
         const capture = nativeCaptures.get(track);
-        if (!capture) continue;
-        for (const layer of layers[purpose]?.slice(1) ?? []) {
+        if (isAudioPurpose(purpose)) continue;
+        let browserVideo: HTMLVideoElement | undefined;
+        if (!capture) {
+          browserVideo = document.createElement("video");
+          browserVideo.muted = true;
+          browserVideo.playsInline = true;
+          browserVideo.srcObject = new MediaStream([track]);
+          const video = browserVideo;
+          this.cleanup.push(() => {
+            video.pause();
+            video.srcObject = null;
+          });
+          await video.play();
+          if (this.closed) return;
+        }
+        for (const layer of (capture
+          ? layers[purpose]?.slice(1)
+          : (layers[purpose] ??
+            videoLayers({
+              width: track.getSettings().width!,
+              height: track.getSettings().height!,
+              fps: track.getSettings().frameRate!,
+            }).slice(0, 1))) ?? []) {
           const config: VideoEncoderConfig = {
-            codec: capture.config.codec,
+            codec: capture?.config.codec ?? "avc1.42e033",
             width: layer.width,
             height: layer.height,
             bitrate: Math.max(
@@ -135,7 +175,7 @@ export class NativePublisher {
             if (encoder.state !== "closed") encoder.close();
           });
           encoder.configure(config);
-          off = capture.decoded((frame) => {
+          const encode = (frame: VideoFrame) => {
             if (
               this.closed ||
               encoder.state !== "configured" ||
@@ -151,7 +191,23 @@ export class NativePublisher {
               frame.timestamp - keyAt >= 1_000_000;
             if (keyFrame) keyAt = frame.timestamp;
             encoder.encode(frame, { keyFrame });
-          });
+          };
+          if (capture) off = capture.decoded(encode);
+          else {
+            const video = browserVideo!;
+            const timer = setInterval(() => {
+              if (video.readyState < 2 || this.closed) return;
+              const frame = new VideoFrame(video, {
+                timestamp: Math.round(performance.now() * 1000),
+              });
+              try {
+                encode(frame);
+              } finally {
+                frame.close();
+              }
+            }, 1000 / layer.fps);
+            off = () => clearInterval(timer);
+          }
         }
       }
       this.audio = new AudioContext({

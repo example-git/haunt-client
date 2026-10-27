@@ -6,6 +6,7 @@ import { checkNotificationDelivery } from "./check-notification-delivery.mjs";
 import { checkNotificationSearch } from "./check-notification-search.mjs";
 import { captureDemo } from "./capture-demo.mjs";
 import { checkSourceAudio } from "./check-source-audio.mjs";
+import { checkLinuxShareAudio } from "./check-linux-share-audio.mjs";
 import { checkNarrator } from "./check-narrator.mjs";
 import { fillSignin } from "./signin-fields.mjs";
 import { checkVoiceSettings } from "./check-voice-settings.mjs";
@@ -37,7 +38,11 @@ import { checkModeration } from "./check-moderation.mjs";
 import { checkEmojis, checkDesktopEmojiSettings } from "./check-emojis.mjs";
 import { checkNoise } from "./check-noise.mjs";
 import { checkCallControls } from "./check-call-controls.mjs";
-import { checkEmbeds, checkDesktopLinks } from "./check-embeds.mjs";
+import {
+  checkEmbeds,
+  checkDesktopLinks,
+  checkLiveEmbeds,
+} from "./check-embeds.mjs";
 import { checkGateway } from "./check-gateway.mjs";
 import { checkScreen, cleanupScreen } from "./check-screen.mjs";
 import {
@@ -182,6 +187,12 @@ try {
     process.env.HAUNT_CLIENT_BUILD === "dist-standalone" ||
     ![
       "demo",
+      "embeds",
+      "live-embeds",
+      "desktop-live-embeds",
+      "desktop-embeds",
+      "linux-share-audio",
+      "wayland-share-audio",
       "image-viewer",
       "signin-browser",
       "secure-dm",
@@ -417,13 +428,13 @@ try {
     const context = await browser.newContext();
     try {
       const page = await context.newPage();
-      await page.goto("http://127.0.0.1:5173");
+      await page.goto(fixtures.rtc.url);
       await checkConfiguration(page, fixtures);
     } finally {
       await context.close();
     }
-    await checkScreen(process.env.HAUNT_PACKAGED_EXECUTABLE, (page) =>
-      checkConfiguration(page, fixtures, "electron"),
+    await checkScreen(process.env.HAUNT_PACKAGED_EXECUTABLE, (page, desktop) =>
+      checkConfiguration(page, fixtures, "electron", desktop),
     );
   } else if (process.env.HAUNT_CLIENT_CHECK === "attachment-input") {
     const context = await browser.newContext({
@@ -628,6 +639,20 @@ try {
     await checkCallPopout(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "calls") {
     await checkCallControls(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "linux-share-audio") {
+    await checkLinuxShareAudio(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "wayland-share-audio") {
+    await checkLinuxShareAudio(browser, fixtures, { wayland: true });
+  } else if (process.env.HAUNT_CLIENT_CHECK === "desktop-embeds") {
+    await checkScreen(process.env.HAUNT_PACKAGED_EXECUTABLE, (page, desktop) =>
+      checkEmbeds(browser, fixtures, page, desktop),
+    );
+  } else if (process.env.HAUNT_CLIENT_CHECK === "live-embeds") {
+    await checkLiveEmbeds(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "desktop-live-embeds") {
+    await checkScreen(process.env.HAUNT_PACKAGED_EXECUTABLE, (page) =>
+      checkLiveEmbeds(browser, fixtures, page),
+    );
   } else if (process.env.HAUNT_CLIENT_CHECK === "embeds") {
     await checkEmbeds(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "gateway") {
@@ -655,11 +680,22 @@ try {
     ]);
     await connect(alice, fixtures.rtc, "alice");
     await connect(bob, fixtures.rtc, "bob");
-    await expect(alice.locator(".message-body")).toHaveCount(100);
+    await expect(alice.locator(".message-body").last()).toBeVisible();
+    await alice.locator(".messages").evaluate((node) => {
+      node.scrollTop = 0;
+    });
     await alice
-      .getByRole("button", { name: "Show older downloaded messages" })
+      .getByRole("button", { name: "Show older messages", exact: true })
       .click();
-    await expect(alice.locator(".message-body")).toHaveCount(105);
+    await expect(
+      alice.getByRole("button", { name: "Show older messages", exact: true }),
+    ).toHaveCount(0);
+    await expect
+      .poll(() => alice.locator("[data-message-row]").count())
+      .toBeLessThan(80);
+    await alice.locator(".messages").evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+    });
     await send(alice, "Hello from the browser");
     await expect(
       bob.getByText("Hello from the browser", { exact: true }),

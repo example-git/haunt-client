@@ -24,6 +24,7 @@ import {
 } from "@haunt/browser/preferences";
 import { client, knownServers, messageStore } from "./runtime";
 import { ErrorNotice } from "./App";
+import { TextArchiveBackups } from "./TextArchiveBackups";
 
 export function Backups() {
   const [busy, setBusy] = useState(false),
@@ -46,6 +47,7 @@ export function Backups() {
   };
   return (
     <section className="form backup-settings">
+      <TextArchiveBackups />
       <h3>Client backup</h3>
       <p className="warning">
         Includes saved sessions. Anyone with the file and its backup password

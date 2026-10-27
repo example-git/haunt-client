@@ -5,6 +5,28 @@ outgoing resolutions and frame rates. Selections stay on this device, and active
 captures show their actual settings. Changing an active capture keeps its source
 and independent source audio.
 
+Linux desktop screen sharing uses bundled GStreamer capture. X11 windows retain
+their own contents when covered; Wayland uses the desktop's screen-sharing
+portal. The encoder probes installed NVIDIA nvcodec and V4L2/NVMM support and
+uses software H.264 when neither is usable.
+
+Screen shares default to the entire audio output. X11 window shares default to
+the window's application; Wayland window shares require selecting the audio app
+separately. The picker also offers entire-output audio or video without audio.
+Application capture includes that process and its children, with playback taps
+through PulseAudio or PipeWire's PulseAudio service. It leaves playback routing,
+volume and mute settings unchanged. Closing the selected source ends capture;
+stopping a share also stops its audio. Browser screen audio remains
+browser-dependent.
+
+Desktop Devices settings enable global microphone/deafen shortcuts and push to
+talk. Linux uses held F9 on X11 or the desktop's GlobalShortcuts portal on
+Wayland; the portal may offer a different binding. An unavailable binding shows
+an error. Other platforms provide F9 while Haunt is focused. Push to talk gates
+only the microphone and preserves manual mute, moderator restrictions and
+independent share audio. The tray shows call/share state and offers mute,
+deafen, stop-sharing and leave actions.
+
 Camera choices follow the selected device. Browser clients verify exact
 resolution/FPS combinations before offering them; native macOS capture uses the
 device's format catalog. Available FPS choices change with resolution, including
@@ -44,3 +66,7 @@ access. Offline checks retry without showing an unverified offer. Reconnecting
 restores the member's own mute/deafen choices under current moderator restrictions;
 camera and screen sharing stay off. Deliberate leave, dismissal, logout, account
 removal, deleted channels and revoked access clear the remembered channel.
+
+Embedded and attached videos offer local playback speed and picture in picture.
+The speed is saved on the device. Single-file videos can be saved; HLS posts
+remain streamed. Image previews support native clipboard copying and downloads.

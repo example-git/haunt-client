@@ -29,6 +29,13 @@ try {
 }
 if (process.platform === "linux")
   app.setDesktopName(require("../../package.json").desktopName);
+if (process.platform === "linux")
+  app.commandLine.appendSwitch(
+    "enable-features",
+    [app.commandLine.getSwitchValue("enable-features"), "GlobalShortcutsPortal"]
+      .filter(Boolean)
+      .join(","),
+  );
 if (!app.requestSingleInstanceLock()) app.exit(0);
 else
   void start().catch((error) => {

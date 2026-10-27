@@ -5,6 +5,7 @@ import { readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { SyncService } from "../packages/browser/src/sync/service";
+import { unpackTextChunk, type TextArchiveChunk } from "@haunt/core";
 
 const keyword = "synthetic private sync keyword";
 const fixtureFile = process.env.HAUNT_SYNC_UI_FIXTURE;
@@ -116,7 +117,12 @@ describe.skipIf(!fixtureFile || !issuer)(
           ),
         ),
       ]);
-      browser = await chromium.launch({ headless: true });
+      browser = await chromium.launch({
+        headless: true,
+        ...(process.env.CHROME_PATH
+          ? { executablePath: process.env.CHROME_PATH }
+          : {}),
+      });
       await mkdir("test-results/sync-ui", { recursive: true });
     }, 30_000);
     afterAll(async () => {
@@ -226,6 +232,7 @@ describe.skipIf(!fixtureFile || !issuer)(
         .click();
     }
     it("restores a community login into a fresh desktop, observes periodic upload, and delegates web access", async () => {
+      const savedText = "Private saved text " + randomBytes(12).toString("hex");
       const service = new SyncService(issuer, portal),
         keys = await import("../packages/browser/src/sync/crypto").then((m) =>
           m.proofKeys(),
@@ -266,6 +273,27 @@ describe.skipIf(!fixtureFile || !issuer)(
         await visible(original.page.locator(".connection")).toHaveText(
           "Connected",
         );
+        await original.page
+          .getByLabel("Message", { exact: true })
+          .fill(savedText);
+        await original.page
+          .getByRole("button", { name: "Send message", exact: true })
+          .click();
+        const message = original.page.locator(".message").filter({
+          has: original.page.locator(".message-body", { hasText: savedText }),
+        });
+        await visible(message).toHaveCount(1);
+        await message.hover();
+        await message
+          .getByRole("button", { name: "Message options", exact: true })
+          .click();
+        await original.page
+          .getByRole("menuitem", { name: "Delete message…", exact: true })
+          .click();
+        await original.page
+          .getByRole("button", { name: "Delete message", exact: true })
+          .click();
+        await visible(message).toHaveCount(0);
         await original.page.evaluate(() =>
           localStorage.setItem("chatxo-voice-sounds", "off"),
         );
@@ -283,6 +311,24 @@ describe.skipIf(!fixtureFile || !issuer)(
         }
         expect(snapshot.accounts).toHaveLength(1);
         expect(snapshot.preferences["chatxo-voice-sounds"]).toBe("off");
+        expect(
+          (await service.read(observer, "archive:full")).value,
+        ).toMatchObject({ version: 2 });
+        const chunks: TextArchiveChunk[] = [];
+        let cursor = 0;
+        let through: number | undefined;
+        do {
+          const page = await service.archiveChanges(observer, cursor, through);
+          through = page.through;
+          for (const entry of page.entries)
+            chunks.push(
+              (await service.read<TextArchiveChunk>(observer, entry.scope))
+                .value!,
+            );
+          cursor = page.cursor;
+        } while (cursor < through);
+        const saved = (await Promise.all(chunks.map(unpackTextChunk))).flat();
+        expect(saved.some((m) => m.body === savedText)).toBe(true);
         fresh = await desktop();
         await chooseService(fresh.page);
         await fresh.page.getByLabel("Sync username or email").fill(username);
@@ -325,6 +371,30 @@ describe.skipIf(!fixtureFile || !issuer)(
         await fresh.page.screenshot({
           path: "test-results/sync-ui/desktop-restored.png",
         });
+        await visible(
+          fresh.page.locator(".message-body", { hasText: savedText }),
+        ).toHaveCount(0);
+        await fresh.page
+          .getByRole("button", {
+            name: /^(Client settings|Account settings)$/,
+            exact: true,
+          })
+          .click();
+        await fresh.page
+          .getByRole("button", { name: "Backup & restore", exact: true })
+          .click();
+        await fresh.page
+          .getByRole("button", { name: "Browse saved text", exact: true })
+          .click();
+        await visible(
+          fresh.page.locator(".archived-message-text", { hasText: savedText }),
+        ).toHaveCount(1);
+        await fresh.page.screenshot({
+          path: "test-results/sync-ui/text-restored.png",
+        });
+        await fresh.page
+          .getByRole("button", { name: "Close", exact: true })
+          .click();
       } else {
         observer = await service.signIn(username, master, undefined, keyword);
         const instance = await (
@@ -374,7 +444,10 @@ describe.skipIf(!fixtureFile || !issuer)(
         web = await webContext.newPage();
       await web.goto(fixture.front);
       await web
-        .getByRole("button", { name: "Client settings", exact: true })
+        .getByRole("button", {
+          name: /^(Client settings|Account settings)$/,
+          exact: true,
+        })
         .click();
       await web
         .getByRole("button", { name: "Encrypted sync", exact: true })
@@ -431,7 +504,10 @@ describe.skipIf(!fixtureFile || !issuer)(
         ).toBeVisible();
       } else {
         await approvalDesktop.page
-          .getByRole("button", { name: "Client settings", exact: true })
+          .getByRole("button", {
+            name: /^(Client settings|Account settings)$/,
+            exact: true,
+          })
           .click();
         await approvalDesktop.page
           .getByRole("button", { name: "Encrypted sync", exact: true })
@@ -463,6 +539,9 @@ describe.skipIf(!fixtureFile || !issuer)(
       await visible(
         web.getByRole("button", { name: "Sync now", exact: true }),
       ).toBeVisible({ timeout: 20_000 });
+      await visible(
+        web.getByText("Last synchronized:", { exact: false }),
+      ).toBeVisible({ timeout: 20_000 });
       expect(
         await web.getByLabel("Private sync keyword", { exact: true }).count(),
       ).toBe(0);
@@ -476,6 +555,20 @@ describe.skipIf(!fixtureFile || !issuer)(
       expect(
         await web.evaluate(() => localStorage.getItem("chatxo-voice-sounds")),
       ).toBe("off");
+      if (process.env.HAUNT_SYNC_UI_MODE !== "web-only") {
+        await web
+          .getByRole("button", { name: "Backup & restore", exact: true })
+          .click();
+        await web
+          .getByRole("button", { name: "Browse saved text", exact: true })
+          .click();
+        await visible(
+          web.locator(".archived-message-text", { hasText: savedText }),
+        ).toHaveCount(1);
+        await web
+          .getByRole("button", { name: "Encrypted sync", exact: true })
+          .click();
+      }
       const newPassword =
           "Changed UI master password " + randomBytes(20).toString("hex"),
         newKeyword =
@@ -542,7 +635,10 @@ describe.skipIf(!fixtureFile || !issuer)(
         native.locator(".sync-global-notices .sync-failure"),
       ).toHaveCount(0, { timeout: 30_000 });
       await native
-        .getByRole("button", { name: "Client settings", exact: true })
+        .getByRole("button", {
+          name: /^(Client settings|Account settings)$/,
+          exact: true,
+        })
         .click();
       await native
         .getByRole("button", { name: "Encrypted sync", exact: true })

@@ -10,5 +10,6 @@
   "type": "commonjs",
   "dependencies": {},
   "desktopAppId": "com.exampleuser.haunt",
-  "desktopName": "com.exampleuser.haunt.desktop"
+  "desktopName": "com.exampleuser.haunt.desktop",
+  "homepage": "https://github.com/example-git/haunt"
 }

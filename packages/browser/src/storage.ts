@@ -3,6 +3,18 @@ import type { NativeBridge } from "./media/native-types";
 import {
   shouldMerge,
   cachedMessage,
+  searchableWords,
+  searchWords,
+  searchLimit,
+  archivedText,
+  archivePart,
+  archiveChunkKey,
+  mergeArchivedText,
+  packTextChunk,
+  unpackTextChunk,
+  type ArchivedText,
+  type TextArchiveChunk,
+  type SearchOptions,
   validateKnownServer,
   type KnownServer,
   type KnownServerStore,
@@ -14,6 +26,41 @@ import {
   type TokenVault,
 } from "@haunt/core";
 interface Archive extends DBSchema {
+  textArchive: {
+    key: [string, string];
+    value: { scope: string; bucket: string; message: ArchivedText };
+    indexes: {
+      scope: string;
+      bucket: string;
+      chronological: [string, string, string];
+    };
+  };
+  archiveChunks: {
+    key: string;
+    value: {
+      key: string;
+      scope: string;
+      conversation: string;
+      part: number;
+      revision: number;
+      chunk?: TextArchiveChunk;
+    };
+    indexes: { scope: string };
+  };
+  archiveMigrations: {
+    key: string;
+    value: { after: string; complete: boolean };
+  };
+  archiveSync: { key: string; value: { revision: number; digest: string } };
+  search: {
+    key: [string, string];
+    value: {
+      scope: string;
+      id: string;
+      terms: [string, string, string, number][];
+    };
+    indexes: { terms: [string, string, string, number]; scope: string };
+  };
   messages: {
     key: [string, string];
     value: Message & { scope: string };
@@ -68,8 +115,40 @@ export class IndexedDBStore implements MessageStore {
     return result;
   }
   constructor(name = "chatxo-history-v1") {
-    this.db = openDB<Archive>(name, 1, {
-      upgrade(db) {
+    this.db = openDB<Archive>(name, 3, {
+      upgrade(db, previous, _next, transaction) {
+        if (previous < 3) {
+          const archive = db.createObjectStore("textArchive", {
+            keyPath: ["scope", "message.id"],
+          });
+          archive.createIndex("scope", "scope");
+          archive.createIndex("bucket", "bucket");
+          archive.createIndex("chronological", [
+            "scope",
+            "message.created_at",
+            "message.id",
+          ]);
+          db.createObjectStore("archiveChunks", { keyPath: "key" }).createIndex(
+            "scope",
+            "scope",
+          );
+          db.createObjectStore("archiveMigrations");
+          db.createObjectStore("archiveSync");
+          if (previous >= 1)
+            void transaction
+              .objectStore("cursors")
+              .put(1, "archive-migration-v3");
+        }
+        if (previous >= 2) return;
+        const search = db.createObjectStore("search", {
+          keyPath: ["scope", "id"],
+        });
+        search.createIndex("terms", "terms", { multiEntry: true });
+        search.createIndex("scope", "scope");
+        if (previous >= 1) {
+          void transaction.objectStore("cursors").put(1, "search-migration-v2");
+          return;
+        }
         const messages = db.createObjectStore("messages", {
           keyPath: ["scope", "id"],
         });
@@ -119,16 +198,37 @@ export class IndexedDBStore implements MessageStore {
     return result.reverse();
   }
   async merge(scope: Scope, messages: Message[]) {
-    const tx = (await this.db).transaction("messages", "readwrite");
+    const tx = (await this.db).transaction(
+      ["messages", "search", "textArchive", "archiveChunks"],
+      "readwrite",
+    );
+    void tx.done.catch(() => {});
     const changed = new Set<string>();
+    const existing = await Promise.all(
+      messages.map((m) => tx.objectStore("messages").get([scope, m.id])),
+    );
+    const oldRows = new Map(
+      existing
+        .filter((m): m is NonNullable<typeof m> => !!m)
+        .map((m) => [m.id, m]),
+    );
+    const archival: ArchivedText[] = [];
+    const writes: Promise<unknown>[] = [];
     for (const raw of messages) {
       const message = cachedMessage(raw);
-      const old = await tx.store.get([scope, message.id]);
+      const old = oldRows.get(message.id);
+      const saved = archivedText(message.deleted && old ? old : message);
+      if (saved) archival.push(saved);
       if (shouldMerge(old, message)) {
-        await tx.store.put({ ...message, scope });
+        writes.push(tx.objectStore("messages").put({ ...message, scope }));
+        writes.push(
+          tx.objectStore("search").put(this.searchRow(scope, message)),
+        );
+        oldRows.set(message.id, { ...message, scope });
         changed.add(message.conversation_id);
       }
     }
+    await Promise.all([...writes, this.archiveRows(tx, scope, archival)]);
     await tx.done;
     if (changed.size)
       for (const listener of this.listeners) listener(scope, [...changed]);
@@ -150,10 +250,10 @@ export class IndexedDBStore implements MessageStore {
   }
   async clear(scope: Scope) {
     const tx = (await this.db).transaction(
-      ["messages", "pending", "cursors"],
+      ["messages", "pending", "cursors", "search"],
       "readwrite",
     );
-    for (const name of ["messages", "pending"] as const) {
+    for (const name of ["messages", "pending", "search"] as const) {
       let cursor = await tx.objectStore(name).index("scope").openCursor(scope);
       while (cursor) {
         await cursor.delete();
@@ -161,11 +261,393 @@ export class IndexedDBStore implements MessageStore {
       }
     }
     await tx.objectStore("cursors").delete(scope);
+    const prefix = JSON.stringify([scope, "history"]).slice(0, -1) + ",";
+    let cursor = await tx
+      .objectStore("cursors")
+      .openCursor(IDBKeyRange.bound(prefix, prefix + "\uffff"));
+    while (cursor) {
+      await cursor.delete();
+      cursor = await cursor.continue();
+    }
     await tx.done;
     for (const listener of this.listeners) listener(scope, null);
   }
   async close() {
     (await this.db).close();
+  }
+  private async archiveRows(
+    tx: import("idb").IDBPTransaction<
+      Archive,
+      (
+        | "messages"
+        | "search"
+        | "textArchive"
+        | "archiveChunks"
+        | "archiveMigrations"
+      )[],
+      "readwrite"
+    >,
+    scope: string,
+    rows: ArchivedText[],
+  ) {
+    void tx.done.catch(() => {});
+    const records = tx.objectStore("textArchive"),
+      chunks = tx.objectStore("archiveChunks");
+    const old = await Promise.all(rows.map((m) => records.get([scope, m.id])));
+    const current = new Map(
+      old
+        .filter((m): m is NonNullable<typeof m> => !!m)
+        .map((m) => [m.message.id, m.message]),
+    );
+    const dirty = new Map<string, Omit<TextArchiveChunk, "data">>();
+    const writes: Promise<unknown>[] = [];
+    for (const row of rows) {
+      const before = current.get(row.id),
+        next = mergeArchivedText(before, row);
+      if (JSON.stringify(before) === JSON.stringify(next)) continue;
+      const metadata = {
+        scope,
+        conversation: next.conversation_id,
+        part: archivePart(next.seq),
+      };
+      const bucket = archiveChunkKey(metadata);
+      writes.push(records.put({ scope, bucket, message: next }));
+      current.set(next.id, next);
+      dirty.set(bucket, metadata);
+    }
+    await Promise.all([
+      ...writes,
+      ...[...dirty].map(async ([key, metadata]) => {
+        const old = await chunks.get(key);
+        await chunks.put({
+          key,
+          ...metadata,
+          revision: (old?.revision ?? 0) + 1,
+        });
+      }),
+    ]);
+  }
+  async prepareTextArchive(
+    scopes: ReadonlySet<string>,
+    signal?: AbortSignal,
+    progress?: (count: number) => void,
+  ) {
+    const db = await this.db;
+    if (!(await db.get("cursors", "archive-migration-v3"))) return;
+    let count = 0;
+    for (const scope of scopes) {
+      for (;;) {
+        signal?.throwIfAborted();
+        const tx = db.transaction(
+          ["messages", "textArchive", "archiveChunks", "archiveMigrations"],
+          "readwrite",
+        );
+        const state = await tx.objectStore("archiveMigrations").get(scope);
+        if (state?.complete) {
+          await tx.done;
+          break;
+        }
+        const rows = await tx
+          .objectStore("messages")
+          .getAll(
+            IDBKeyRange.bound(
+              [scope, state?.after ?? ""],
+              [scope, "\uffff"],
+              true,
+            ),
+            500,
+          );
+        await this.archiveRows(
+          tx,
+          scope,
+          rows.map(archivedText).filter((m): m is ArchivedText => !!m),
+        );
+        await tx.objectStore("archiveMigrations").put(
+          {
+            after: rows.at(-1)?.id ?? state?.after ?? "",
+            complete: rows.length < 500,
+          },
+          scope,
+        );
+        await tx.done;
+        count += rows.length;
+        progress?.(count);
+        if (rows.length < 500) break;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+  }
+  async textArchiveScopes() {
+    const db = await this.db;
+    const scopes = new Set<string>();
+    for (const name of ["messages", "textArchive"] as const) {
+      let cursor = await db
+        .transaction(name)
+        .store.index("scope")
+        .openKeyCursor(undefined, "nextunique");
+      while (cursor) {
+        scopes.add(cursor.key);
+        cursor = await cursor.continue();
+      }
+    }
+    return scopes;
+  }
+  async archiveSyncState(key: string) {
+    return (await this.db).get("archiveSync", key);
+  }
+  async saveArchiveSyncState(
+    key: string,
+    value: { revision: number; digest: string },
+  ) {
+    await (await this.db).put("archiveSync", value, key);
+  }
+  async saveArchiveSyncStates(
+    entries: [string, { revision: number; digest: string }][],
+  ) {
+    const tx = (await this.db).transaction("archiveSync", "readwrite");
+    await Promise.all(entries.map(([key, value]) => tx.store.put(value, key)));
+    await tx.done;
+  }
+  async textArchiveChunks(
+    scopes?: ReadonlySet<string>,
+    signal?: AbortSignal,
+    progress?: (count: number) => void,
+  ) {
+    const chunks: TextArchiveChunk[] = [];
+    for await (const chunk of this.iterateTextArchiveChunks(
+      scopes,
+      signal,
+      progress,
+    ))
+      chunks.push(chunk);
+    return chunks;
+  }
+  async *iterateTextArchiveChunks(
+    scopes?: ReadonlySet<string>,
+    signal?: AbortSignal,
+    progress?: (count: number) => void,
+  ) {
+    scopes ??= await this.textArchiveScopes();
+    await this.prepareTextArchive(scopes, signal, progress);
+    const db = await this.db;
+    let after: string | undefined;
+    for (;;) {
+      const keys = await db.getAllKeys(
+        "archiveChunks",
+        after === undefined ? undefined : IDBKeyRange.lowerBound(after, true),
+        100,
+      );
+      if (!keys.length) return;
+      for (const key of keys) {
+        signal?.throwIfAborted();
+        const [scope, conversation, part] = JSON.parse(key) as [
+          string,
+          string,
+          number,
+        ];
+        if (!scopes.has(scope)) continue;
+        const chunk = await this.textArchiveChunk({
+          scope,
+          conversation,
+          part,
+        });
+        if (chunk) yield chunk;
+      }
+      after = keys.at(-1)!;
+    }
+  }
+  async textArchiveChunk(
+    identity: Pick<TextArchiveChunk, "scope" | "conversation" | "part">,
+  ) {
+    const db = await this.db;
+    const key = archiveChunkKey(identity);
+    const tx = db.transaction(["textArchive", "archiveChunks"]);
+    const entry = await tx.objectStore("archiveChunks").get(key);
+    if (!entry) {
+      await tx.done;
+      return undefined;
+    }
+    if (entry.chunk) {
+      await tx.done;
+      return entry.chunk;
+    }
+    const rows = await tx
+      .objectStore("textArchive")
+      .index("bucket")
+      .getAll(key);
+    await tx.done;
+    const chunk = await packTextChunk(
+      identity,
+      rows.map((r) => r.message),
+    );
+    const write = db.transaction("archiveChunks", "readwrite");
+    const latest = await write.store.get(key);
+    if (latest?.revision === entry.revision)
+      await write.store.put({ ...latest, chunk });
+    await write.done;
+    return chunk;
+  }
+  async restoreTextArchive(
+    chunks: TextArchiveChunk[],
+    scopes?: ReadonlySet<string>,
+    signal?: AbortSignal,
+    progress?: (count: number) => void,
+  ) {
+    const db = await this.db;
+    let count = 0;
+    for (const chunk of chunks) {
+      signal?.throwIfAborted();
+      if (scopes && !scopes.has(chunk.scope))
+        throw Error("Text archive belongs to another account or server.");
+      const rows = await unpackTextChunk(chunk);
+      signal?.throwIfAborted();
+      const tx = db.transaction(["textArchive", "archiveChunks"], "readwrite");
+      await this.archiveRows(tx, chunk.scope, rows);
+      await tx.done;
+      progress?.((count += rows.length));
+    }
+  }
+  async archivedMessages(scope: string, before?: string) {
+    const db = await this.db;
+    const rows: ArchivedText[] = [];
+    const tx = db.transaction("textArchive");
+    const boundary: [string, string] = before
+      ? JSON.parse(before)
+      : ["\uffff", "\uffff"];
+    let cursor = await tx.store
+      .index("chronological")
+      .openCursor(
+        IDBKeyRange.bound([scope, "", ""], [scope, ...boundary], false, true),
+        "prev",
+      );
+    let last: string | undefined;
+    while (cursor && rows.length < 50) {
+      last = JSON.stringify([
+        cursor.value.message.created_at,
+        cursor.value.message.id,
+      ]);
+      if (!cursor.value.message.removed) rows.push(cursor.value.message);
+      cursor = await cursor.continue();
+    }
+    await tx.done;
+    return { messages: rows, before: cursor ? last : undefined };
+  }
+  async removeArchivedMessage(scope: string, id: string) {
+    const db = await this.db;
+    const tx = db.transaction(["textArchive", "archiveChunks"], "readwrite");
+    const row = await tx.objectStore("textArchive").get([scope, id]);
+    if (row)
+      await this.archiveRows(tx, scope, [
+        { ...row.message, body: "", removed: true },
+      ]);
+    await tx.done;
+  }
+  private searchRow(scope: string, message: Message) {
+    return {
+      scope,
+      id: message.id,
+      terms: searchableWords(message).map(
+        (word): [string, string, string, number] => [
+          scope,
+          message.conversation_id,
+          word,
+          message.seq,
+        ],
+      ),
+    };
+  }
+  async search(
+    scope: Scope,
+    conversation: string,
+    query: string,
+    options: SearchOptions = {},
+  ) {
+    const words = searchWords(query);
+    if (!words.length) return { messages: [], hasMore: false };
+    const db = await this.db;
+    const checkpoint = JSON.stringify([
+      scope,
+      "history",
+      conversation,
+      "search",
+    ]);
+    const completed = JSON.stringify([
+      scope,
+      "history",
+      conversation,
+      "search-complete",
+    ]);
+    let indexed = 0;
+    options.onProgress?.(indexed);
+    const migrate =
+      (await db.get("cursors", "search-migration-v2")) &&
+      !(await db.get("cursors", completed));
+    for (; migrate;) {
+      options.signal?.throwIfAborted();
+      const tx = db.transaction(["messages", "search", "cursors"], "readwrite");
+      const after = (await tx.objectStore("cursors").get(checkpoint)) ?? 0;
+      const rows = await tx
+        .objectStore("messages")
+        .index("conversation")
+        .getAll(
+          IDBKeyRange.bound(
+            [scope, conversation, after],
+            [scope, conversation, Number.MAX_SAFE_INTEGER],
+            true,
+            false,
+          ),
+          250,
+        );
+      for (const row of rows)
+        await tx.objectStore("search").put(this.searchRow(scope, row));
+      if (rows.length)
+        await tx.objectStore("cursors").put(rows.at(-1)!.seq, checkpoint);
+      if (rows.length < 250) await tx.objectStore("cursors").put(1, completed);
+      await tx.done;
+      indexed += rows.length;
+      options.onProgress?.(indexed);
+      if (rows.length < 250) break;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    options.signal?.throwIfAborted();
+    const limit = searchLimit(options);
+    const tx = db.transaction(["messages", "search"]);
+    const index = tx.objectStore("search").index("terms");
+    const range = (word: string) =>
+      IDBKeyRange.bound(
+        [scope, conversation, word, 0],
+        [scope, conversation, word, options.before ?? Number.MAX_SAFE_INTEGER],
+        false,
+        true,
+      );
+    const counts = await Promise.all(
+      words.map((word) => index.count(range(word))),
+    );
+    const rarest = words[counts.indexOf(Math.min(...counts))];
+    const messages: Message[] = [];
+    let cursor = await index.openCursor(range(rarest), "prev");
+    while (cursor && messages.length <= limit) {
+      if (options.signal?.aborted) {
+        await tx.done;
+        options.signal.throwIfAborted();
+      }
+      if (
+        words.every((word) =>
+          cursor!.value.terms.some((term) => term[2] === word),
+        )
+      ) {
+        const row = await tx
+          .objectStore("messages")
+          .get([scope, cursor.value.id]);
+        if (row) messages.push(cachedMessage(row));
+      }
+      cursor = await cursor.continue();
+    }
+    await tx.done;
+    return {
+      messages: messages.slice(0, limit),
+      hasMore: messages.length > limit,
+    };
   }
 }
 /** Remembered credentials live separately from history; ordinary logins stay in the tab. */
@@ -264,6 +746,59 @@ export interface DesktopUpdateState {
   localSigning?: boolean;
 }
 export interface DesktopBridge extends NativeBridge {
+  calls?: {
+    settings(value?: {
+      shortcuts: boolean;
+      ptt: boolean;
+    }): Promise<DesktopCallSettings>;
+    state(value: {
+      active: boolean;
+      muted: boolean;
+      deafened: boolean;
+      sharing: boolean;
+    }): Promise<void>;
+    subscribe(
+      callback: (event: {
+        state?: DesktopCallSettings;
+        action?: string;
+      }) => void,
+    ): () => void;
+  };
+  links?: {
+    open(url: string): Promise<void>;
+    ready(): Promise<import("./deep-links").DesktopLink[]>;
+    subscribe(
+      callback: (link: import("./deep-links").DesktopLink) => void,
+    ): () => void;
+  };
+  downloads?: {
+    start(url: string, name: string): Promise<string>;
+    list(): Promise<DesktopDownload[]>;
+    action(
+      id: string,
+      action: "cancel" | "retry" | "reveal" | "remove",
+    ): Promise<void>;
+    subscribe(callback: (downloads: DesktopDownload[]) => void): () => void;
+  };
+  storage?: {
+    state(): Promise<DesktopCacheState & { downloadDirectory: string }>;
+    budget(bytes: number): Promise<DesktopCacheState>;
+    clear(): Promise<DesktopCacheState>;
+    chooseDownloads(): Promise<string>;
+    reveal(kind: "media" | "application" | "downloads"): Promise<void>;
+  };
+  copyImage?(bytes: Uint8Array): Promise<void>;
+  linuxAudio?: {
+    start(id: string): Promise<{ label: string } | null>;
+    stop(id: string): Promise<void>;
+    subscribe(
+      callback: (event: {
+        id: string;
+        data?: Float32Array;
+        error?: string;
+      }) => void,
+    ): () => void;
+  };
   appearance?: {
     set(value: {
       mode: "solid" | "material" | "transparent";
@@ -351,6 +886,30 @@ declare global {
   interface Window {
     hauntDesktop?: DesktopBridge;
   }
+}
+export interface DesktopCallSettings {
+  shortcuts: boolean;
+  ptt: boolean;
+  pressed: boolean;
+  native: boolean;
+  trigger: string;
+  error: string;
+}
+export interface DesktopDownload {
+  error?: string;
+  id: string;
+  name: string;
+  received: number;
+  total: number;
+  state: "progressing" | "completed" | "cancelled" | "interrupted";
+  filePath: string;
+  active: boolean;
+  sourceKey: string;
+}
+export interface DesktopCacheState {
+  bytes: number;
+  entries: number;
+  budget: number;
 }
 export class DesktopVault implements TokenVault {
   private tail: Promise<unknown> = Promise.resolve();

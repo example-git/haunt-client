@@ -4,6 +4,7 @@ import { expect, it, vi } from "vitest";
 import {
   InstanceClient,
   MemoryStore,
+  unpackTextChunk,
   MemoryVault,
   cachedMessage,
   type DMEncryption,
@@ -65,6 +66,16 @@ for (const kind of ["memory", "indexeddb"]) {
         body: "Decrypted reply target",
         security: "encrypted",
       });
+      if (store instanceof IndexedDBStore)
+        expect(
+          (
+            await Promise.all(
+              (await store.textArchiveChunks()).map(unpackTextChunk),
+            )
+          )
+            .flat()
+            .find((m) => m.id === "message")?.body,
+        ).toBe("Decrypted reply target");
       await store.merge(instance.scope, [
         { ...raw("Edited target"), edited_at: "2026-10-12T12:01:00Z" },
       ]);
@@ -116,7 +127,7 @@ function client(
 }
 async function seedOldCache(name: string, scope: string) {
   // Bypass today's merge rules, as an already-installed older client did.
-  const db = await openDB(name, 1);
+  const db = await openDB(name);
   await db.put("messages", { ...raw(), scope });
   db.close();
 }

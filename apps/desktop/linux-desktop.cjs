@@ -49,7 +49,7 @@ async function installLinuxDesktop({
       );
     return { file, managed: false };
   }
-  const entry = `[Desktop Entry]\nType=Application\nName=Haunt\nComment=Community messaging and calls\nExec=${exec} %U\nIcon=${escapeValue(icon)}\nTerminal=false\nCategories=Network;\nStartupWMClass=${appId}\nX-GNOME-UsesNotifications=true\n${managed}\n`;
+  const entry = `[Desktop Entry]\nType=Application\nName=Haunt\nComment=Community messaging and calls\nExec=${exec} %U\nIcon=${escapeValue(icon)}\nTerminal=false\nCategories=Network;\nMimeType=x-scheme-handler/haunt;\nStartupWMClass=${appId}\nX-GNOME-UsesNotifications=true\n${managed}\n`;
   await fs.mkdir(path.dirname(icon), { recursive: true });
   await fs.copyFile(iconPath, icon);
   await fs.mkdir(path.dirname(file), { recursive: true });

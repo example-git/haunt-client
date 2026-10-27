@@ -2,8 +2,8 @@
 
 Choose your group's independent Haunt Sync instance in the desktop or standalone
 web sign-in screen, or in Encrypted sync settings. Ordinary community accounts work without it. The sync
-instance stores current encrypted snapshots, not an archival backup; losing it
-leaves your local working settings and sign-ins available.
+instance stores encrypted settings, sign-ins and private message text archives.
+Losing it leaves the copies already stored on your devices available.
 
 Create a sync account with a master password and **private sync keyword**. Keep
 both secret. The exact same pair deterministically derives the same 256-bit root
@@ -21,10 +21,31 @@ Global secrets are entered only in a trusted full-account client, not a
 community-hosted page. Requests expire in five minutes; established sessions stay
 signed in until logout or revocation.
 
+Downloaded readable message text is retained separately from live chat. Deleting
+a message from chat does not remove an already downloaded archive copy. In
+**Backup & restore**, browse saved text, delete individual archive entries, or
+export and import `.jsonl.gz` files. Importing saved text does not recreate live
+chat messages. Text exports contain message metadata and readable text after
+decompression, excluding attachment files, session tokens and encryption keys.
+Previously exported copies remain independent of later archive changes.
+
+Sync encrypts compressed text chunks on the client and merges saved messages
+across devices. Explicit archive deletions propagate to those synced copies and
+prevent stale imports from restoring the entries. Each compressed chunk holds at
+most 100 messages and syncs independently. A paged change cursor finds remote
+updates; unchanged chunks reuse local compression and are not transferred.
+Interrupted uploads resume from completed chunks. There is no 20 MiB aggregate
+archive limit; the 20 MiB encryption limit applies to individual payloads.
+Existing single-snapshot archives migrate after their chunks upload successfully.
+A community web client synchronizes only its server's archive. Incremental
+archives require an updated Haunt Sync service.
+
 Changing either secret re-encrypts the current snapshots and replaces the recovery
-key. Authentication, snapshots and recovery data change together only when every
-revision matches. The client then forces full and per-server resync, including
-unchanged snapshots. An unfinished resync remains flagged and shows a persistent
+key. Encrypted replacements upload individually into a temporary migration.
+Authentication, snapshots and recovery data change together only when every
+starting revision still matches. The client then forces full and per-server resync, including
+unchanged settings snapshots; archives recheck every remote chunk and upload
+only changed text. An unfinished resync remains flagged and shows a persistent
 notice outside settings; use Retry sync or sign in again as directed. Local data
 remains available. Keep a local backup until the resync completes. Other sync
 devices must sign in or pair again after a change.

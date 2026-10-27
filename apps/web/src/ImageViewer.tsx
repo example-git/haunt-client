@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { CopyImage } from "./MediaControls";
+import { saveMedia } from "@haunt/browser/downloads";
 import { ArrowLeft, ArrowRight, Download, Minus, Plus, X } from "lucide-react";
 
 type Picture = { src: string; alt: string };
@@ -65,6 +67,7 @@ function ImageViewer({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [index, setIndex] = useState(initialIndex);
+  const [saveError, setSaveError] = useState("");
   useEffect(() => {
     const element = dialog.current!;
     element.showModal();
@@ -92,12 +95,21 @@ function ImageViewer({
       }}
     >
       <div className="viewer-actions">
+        {saveError && <span role="alert">{saveError}</span>}
+        <CopyImage key={picture.src} source={picture.src} />
         <a
           className="viewer-control"
           href={picture.src}
           download={picture.alt || "image"}
           aria-label="Download image"
           title="Download image"
+          onClick={(event) => {
+            event.preventDefault();
+            setSaveError("");
+            void saveMedia(picture.src, picture.alt || "image.png").catch(
+              (error) => setSaveError(error.message),
+            );
+          }}
         >
           <Download size={19} />
         </a>

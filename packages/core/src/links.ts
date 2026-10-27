@@ -57,3 +57,69 @@ export function youtubePlayer(id: string): string | undefined {
     ? `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`
     : undefined;
 }
+
+export function providerPlayer(
+  embed: {
+    url: string;
+    youtube_id?: string;
+    player?: string;
+    player_id?: string;
+    player_token?: string;
+  },
+  parent: string,
+): string | undefined {
+  const safe = safeExternalURL(embed.url);
+  if (!safe) return;
+  const original = new URL(safe);
+  if (original.port) return;
+  const host = original.hostname.replace(/^www\./, "");
+  if (
+    [
+      "youtube.com",
+      "m.youtube.com",
+      "youtube-nocookie.com",
+      "youtu.be",
+    ].includes(host)
+  )
+    return youtubePlayer(embed.youtube_id ?? "");
+  const id = embed.player_id ?? "";
+  if (
+    embed.player === "vimeo" &&
+    ["vimeo.com", "player.vimeo.com"].includes(host) &&
+    /^\d{1,15}$/.test(id)
+  ) {
+    const hash = embed.player_token ?? "";
+    if (hash && !/^[a-zA-Z0-9]{6,64}$/.test(hash)) return;
+    const url = new URL(`https://player.vimeo.com/video/${id}`);
+    if (hash) url.searchParams.set("h", hash);
+    url.searchParams.set("autoplay", "1");
+    url.searchParams.set("dnt", "1");
+    return url.href;
+  }
+  if (
+    embed.player === "streamable" &&
+    host === "streamable.com" &&
+    /^[a-z0-9]{1,64}$/.test(id)
+  )
+    return `https://streamable.com/e/${id}?autoplay=1`;
+  if (
+    !["twitch.tv", "m.twitch.tv", "clips.twitch.tv"].includes(host) ||
+    !/^[a-zA-Z0-9.-]+$/.test(parent)
+  )
+    return;
+  const url = new URL(
+    embed.player === "twitch-clip"
+      ? "https://clips.twitch.tv/embed"
+      : "https://player.twitch.tv/",
+  );
+  if (embed.player === "twitch-clip" && /^[a-zA-Z0-9_-]{1,100}$/.test(id))
+    url.searchParams.set("clip", id);
+  else if (embed.player === "twitch-video" && /^\d{1,20}$/.test(id))
+    url.searchParams.set("video", `v${id}`);
+  else if (embed.player === "twitch-channel" && /^[a-zA-Z0-9_]{1,25}$/.test(id))
+    url.searchParams.set("channel", id);
+  else return;
+  url.searchParams.set("parent", parent);
+  url.searchParams.set("autoplay", "true");
+  return url.href;
+}

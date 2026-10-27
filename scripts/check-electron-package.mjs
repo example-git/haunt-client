@@ -1,4 +1,5 @@
 import { desktopFiles } from "./desktop-files.mjs";
+import { nativeRuntimeHash } from "./update-runtime.mjs";
 import fs from "node:fs/promises";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -59,6 +60,37 @@ if (process.platform === "darwin") {
     0x100000c,
     "Notification replacement targets Apple Silicon",
   );
+}
+if (process.platform === "linux") {
+  const directory = path.join(path.dirname(filename), "native/linux");
+  const runtime = JSON.parse(asar.extractFile(filename, "update-runtime.json"));
+  assert.equal(
+    await nativeRuntimeHash(directory),
+    runtime.nativeRuntime,
+    "The installer supplies the native libraries identified by the updater",
+  );
+  for (const name of [
+    "HauntAudioWorker",
+    "HauntShortcutWorker",
+    "HauntCaptureWorker",
+    "HauntMediaWorker",
+  ]) {
+    const helper = path.join(path.dirname(filename), "native/linux", name);
+    const bytes = await fs.readFile(helper);
+    assert.equal(
+      bytes.subarray(0, 4).toString("hex"),
+      "7f454c46",
+      `${name} is ELF`,
+    );
+    assert.equal(bytes[4], 2, `${name} is 64-bit`);
+    assert.equal(bytes[5], 1, `${name} is little-endian`);
+    assert.equal(
+      bytes.readUInt16LE(18),
+      process.arch === "arm64" ? 183 : 62,
+      `${name} targets the package architecture`,
+    );
+    assert((await fs.stat(helper)).mode & 0o111, `${name} is executable`);
+  }
 }
 const packagedIdentity = JSON.parse(
   asar.extractFile(filename, "package.json").toString(),

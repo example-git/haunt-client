@@ -4565,6 +4565,41 @@ dialog,
   min-width: 0;
   min-height: 0;
 }
+.history-tools {
+  flex: 0 0 auto;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  max-height: 45%;
+  overflow: auto;
+}
+.history-tools .button-row {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.history-search label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.history-search-results {
+  display: grid;
+  gap: 4px;
+}
+.archived-message-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.text-archive-backups .history-search-results article {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+.history-search-results button {
+  text-align: left;
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 .file-drop-overlay {
   display: none;
   position: absolute;
@@ -6174,4 +6209,107 @@ button:disabled:hover {
   .app > .member-panel {
     transition: none;
   }
+}
+
+.embed-post-author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.embed-post-author > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.embed-post-author > span > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.embed-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.embed-gallery {
+  display: grid;
+  gap: 4px;
+}
+.embed-gallery-multiple {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.embed-gallery .embed-picture {
+  margin: 0;
+  width: 100%;
+}
+.embed-gallery .embed-picture img {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+}
+.embed-native-video {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.embed-native-video video {
+  display: block;
+  width: 100%;
+  max-height: 480px;
+}
+.embed-native-video .embed-play {
+  width: 100%;
+  margin: 0;
+}
+.embed-media-status {
+  padding: 20px;
+  color: var(--muted);
+}
+.embed-post .embed-description {
+  white-space: pre-wrap;
+  -webkit-line-clamp: unset;
+  max-height: 32em;
+  overflow: auto;
+}
+
+.embed-native-video audio {
+  width: 100%;
+}
+.embed-player.embed-twitch {
+  min-height: 300px;
+  overflow: auto;
+}
+.embed-player.embed-twitch iframe {
+  min-width: 400px;
+  min-height: 300px;
+}
+.media-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  font-size: 12px;
+}
+.media-controls label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.media-controls select,
+.media-controls button {
+  font: inherit;
+  padding: 4px 6px;
+}
+.desktop-call-notice {
+  position: fixed;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 2px 8px #0004;
 }

@@ -6,6 +6,50 @@ const { localHTTPHost, allowInsecureRequest } = createRequire(import.meta.url)(
   "../apps/desktop/network.cjs",
 );
 
+it("loads only official Bluesky images through the desktop CORS adapter without credentials or redirects", async () => {
+  const { forwardDesktopRequest } = createRequire(import.meta.url)(
+    "../apps/desktop/network.cjs",
+  );
+  const app = "https://app.chatxo.local";
+  const requests: Request[] = [];
+  const response = await forwardDesktopRequest(
+    new Request("https://cdn.bsky.app/img/avatar/plain/fixture", {
+      headers: { Origin: app, Cookie: "private", Authorization: "private" },
+    }),
+    app,
+    async (request: Request) => {
+      requests.push(request);
+      return new Response(new Uint8Array([1, 2]), {
+        headers: { "Content-Type": "image/webp" },
+      });
+    },
+  );
+  expect(requests[0].credentials).toBe("omit");
+  expect(requests[0].redirect).toBe("error");
+  expect([...requests[0].headers]).toEqual([]);
+  expect(response.headers.get("Access-Control-Allow-Origin")).toBe(app);
+  expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+    new Uint8Array([1, 2]),
+  );
+  const refused = await forwardDesktopRequest(
+    new Request("https://cdn.bsky.app/img/avatar/plain/fixture", {
+      headers: { Origin: app },
+    }),
+    app,
+    async () =>
+      new Response("html", { headers: { "Content-Type": "text/html" } }),
+  );
+  expect(refused.status).toBe(502);
+  const other = new Request(
+    "https://cdn.bsky.app.attacker.example/img/avatar",
+    { headers: { Origin: app } },
+  );
+  await forwardDesktopRequest(other, app, async (request: Request) => {
+    expect(request).toBe(other);
+    return new Response("ordinary fetch");
+  });
+});
+
 describe("LAN HTTP", () => {
   it("accepts private IPs consistently in the SDK and desktop vault", () => {
     for (const host of [
@@ -90,6 +134,26 @@ describe("LAN HTTP", () => {
       "http://user:pass@192.168.1.117/api/v1/instance",
     ])
       expect(allowInsecureRequest({ ...request, url }, 12)).toBe(false);
+  });
+  it("allows media-only ticket streams from a trusted desktop window", () => {
+    const url =
+      "http://127.0.0.1:8080/api/v1/conversations/11111111-1111-4111-8111-111111111111/messages/22222222-2222-4222-8222-222222222222/embeds/video?ticket=" +
+      "a".repeat(48);
+    const request = { url, resourceType: "media", webContentsId: 12 };
+    expect(allowInsecureRequest(request, 12)).toBe(true);
+    expect(allowInsecureRequest(request, 13)).toBe(false);
+    expect(
+      allowInsecureRequest(
+        { ...request, url: url.replace("/embeds/video", "/attachments/video") },
+        12,
+      ),
+    ).toBe(false);
+    expect(
+      allowInsecureRequest(
+        { ...request, url: url.replace("ticket=", "token=") },
+        12,
+      ),
+    ).toBe(false);
   });
   it("generates valid unique message IDs without the secure-context randomUUID API", () => {
     const source = { getRandomValues: crypto.getRandomValues.bind(crypto) };

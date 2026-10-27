@@ -11,10 +11,41 @@ import {
   type MediaStore,
 } from "../packages/browser/src/media-cache";
 import type { InstanceClient } from "@haunt/core";
+import { previewImage, messageEmbeds } from "../packages/browser/src/embeds";
 const { DiskMediaCache } = createRequire(import.meta.url)(
   "../apps/desktop/media-cache.cjs",
 );
 afterEach(() => vi.restoreAllMocks());
+it("reuses server-identified preview images across messages while isolating accounts", async () => {
+  vi.stubGlobal("window", {});
+  try {
+    const get = vi.fn(async () => ({ data: image("preview"), response: new Response("", { status: 200 }) }));
+    const instance = { origin: "https://cache-reuse.example", scope: crypto.randomUUID(), http: { GET: get } } as unknown as InstanceClient;
+    const message = { id: "first", conversation_id: "room", created_at: "2026-10-26T00:00:00Z" } as any;
+    await previewImage(instance, message, 0, signal(), { cacheKey: "a".repeat(64) });
+    await previewImage(instance, { ...message, id: "second" }, 0, signal(), { cacheKey: "a".repeat(64) });
+    expect(get).toHaveBeenCalledTimes(1);
+    await previewImage({ ...instance, scope: "other-account" } as InstanceClient, message, 0, signal(), { cacheKey: "a".repeat(64) });
+    expect(get).toHaveBeenCalledTimes(2);
+  } finally { vi.unstubAllGlobals(); }
+});
+it("refreshes expired metadata online and reuses saved cards offline", async () => {
+  vi.stubGlobal("window", {});
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1000000);
+  try {
+    const get = vi.fn(async () => ({ data: { embeds: [{ index: 0, url: "https://page.example", kind: "link", title: "Saved card", image: false }] }, response: new Response("", { status: 200 }) }));
+    const instance = { origin: "https://cache-metadata.example", scope: crypto.randomUUID(), snapshot: { status: "online" }, http: { GET: get } } as unknown as InstanceClient;
+    const message = { id: "message", conversation_id: "room", created_at: "2026-10-26T00:00:00Z" } as any;
+    await messageEmbeds(instance, message, signal());
+    clock.mockReturnValue(1400000);
+    await messageEmbeds(instance, message, signal());
+    expect(get).toHaveBeenCalledTimes(2);
+    clock.mockReturnValue(1800000);
+    instance.snapshot.status = "offline";
+    expect((await messageEmbeds(instance, message, signal()))[0].title).toBe("Saved card");
+    expect(get).toHaveBeenCalledTimes(2);
+  } finally { vi.unstubAllGlobals(); clock.mockRestore(); }
+});
 const image = (value: string) => new Blob([value], { type: "image/png" });
 const signal = () => new AbortController().signal;
 

@@ -4,8 +4,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { gunzipSync } from "node:zlib";
 
-export async function checkConfiguration(page, fixtures, label = "browser") {
+export async function checkConfiguration(
+  page,
+  fixtures,
+  label = "browser",
+  desktop,
+) {
   page.setDefaultTimeout(15000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -35,7 +41,7 @@ export async function checkConfiguration(page, fixtures, label = "browser") {
     await page
       .getByRole("button", { name: "Save configuration", exact: true })
       .click();
-    await expect(page.getByRole("status")).toHaveText(
+    await expect(page.getByRole("dialog").getByRole("status")).toHaveText(
       "Server configuration saved and applied.",
     );
     await page.getByRole("button", { name: "Close", exact: true }).click();
@@ -59,7 +65,7 @@ export async function checkConfiguration(page, fixtures, label = "browser") {
     await page
       .getByRole("button", { name: "Test & register", exact: true })
       .click();
-    await expect(page.getByRole("status")).toContainText(
+    await expect(page.getByRole("dialog").getByRole("status")).toContainText(
       "Storage verified and registered",
     );
     const provider = page
@@ -75,7 +81,9 @@ export async function checkConfiguration(page, fixtures, label = "browser") {
     await provider
       .getByRole("button", { name: "Test connection", exact: true })
       .click();
-    await expect(page.getByRole("status")).toContainText("Connection verified");
+    await expect(page.getByRole("dialog").getByRole("status")).toContainText(
+      "Connection verified",
+    );
     await page
       .locator(".storage-provider")
       .filter({ hasText: "Built-in local storage" })
@@ -90,6 +98,32 @@ export async function checkConfiguration(page, fixtures, label = "browser") {
       .getByRole("button", { name: "Register storage provider", exact: true })
       .click();
     await page.getByLabel("Storage type", { exact: true }).selectOption("s3");
+    for (const [preset, region, pathStyle] of [
+      ["r2", "auto", true],
+      ["b2", "", true],
+      ["spaces", "us-east-1", false],
+      ["minio", "us-east-1", true],
+      ["custom", "us-east-1", true],
+      ["s3", "us-east-1", false],
+    ]) {
+      await page
+        .getByLabel("Storage type", { exact: true })
+        .selectOption(preset);
+      await expect(page.getByLabel("Region", { exact: true })).toHaveValue(
+        region,
+      );
+      await expect(
+        page.getByLabel(
+          "Path-style requests (MinIO and some compatible hosts)",
+          { exact: true },
+        ),
+      ).toBeChecked({ checked: pathStyle });
+      await expect(
+        page.getByLabel("Endpoint (leave empty for Amazon S3)", {
+          exact: true,
+        }),
+      ).toHaveJSProperty("required", preset !== "s3");
+    }
     await expect(
       page.getByLabel("Secret key", { exact: true }),
     ).toHaveAttribute("type", "password");
@@ -101,7 +135,7 @@ export async function checkConfiguration(page, fixtures, label = "browser") {
     await page
       .getByRole("button", { name: "Save configuration", exact: true })
       .click();
-    await expect(page.getByRole("status")).toContainText(
+    await expect(page.getByRole("dialog").getByRole("status")).toContainText(
       "Server configuration saved",
     );
     // A new page/field can arrive from the server without a client component.
@@ -131,19 +165,157 @@ export async function checkConfiguration(page, fixtures, label = "browser") {
     await page
       .getByRole("button", { name: "Save configuration", exact: true })
       .click();
-    await expect(page.getByRole("status")).toContainText(
+    await expect(page.getByRole("dialog").getByRole("status")).toContainText(
       "Server configuration saved",
     );
     await page.getByLabel("Future image limit", { exact: true }).fill("2");
     await page
       .getByRole("button", { name: "Save configuration", exact: true })
       .click();
-    await expect(page.getByRole("status")).toContainText(
+    await expect(page.getByRole("dialog").getByRole("status")).toContainText(
       "Server configuration saved",
     );
     await page.screenshot({
       path: `test-results/server-configuration-${label}.png`,
     });
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await page
+      .getByRole("button", {
+        name: /^(Client settings|Account settings)$/,
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("button", { name: "History & downloads", exact: true })
+      .click();
+    const rate = page.getByLabel("Archive download limit (KiB/s)", {
+      exact: true,
+    });
+    const requests = page.getByLabel("Archive requests per minute", {
+      exact: true,
+    });
+    await rate.fill("32");
+    await requests.fill("12");
+    const automatic = page.getByLabel(
+      "Automatically archive the open conversation",
+      { exact: true },
+    );
+    await automatic.uncheck();
+    const policy = () =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("chatxo-client-preferences-v1"))
+            .archive,
+      );
+    assert.deepEqual(await policy(), {
+      automatic: false,
+      bytesPerSecond: 32768,
+      requestsPerMinute: 12,
+    });
+    await requests.fill("0");
+    await expect(requests).toHaveValue("0");
+    assert.equal(
+      await requests.evaluate((input) => input.validity.valid),
+      false,
+    );
+    assert.equal((await policy()).requestsPerMinute, 12);
+    await requests.fill("30");
+    await rate.fill("64");
+    await automatic.check();
+    await page.screenshot({
+      path: `test-results/archive-settings-${label}.png`,
+    });
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    const savedText = `Archive retention ${label} ${Date.now()}`;
+    await page.getByLabel("Message", { exact: true }).fill(savedText);
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .click();
+    const row = page
+      .locator(".message")
+      .filter({ has: page.locator(".message-body", { hasText: savedText }) });
+    await expect(row).toHaveCount(1);
+    await row.hover();
+    await row
+      .getByRole("button", { name: "Message options", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "Delete message…", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Delete message", exact: true })
+      .click();
+    await expect(row).toHaveCount(0);
+    await page
+      .getByRole("button", {
+        name: /^(Client settings|Account settings)$/,
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("button", { name: "Backup & restore", exact: true })
+      .click();
+    const archive = page.locator(".text-archive-backups");
+    await archive
+      .getByRole("button", { name: "Browse saved text", exact: true })
+      .click();
+    const saved = archive.locator("article").filter({ hasText: savedText });
+    await expect(saved).toHaveCount(1);
+    const exportFile = async (name) => {
+      const destination = path.join(storagePath, name);
+      if (desktop) {
+        await desktop.evaluate(({ session }, destination) => {
+          globalThis.archiveDownloadResult = "pending";
+          session
+            .fromPartition("persist:chatxo")
+            .once("will-download", (_event, item) => {
+              item.setSavePath(destination);
+              item.once("done", (_event, state) => {
+                globalThis.archiveDownloadResult = state;
+              });
+            });
+        }, destination);
+        await archive
+          .getByRole("button", { name: "Export message text", exact: true })
+          .click();
+        await expect
+          .poll(() => desktop.evaluate(() => globalThis.archiveDownloadResult))
+          .toBe("completed");
+      } else {
+        const completed = page.waitForEvent("download");
+        await archive
+          .getByRole("button", { name: "Export message text", exact: true })
+          .click();
+        await (await completed).saveAs(destination);
+      }
+      return destination;
+    };
+    const file = await exportFile("saved.jsonl.gz");
+    const text = gunzipSync(await fs.readFile(file)).toString("utf8");
+    assert.ok(text.includes(savedText));
+    assert.ok(!text.includes('"attachment_ids"'));
+    assert.ok(!text.includes('"token"'));
+    await saved
+      .getByRole("button", { name: "Delete from my archive", exact: true })
+      .click();
+    await expect(saved).toHaveCount(0);
+    await archive
+      .getByLabel("Message text archive file", { exact: true })
+      .setInputFiles(file);
+    await archive
+      .getByRole("button", { name: "Import message text", exact: true })
+      .click();
+    await expect(archive.getByRole("status")).toHaveText(
+      "Text restored to the private archive. Live chat is unchanged.",
+    );
+    await expect(saved).toHaveCount(0);
+    const removedFile = await exportFile("removed.jsonl.gz");
+    assert.ok(
+      !gunzipSync(await fs.readFile(removedFile))
+        .toString("utf8")
+        .includes(savedText),
+    );
+    await page.screenshot({ path: `test-results/text-archive-${label}.png` });
     assert.deepEqual(errors, []);
     console.log(
       JSON.stringify({
