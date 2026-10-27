@@ -5,6 +5,7 @@
     "smartUnpack": true
   },
   "npmRebuild": false,
+  "toolsets": { "appimage": "1.0.3" },
   "publish": null,
   "protocols": [{ "name": "Haunt links", "schemes": ["haunt"] }],
   "directories": {

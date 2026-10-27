@@ -125,13 +125,24 @@ if (process.argv[2] === "prepare") {
       "The test host must not supply GStreamer libraries",
     );
   };
-  const extract = async (image, name) => {
+  const extract = async (image, name, legacy = false) => {
     const directory = path.join(scratch, name);
     await fs.mkdir(directory);
     await fs.chmod(image, 0o755);
+    let env = process.env;
+    if (legacy && process.arch === "arm64") {
+      const { stdout } = await run("ldconfig", ["-p"]);
+      const zlib = stdout.match(/libz\.so\.1 .* => (\S+)/)?.[1];
+      assert(zlib, "The legacy AppImage extractor needs zlib");
+      const libraries = path.join(directory, "legacy-libraries");
+      await fs.mkdir(libraries);
+      await fs.symlink(zlib, path.join(libraries, "libz.so"));
+      env = { ...process.env, LD_LIBRARY_PATH: libraries };
+    }
     await run(image, ["--appimage-extract"], {
       cwd: directory,
       maxBuffer: 8 * 1024 * 1024,
+      env,
     });
     return path.join(directory, "squashfs-root/resources");
   };
@@ -150,6 +161,7 @@ if (process.argv[2] === "prepare") {
   };
   const capture = async (resources, name) => {
     await noSystemGStreamer();
+    asar.uncache(path.join(resources, "app.asar"));
     const native = path.join(resources, "native/linux");
     const installed = JSON.parse(
       asar.extractFile(path.join(resources, "app.asar"), "update-runtime.json"),
@@ -194,6 +206,7 @@ if (process.argv[2] === "prepare") {
     });
   };
   const update = async (format, resources, image) => {
+    asar.uncache(path.join(resources, "app.asar"));
     const old = JSON.parse(
       asar.extractFile(path.join(resources, "app.asar"), "update-runtime.json"),
     );
@@ -316,7 +329,7 @@ if (process.argv[2] === "prepare") {
     await capture("/opt/Haunt/resources", "rpm-fresh");
     const image = path.join(scratch, "Haunt.AppImage");
     await fs.copyFile(file(previousDirectory, previous.installer), image);
-    const oldResources = await extract(image, "old-image");
+    const oldResources = await extract(image, "old-image", true);
     await update("AppImage", oldResources, image);
     await capture(await extract(image, "updated-image"), "appimage-updated");
     console.log(
