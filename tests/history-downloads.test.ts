@@ -201,6 +201,57 @@ it("reuses a previously downloaded history range instead of fetching it again", 
   client.stop();
 });
 
+for (const durable of [false, true])
+  it(`${durable ? "IndexedDB" : "memory"} retains newer cached history when downloading an uncached older page`, async () => {
+    const store = durable
+      ? new IndexedDBStore(`history-ranges-${crypto.randomUUID()}`)
+      : new MemoryStore();
+    const fetch = vi.fn(async (request: RequestInfo | URL) => {
+      const url = request instanceof Request ? request.url : String(request);
+      const before = Number(new URL(url).searchParams.get("before"));
+      return Response.json({
+        messages: Array.from({ length: 100 }, (_, i) =>
+          message(String(before - 100 + i), before - 100 + i, "local"),
+        ),
+        has_more: true,
+        last_seq: 299,
+        event_cursor: 0,
+        next_change: 0,
+        pruned_through: 0,
+        gap: false,
+      });
+    });
+    const client = new InstanceClient(
+      {
+        origin: "https://server.test",
+        instance: {
+          instance_id: "instance",
+          capabilities: ["messages.history_pages.v1"],
+        },
+        login: { token: "test", user: { id: "me" } },
+      } as SavedAccount,
+      { fetch, socket: vi.fn(), randomUUID: () => crypto.randomUUID() },
+      store,
+      new MemoryVault(),
+    );
+    try {
+      await client.loadOlder("room", 300);
+      await client.loadOlder("room", 200);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      const page = await client.loadOlder("room", 300);
+      expect(page?.messages.map((m) => m.seq)).toEqual(
+        Array.from({ length: 100 }, (_, i) => i + 200),
+      );
+      expect(fetch).toHaveBeenCalledTimes(2);
+      await store.clear(client.scope);
+      await client.loadOlder("room", 300);
+      expect(fetch).toHaveBeenCalledTimes(3);
+    } finally {
+      client.stop();
+      if (store instanceof IndexedDBStore) await store.close();
+    }
+  });
+
 it("cancels queued archive work while another download waits for availability", async () => {
   const budget = new ArchiveBudget();
   const first = new AbortController(),

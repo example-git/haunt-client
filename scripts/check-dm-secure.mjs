@@ -201,7 +201,7 @@ export async function checkSecureDM(
     await page.evaluate(
       async ({ message, scope }) => {
         const db = await new Promise((resolve, reject) => {
-          const request = indexedDB.open("chatxo-history-v1", 1);
+          const request = indexedDB.open("chatxo-history-v1");
           request.onsuccess = () => resolve(request.result);
           request.onerror = () => reject(request.error);
         });
@@ -255,7 +255,7 @@ export async function checkSecureDM(
     // Re-fetch into an empty history cache with the same device keys.
     await page.evaluate(async () => {
       const db = await new Promise((resolve, reject) => {
-        const request = indexedDB.open("chatxo-history-v1", 1);
+        const request = indexedDB.open("chatxo-history-v1");
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       });

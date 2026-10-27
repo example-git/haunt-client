@@ -998,7 +998,11 @@ export class InstanceClient {
   async loadOlder(conversation: string, before: number) {
     if (!this.pagedHistory) return;
     const local = await this.messages(conversation, { before, limit: 100 });
-    if (!local.length) this.historyRanges.delete(conversation);
+    if (
+      !local.length &&
+      !(await this.messages(conversation, { limit: 1 })).length
+    )
+      this.historyRanges.delete(conversation);
     const archived = await this.store.cursor(
       this.historyKey(conversation, "archive"),
     );
