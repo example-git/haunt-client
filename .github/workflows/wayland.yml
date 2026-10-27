@@ -72,7 +72,7 @@ jobs:
       - name: Build software Wayland compositor and portal
         if: matrix.desktop == 'wayland'
         run: |
-          sudo apt-get install -y --no-install-recommends meson ninja-build libpipewire-0.3-dev libwayland-dev libinih-dev libgbm-dev libdrm-dev libsystemd-dev libffi-dev libexpat1-dev libxml2-dev libjson-c-dev libpcre2-dev libxkbcommon-dev libcairo2-dev libpango1.0-dev libevdev-dev libinput-dev
+          sudo apt-get install -y --no-install-recommends meson ninja-build libpipewire-0.3-dev libwayland-dev libinih-dev libgbm-dev libdrm-dev libsystemd-dev libffi-dev libexpat1-dev libxml2-dev libjson-c-dev libpcre2-dev libxkbcommon-dev libcairo2-dev libpango1.0-dev libevdev-dev libudev-dev libmtdev-dev
           git clone --depth 1 --branch 1.45 https://gitlab.freedesktop.org/wayland/wayland-protocols.git "$RUNNER_TEMP/wayland-protocols"
           meson setup "$RUNNER_TEMP/wayland-protocols/build" "$RUNNER_TEMP/wayland-protocols" --prefix="$RUNNER_TEMP/wayland-sdk" -Dtests=false
           meson install -C "$RUNNER_TEMP/wayland-protocols/build"
@@ -85,6 +85,10 @@ jobs:
           meson compile -C "$RUNNER_TEMP/wlroots/build"
           meson install -C "$RUNNER_TEMP/wlroots/build"
           export PATH="$RUNNER_TEMP/wayland-sdk/bin:$PATH" LD_LIBRARY_PATH="$RUNNER_TEMP/wayland-sdk/lib"
+          git clone --depth 1 --branch 1.28.1 https://gitlab.freedesktop.org/libinput/libinput.git "$RUNNER_TEMP/libinput"
+          meson setup "$RUNNER_TEMP/libinput/build" "$RUNNER_TEMP/libinput" --prefix="$RUNNER_TEMP/wayland-sdk" --libdir=lib -Dtests=false -Ddebug-gui=false -Dlibwacom=false -Ddocumentation=false
+          meson compile -C "$RUNNER_TEMP/libinput/build"
+          meson install -C "$RUNNER_TEMP/libinput/build"
           git clone --depth 1 --branch 1.11 https://github.com/swaywm/sway.git "$RUNNER_TEMP/sway"
           meson setup "$RUNNER_TEMP/sway/build" "$RUNNER_TEMP/sway" --prefix="$RUNNER_TEMP/wayland-sdk" --libdir=lib -Dman-pages=disabled -Ddefault-wallpaper=false -Dswaybar=false -Dswaynag=false -Dtray=disabled -Dgdk-pixbuf=disabled
           meson compile -C "$RUNNER_TEMP/sway/build"
