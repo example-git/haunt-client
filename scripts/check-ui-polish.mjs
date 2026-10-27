@@ -44,12 +44,17 @@ export async function checkUIPolish(page, { appearance, close }) {
   const dated = page.locator(".message-group-date").first();
   await dated.scrollIntoViewIfNeeded();
   const row = dated.locator("..");
-  const dateBox = await dated.boundingBox(),
-    bodyBox = await row.locator(".message-body").boundingBox();
+  const { dateBox, bodyBox } = await dated.evaluate((date) => ({
+    dateBox: date.getBoundingClientRect().toJSON(),
+    bodyBox: date.parentElement
+      .querySelector(".message-body")
+      .getBoundingClientRect()
+      .toJSON(),
+  }));
   assert(
     dateBox.y + dateBox.height <= bodyBox.y ||
       dateBox.x >= bodyBox.x + bodyBox.width,
-    "Date must not overlap the body",
+    `Date must not overlap the body: ${JSON.stringify({ dateBox, bodyBox })}`,
   );
   await row.hover();
   await page.screenshot({ path: "test-results/polish-dated-message.png" });
