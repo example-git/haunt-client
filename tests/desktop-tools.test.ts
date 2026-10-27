@@ -76,6 +76,28 @@ it("saves every range of a video larger than the proxy chunk and removes incompl
   }
 });
 
+it("keeps development links separate from stable protocol registration", () => {
+  const stable = messageLink(
+    "https://community.example",
+    crypto.randomUUID(),
+    crypto.randomUUID(),
+  );
+  const development = stable.replace("haunt:", "haunt-dev:");
+  expect(parseDeepLink(development, "haunt-dev")).toEqual(
+    parseDeepLink(stable),
+  );
+  expect(() => parseDeepLink(development)).toThrow("Invalid Haunt link");
+  const app = Object.assign(new EventEmitter(), {
+    isPackaged: true,
+    getName: () => "Haunt Dev",
+    setAsDefaultProtocolClient: vi.fn(),
+  });
+  const attach = installDeepLinks(app, { handle: vi.fn() }, vi.fn());
+  attach({ webContents: new EventEmitter() });
+  expect(app.setAsDefaultProtocolClient).toHaveBeenCalledWith("haunt-dev");
+  expect(app.setAsDefaultProtocolClient).not.toHaveBeenCalledWith("haunt");
+});
+
 it("routes server-local links and queues startup links until the renderer is ready", () => {
   const channel = crypto.randomUUID(),
     message = crypto.randomUUID();

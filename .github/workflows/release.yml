@@ -1,13 +1,6 @@
-name: Desktop releases
+name: Verify component desktop packages
 on:
-  push:
-    tags: ["client-v*"]
   workflow_dispatch:
-    inputs:
-      verify_only:
-        description: Build and verify installers without publishing
-        type: boolean
-        default: false
 permissions:
   contents: read
 jobs:
@@ -82,9 +75,10 @@ jobs:
         run: brew install tesseract imagemagick cliclick
       - name: Install Windows native UI inspection tools
         if: matrix.platform == 'win'
+        shell: pwsh
         run: |
           choco install -y tesseract imagemagick --no-progress
-          powershell -NoProfile -Command '[Environment]::GetEnvironmentVariable("Path", "Machine").Split(";") | Out-File -Append -Encoding utf8 $env:GITHUB_PATH'
+          [Environment]::GetEnvironmentVariable("Path", "Machine").Split(";") | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
       - name: Verify local macOS signing and in-app bundle replacement
         if: matrix.platform == 'mac'
         run: node scripts/check-mac-local-update.mjs
@@ -121,50 +115,3 @@ jobs:
           name: release-${{ matrix.target }}
           path: release/updates/*
           if-no-files-found: error
-  publish:
-    if: inputs.verify_only != true
-    needs: build
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: release-*
-          merge-multiple: true
-          path: release/updates
-      - name: Authenticate release artifacts
-        run: node scripts/release-client.mjs manifest
-        env:
-          HAUNT_UPDATE_PUBLIC_KEY: ${{ vars.HAUNT_UPDATE_PUBLIC_KEY }}
-          HAUNT_UPDATE_PRIVATE_KEY: ${{ secrets.HAUNT_UPDATE_PRIVATE_KEY }}
-      - name: Publish complete release
-        shell: bash
-        run: |
-          version=$(node -p 'require("./package.json").version')
-          tag="client-v$version"
-          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
-            echo 'Tag and package version differ' >&2
-            exit 1
-          fi
-          gh release create "$tag" release/updates/*.asar release/updates/*.exe release/updates/*.dmg release/updates/*.AppImage release/updates/*.rpm release/updates/haunt-updates.json --target "$GITHUB_SHA" --title "Haunt $version" --generate-notes
-        env:
-          GH_TOKEN: ${{ github.token }}
-      - name: Mirror verified downloads
-        if: vars.HAUNT_UPDATE_HOST != ''
-        shell: bash
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$UPDATE_SSH_KEY" > ~/.ssh/haunt-updates
-          chmod 600 ~/.ssh/haunt-updates
-          printf '%s\n' "$UPDATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          tar -C release/updates -czf release/client-updates.tar.gz .
-          ssh -i ~/.ssh/haunt-updates "$UPDATE_HOST" < release/client-updates.tar.gz
-        env:
-          UPDATE_SSH_KEY: ${{ secrets.HAUNT_UPDATE_SSH_KEY }}
-          UPDATE_KNOWN_HOSTS: ${{ vars.HAUNT_UPDATE_KNOWN_HOSTS }}
-          UPDATE_HOST: ${{ vars.HAUNT_UPDATE_HOST }}

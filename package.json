@@ -22,7 +22,6 @@
     "test:browser-harness": "node --test scripts/tests/wait-chrome-port.test.mjs",
     "test:chat-stability": "node scripts/check-chat-stability.mjs",
     "test:message-scroll": "node scripts/check-message-scroll.mjs",
-    "version:preview": "node scripts/version-main.mjs --preview",
     "test:integration": "node scripts/test-integration.mjs",
     "test:browser": "node scripts/check-browser-regressions.mjs",
     "desktop": "electron apps/desktop/main.cjs",
@@ -46,7 +45,8 @@
     "updates:pack": "node scripts/release-client.mjs pack",
     "updates:manifest": "node scripts/release-client.mjs manifest",
     "postinstall": "npm ci --prefix scripts/api-generator --ignore-scripts",
-    "predesktop": "node scripts/build-notification-replacement.mjs && node scripts/build-linux-audio.mjs"
+    "predesktop": "node scripts/build-notification-replacement.mjs && node scripts/build-linux-audio.mjs",
+    "version:stamp": "node scripts/version-main.mjs"
   },
   "dependencies": {
     "@serenity-kit/opaque": "1.1.0",
@@ -81,7 +81,7 @@
   "engines": {
     "node": ">=22.12.0"
   },
-  "description": "Haunt — self-hosted community messaging and calls",
+  "description": "Haunt \u2014 self-hosted community messaging and calls",
   "author": "Haunt",
   "build": {
     "extends": "./electron-builder.config.json"

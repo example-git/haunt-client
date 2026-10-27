@@ -49,7 +49,7 @@ if (command === "keygen") {
   const builder = path.join(root, "release/builder");
   const packed =
     config.platform === "darwin"
-      ? "mac-arm64/Haunt.app/Contents/Resources/app.asar"
+      ? `mac-arm64/${config.channel === "dev" ? "Haunt Dev" : "Haunt"}.app/Contents/Resources/app.asar`
       : config.platform === "win32"
         ? "win-unpacked/resources/app.asar"
         : `linux${config.arch === "arm64" ? "-arm64" : ""}-unpacked/resources/app.asar`;
@@ -75,7 +75,7 @@ if (command === "keygen") {
     path.join(directory, expected),
   );
   let rpm;
-  if (config.platform === "linux") {
+  if (config.platform === "linux" && config.channel === "stable") {
     rpm = `Haunt-${config.version}-linux-${config.arch}.rpm`;
     const builtRPM = rpm.replace(
       `-${config.arch}.rpm`,
@@ -110,6 +110,8 @@ if (command === "keygen") {
   console.log(`Prepared ${key} payload and baseline installer.`);
 } else if (command === "manifest") {
   const config = await releaseConfig();
+  if (config.channel !== "stable")
+    throw Error("Development builds cannot publish a stable update manifest");
   const key = createPrivateKey(
     process.env.HAUNT_UPDATE_PRIVATE_KEY ||
       (await fs.readFile(process.env.HAUNT_UPDATE_PRIVATE_KEY_FILE)),

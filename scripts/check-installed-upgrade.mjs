@@ -42,7 +42,7 @@ const { stdout } = await run("gh", [
   "release",
   "list",
   "--repo",
-  config.repository,
+  "example-git/haunt",
   "--limit",
   "100",
   "--json",
@@ -53,11 +53,11 @@ const previousTag = JSON.parse(stdout)
     (release) =>
       !release.isDraft &&
       !release.isPrerelease &&
-      /^client-v\d+\.\d+\.\d+$/.test(release.tagName),
+      /^v\d+\.\d+\.\d+$/.test(release.tagName),
   )
   .map((release) => release.tagName)
-  .filter((tag) => compare(tag.slice(8), current.version) < 0)
-  .sort((a, b) => compare(b.slice(8), a.slice(8)))[0];
+  .filter((tag) => compare(tag.slice(1), current.version) < 0)
+  .sort((a, b) => compare(b.slice(1), a.slice(1)))[0];
 assert(
   previousTag,
   "An earlier published installer is required; no upgrade is claimed without one",
@@ -104,7 +104,7 @@ const account = {
 };
 const report = {
   target,
-  from: previousTag.slice(8),
+  from: previousTag.slice(1),
   to: current.version,
   kind: "full-installer",
   passed: false,
@@ -360,7 +360,7 @@ try {
     "download",
     previousTag,
     "--repo",
-    config.repository,
+    "example-git/haunt",
     "--pattern",
     "haunt-updates.json",
     "--dir",
@@ -380,7 +380,7 @@ try {
     "download",
     previousTag,
     "--repo",
-    config.repository,
+    "example-git/haunt",
     "--pattern",
     prior.installer.file,
     "--dir",

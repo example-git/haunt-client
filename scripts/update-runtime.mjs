@@ -26,13 +26,24 @@ export async function nativeRuntimeHash(directory) {
 }
 export async function releaseConfig() {
   const pkg = JSON.parse(await fs.readFile(new URL("package.json", root)));
+  if (
+    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-dev\.[1-9]\d*)?$/.test(
+      pkg.version,
+    )
+  )
+    throw Error("Expected a stable or development release version");
   const config = JSON.parse(
     await fs.readFile(new URL("static/updates.json", root)),
   );
   const publicKey = process.env.HAUNT_UPDATE_PUBLIC_KEY || config.publicKey;
   if (publicKey && createPublicKey(publicKey).asymmetricKeyType !== "ed25519")
     throw Error("An Ed25519 release key is required");
-  return { ...config, publicKey, version: pkg.version };
+  return {
+    ...config,
+    publicKey,
+    channel: pkg.version.includes("-dev.") ? "dev" : "stable",
+    version: pkg.version,
+  };
 }
 export async function runtimeConfig(
   platform = process.platform,

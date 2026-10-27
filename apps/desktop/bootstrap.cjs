@@ -20,7 +20,7 @@ const { createMacInstaller } = require("./mac-install.cjs");
 if (runKeyMigrationHelper(app, safeStorage)) return;
 let profile;
 try {
-  profile = initializeProfile(app);
+  profile = initializeProfile(app, config.channel);
 } catch (error) {
   console.error("Haunt profile migration:", error.message);
   dialog.showErrorBox("Haunt profile migration", error.message);

@@ -1,66 +1,32 @@
 # Desktop releases and updates
 
-## Automatic client versions
+## Coordinated builds
 
-Every push to `main` runs **Client version**. It adds one version commit after
-the pushed changes, synchronizing `package.json`, the root/workspace entries in
-`package-lock.json`, `electron-app/package.json` and `packages/core/package.json`.
-The bot uses GitHub's `GITHUB_TOKEN`, whose pushes [do not trigger another push
-workflow](https://docs.github.com/en/actions/concepts/security/github_token).
-Retrying a completed run does not bump again. Overlapping runs retry ordinary
-fast-forward pushes; they never force-push over someone else's work.
+The [hub release pipelines](https://github.com/example-git/haunt/blob/main/docs/releases.md)
+own versions, source revisions, publication, and deployment. Component pushes run
+regressions without modifying version manifests or deploying hosted web.
 
-Choose the bump in any pushed commit with a trailer:
+Development builds use `X.Y.Z-dev.N`, build only selected targets, and publish as
+manual-download prereleases. Desktop development installs use the `haunt-dev`
+profile and a separate application identity. Their updater remains disabled.
+They do not replace stable feeds or container tags.
 
-```text
-Version-Bump: minor
-```
-
-`patch`, `minor` and `major` are supported. The largest explicit trailer wins
-across the push. Without a trailer, conventional commit messages also specify
-intent: `fix:`/`perf:` choose patch, `feat:` chooses minor, and `!` or a
-`BREAKING CHANGE:` footer chooses major. The highest specified level wins.
-
-When nothing specifies a level, the net diff for the entire push determines it:
-
-| Bump | Changed source size (added + removed lines) |
-| --- | --- |
-| Patch | Below 250 lines **and** 8 files |
-| Minor | At least 250 lines **or** 8 files |
-| Major | At least 2,000 lines **or** 40 files |
-
-These are size estimates, not compatibility analysis; explicit choices take
-precedence. Thresholds and exclusions live in `version-policy.json`. Generated
-API code, tests, lockfiles, documentation, vendored code, static assets and binary
-files do not inflate the estimate. A documentation-only push still gets a patch.
-Pure renames contribute no changed lines. An explicitly increased `package.json`
-version is honored and synchronized instead of being bumped a second time.
-
-Preview a range without modifying files:
+A stable hub release selects patch, minor, major, or an explicit version. It
+stamps `package.json`, root/workspace lockfile entries, `electron-app/package.json`,
+and `packages/core/package.json` in each build checkout. All four desktop targets
+must pass their checks before the complete Ed25519 manifest is signed. Source
+commits remain fixed throughout the run; the hub release records them alongside
+the build version. Local stamping is available with:
 
 ```sh
-npm run version:preview -- HEAD~1 HEAD
+npm run version:stamp -- 0.17.9
 ```
-
-After pushing, wait for **Client version** to finish and run `git pull --ff-only`
-before making another local commit, tagging a release, or updating the server's
-client submodule reference. In a server checkout, pull inside `client/`, then
-commit that updated submodule reference in the server repository. If a job fails,
-rerun it; the manual workflow also accepts the original push's full before/after
-SHAs for recovery. Automatic versioning updates source versions; release builds
-produce installers.
 
 ## Release setup
 
-GitHub builds Windows x64, Linux x64/arm64 and macOS arm64 from `client-vX.Y.Z`
-tags. The tag must match `package.json`. A release is published only after all
-four platform jobs succeed. Installer and ASAR hashes are signed together in
-`haunt-updates.json` using Ed25519.
-
 The public verification key is pinned in `static/updates.json`. Keep its private
-counterpart offline and in the repository secret `HAUNT_UPDATE_PRIVATE_KEY`.
-`HAUNT_UPDATE_PUBLIC_KEY` is an optional repository variable overriding the build
-key. The manifest job rejects mismatched keys. To initialize a separate fork's key:
+counterpart offline and in the hub repository secret `HAUNT_UPDATE_PRIVATE_KEY`.
+The hub validates that its private signing key matches the client trust key. To initialize a separate fork's key:
 
 ```sh
 node scripts/release-client.mjs keygen /protected/location/release-keys
@@ -93,13 +59,9 @@ or GitHub token in the app is needed. Desktop update sources require HTTPS.
 Multiple servers may offer updates; authentic versions are compared locally and
 an unavailable server does not override a valid offer from another server.
 
-The optional GitHub mirror step uses `HAUNT_UPDATE_HOST` and
-`HAUNT_UPDATE_KNOWN_HOSTS` repository variables, and `HAUNT_UPDATE_SSH_KEY` as a
-secret. Install that key on the destination with a restricted forced command
-running the server's `scripts/install-client-release.py`. That script reads the
-release archive on stdin, verifies a separately installed public key and all file
-hashes, then publishes the manifest after its files. It grants no general remote
-shell and needs write access only to the update directory.
+The hub release deploys the verified Nexus image and atomically imports desktop
+artifacts into its configured update directory. Files are verified before the
+current manifest pointer changes. The hub then checks public feeds and downloads.
 
 Official repositories and GitHub releases are public. A downstream operator may
 still mirror a private custom build through an authenticated Haunt service so
@@ -132,12 +94,12 @@ explains that the latest full app is required, shows platform-specific steps, an
 provides download/open-installer controls. Dismissing it keeps the title-bar update
 indicator available; the same notice does not repeat on every poll.
 
-| Platform | Baseline installation |
-| --- | --- |
-| Windows | Open NSIS installer, quit Haunt and upgrade the existing installation |
-| Linux AppImage | Verify and atomically replace the actual launch file, retaining `.haunt-previous` |
-| Fedora RPM | Verify and open the RPM in the system package installer; DNF manages the installed files |
-| macOS arm64 | Installations using the included local installer stage, sign, verify and replace the bundle with their persistent key, then relaunch; other installations open the DMG |
+| Platform       | Baseline installation                                                                                                                                                  |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows        | Open NSIS installer, quit Haunt and upgrade the existing installation                                                                                                  |
+| Linux AppImage | Verify and atomically replace the actual launch file, retaining `.haunt-previous`                                                                                      |
+| Fedora RPM     | Verify and open the RPM in the system package installer; DNF manages the installed files                                                                               |
+| macOS arm64    | Installations using the included local installer stage, sign, verify and replace the bundle with their persistent key, then relaunch; other installations open the DMG |
 
 An extracted Linux directory build opens the downloaded AppImage instead of
 modifying an unknown installation layout. A failed full-package installation is
