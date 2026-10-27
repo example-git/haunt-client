@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { buildLinuxCapture } from "./build-linux-capture.mjs";
 
 export async function buildLinuxAudio() {
   if (process.platform !== "linux") return;
@@ -40,6 +41,7 @@ export async function buildLinuxAudio() {
       { stdio: "inherit" },
     );
   }
+  await buildLinuxCapture();
 }
 if (
   process.argv[1] &&

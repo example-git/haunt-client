@@ -3,6 +3,7 @@ export interface NativeVideoConfig {
   width: number;
   height: number;
   fps: number;
+  encoder?: string;
   fmtp: string;
 }
 export interface NativeEvent {
@@ -31,6 +32,7 @@ export interface NativeDevice {
 }
 export interface NativeBridge {
   nativeCaptureAvailable: boolean;
+  nativeScreenCaptureAvailable?: boolean;
   nativeDevices(
     requestPermission?: boolean,
   ): Promise<{ cameras: NativeDevice[]; audio: NativeDevice[] }>;
@@ -57,6 +59,7 @@ export interface NativeBridge {
     tracks: {
       purpose: string;
       capture?: string;
+      codec?: string;
       layers?: { id: string; width: number; height: number; fps: number }[];
     }[];
     ice: RTCIceServer[];

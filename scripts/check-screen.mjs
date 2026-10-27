@@ -99,6 +99,7 @@ export async function checkScreen(executablePath, afterCheck) {
       DBUS_SESSION_BUS_ADDRESS: "",
       SESSION_MANAGER: "",
       GDK_BACKEND: "x11",
+      LIBGL_ALWAYS_SOFTWARE: "1",
       XDG_CONFIG_HOME: path.join(scratch, "wm-config"),
       XDG_CACHE_HOME: path.join(scratch, "wm-cache"),
     };
@@ -148,6 +149,7 @@ export async function checkScreen(executablePath, afterCheck) {
         DISPLAY: `:${display}`,
         WAYLAND_DISPLAY: "",
         XDG_SESSION_TYPE: "x11",
+        LIBGL_ALWAYS_SOFTWARE: "1",
         DBUS_SESSION_BUS_ADDRESS: "",
         XDG_CONFIG_HOME: path.join(scratch, "config"),
         XDG_CACHE_HOME: path.join(scratch, "cache"),

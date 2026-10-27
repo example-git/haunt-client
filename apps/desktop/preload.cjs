@@ -84,6 +84,8 @@ contextBridge.exposeInMainWorld("hauntDesktop", {
   },
   copyImage: (bytes) => ipcRenderer.invoke("media:copy-image", bytes),
   nativeCaptureAvailable: ipcRenderer.sendSync("native:available") === true,
+  nativeScreenCaptureAvailable:
+    ipcRenderer.sendSync("native:screen-available") === true,
   nativeDevices: (requestPermission) =>
     ipcRenderer.invoke("native:devices", requestPermission),
   nativeStart: (request) => ipcRenderer.invoke("native:start", request),

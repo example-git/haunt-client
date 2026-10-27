@@ -344,7 +344,7 @@ async function startMain() {
         request.frame !== window?.webContents.mainFrame ||
         capturePending
       ) {
-        callback({});
+        callback(null);
         return;
       }
       capturePending = true;
@@ -359,10 +359,10 @@ async function startMain() {
         });
         if (linuxAudio) {
           linuxAudio.select(chosen.linuxAudio);
-          callback(chosen.video ? { video: chosen.video } : {});
-        } else callback(chosen);
+          callback(chosen.video ? { video: chosen.video } : null);
+        } else callback(chosen.video ? chosen : null);
       } catch {
-        callback({});
+        callback(null);
       } finally {
         capturePending = false;
       }

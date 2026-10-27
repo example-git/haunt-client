@@ -416,7 +416,7 @@ export function ClientSettingsContent({
   };
   const refresh = async () => {
     setDevices((await navigator.mediaDevices?.enumerateDevices()) ?? []);
-    if (nativeCaptureAvailable())
+    if (nativeCaptureAvailable("camera"))
       setNativeDevices(await window.hauntDesktop!.nativeDevices());
   };
   useEffect(() => {
@@ -467,7 +467,7 @@ export function ClientSettingsContent({
     };
   }, [tab]);
   const requestDevices = async (kind: "audio" | "video") => {
-    if (kind === "video" && nativeCaptureAvailable()) {
+    if (kind === "video" && nativeCaptureAvailable("camera")) {
       setNativeDevices(await window.hauntDesktop!.nativeDevices(true));
       return;
     }

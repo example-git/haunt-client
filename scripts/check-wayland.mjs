@@ -115,19 +115,24 @@ export async function cancelWaylandPortal(sender, desktop, outputCaptures) {
   const choice = process.env.HAUNT_PORTAL_CHOICE;
   assert(choice);
   await fs.writeFile(choice, "");
-  const completed = await desktop.evaluate(
-    () => globalThis.captureDiagnostics.completed,
-  );
+  const opened = desktop.waitForEvent("window");
   await sender
     .locator(".call-dock")
     .getByRole("button", { name: "Share screen", exact: true })
     .click();
-  await expect
-    .poll(
-      () => desktop.evaluate(() => globalThis.captureDiagnostics.completed),
-      { timeout: 30000 },
-    )
-    .toBe(completed + 1);
+  const picker = await opened;
+  await picker.waitForLoadState("domcontentloaded");
+  await picker.locator('button.source[data-kind="screen"]').first().click();
+  await picker.locator("#audio").setChecked(false);
+  await Promise.all([
+    picker.waitForEvent("close"),
+    picker
+      .getByRole("button", { name: "Share", exact: true })
+      .click({ noWaitAfter: true })
+      .catch((error) => {
+        if (!picker.isClosed()) throw error;
+      }),
+  ]);
   await expect(
     sender
       .locator(".call-dock")

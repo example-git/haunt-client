@@ -7,9 +7,12 @@ on:
       - apps/desktop/**
       - packages/browser/src/media/**
       - native/linux-*.c
+      - scripts/build-linux-capture.mjs
+      - scripts/check-linux-capture-worker.mjs
       - scripts/check-wayland.mjs
       - scripts/check-linux-share-audio.mjs
       - scripts/ci/check-wayland.sh
+      - scripts/ci/audio-app.py
   workflow_dispatch:
 permissions:
   contents: read
@@ -47,10 +50,16 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: server/client/package-lock.json
+      - uses: actions/checkout@v5
+        if: matrix.desktop == 'wayland'
+        with:
+          repository: emersion/xdg-desktop-portal-wlr
+          ref: v0.8.1
+          path: portal-wlr
       - name: Install Linux capture test environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ${{ matrix.packages }} pulseaudio-utils dbus-x11 ffmpeg libpulse-dev libglib2.0-dev libx11-dev libgtk-3-0 libnss3 libgbm1 libasound2t64
+          sudo apt-get install -y --no-install-recommends ${{ matrix.packages }} pulseaudio-utils dbus-x11 ffmpeg libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxcomposite-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire libgtk-3-0 libnss3 libgbm1 libasound2t64
       - name: Start disposable database
         run: |
           docker run -d --name chatxo-identity-check -p 127.0.0.1:32768:5432 -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=chatxo_check postgres:16-alpine
@@ -59,6 +68,15 @@ jobs:
             sleep 1
           done
           exit 1
+      - name: Build portal with shared-memory capture support
+        if: matrix.desktop == 'wayland'
+        run: |
+          sudo apt-get install -y --no-install-recommends meson ninja-build libpipewire-0.3-dev libwayland-dev libinih-dev libgbm-dev libdrm-dev libsystemd-dev
+          git clone --depth 1 --branch 1.45 https://gitlab.freedesktop.org/wayland/wayland-protocols.git "$RUNNER_TEMP/wayland-protocols"
+          meson setup "$RUNNER_TEMP/wayland-protocols/build" "$RUNNER_TEMP/wayland-protocols" --prefix="$RUNNER_TEMP/wayland-sdk" -Dtests=false
+          meson install -C "$RUNNER_TEMP/wayland-protocols/build"
+          PKG_CONFIG_PATH="$RUNNER_TEMP/wayland-sdk/share/pkgconfig" meson setup ../../portal-wlr/build ../../portal-wlr -Dman-pages=disabled -Dsystemd=disabled
+          meson compile -C ../../portal-wlr/build
       - run: npm ci
       - run: npm run build && node scripts/build-linux-audio.mjs
       - name: Native Wayland video and PipeWire output audio through server relay
@@ -68,7 +86,10 @@ jobs:
         if: matrix.desktop == 'x11'
         env:
           HAUNT_CLIENT_CHECK: linux-share-audio
-        run: dbus-run-session -- npm run test:integration
+          HAUNT_EXPECT_ENCODER: ^x264enc$
+        run: |
+          node scripts/check-linux-capture-worker.mjs
+          dbus-run-session -- npm run test:integration
       - uses: actions/upload-artifact@v4
         if: always()
         with:

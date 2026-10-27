@@ -42,6 +42,11 @@ export async function runtimeConfig(
   if (platform === "linux")
     names.push(
       "native/linux-audio.c",
+      "native/linux-capture.c",
+      "native/media-worker/main.go",
+      "native/media-worker/go.mod",
+      "native/media-worker/go.sum",
+      "scripts/build-linux-capture.mjs",
       "native/linux-shortcuts.c",
       "scripts/build-linux-audio.mjs",
       "static/linux/package-type",

@@ -3,24 +3,44 @@ const path = require("node:path");
 const { Capture, listSources } = require("./swiftcapture.cjs");
 const { NativePublisher, purposes } = require("./native-publisher.cjs");
 const { chooseCapture } = require("./capture-picker.cjs");
+const linux = require("./linux-capture.cjs");
 
 function installNativeMedia(parent, validateSender) {
+  const linuxNative = process.platform === "linux";
+  const macNative = process.platform === "darwin" && process.arch === "arm64";
   // Sandboxed preloads do not expose all of Node's process properties. Resolve
   // architecture in the main process, before the first renderer is loaded.
   ipcMain.on("native:available", (event) => {
     try {
       validateSender(event);
-      event.returnValue =
-        process.platform === "darwin" && process.arch === "arm64";
+      event.returnValue = macNative;
     } catch {
       event.returnValue = false;
     }
   });
-  if (process.platform !== "darwin" || process.arch !== "arm64") return;
+  ipcMain.on("native:screen-available", (event) => {
+    try {
+      validateSender(event);
+      event.returnValue = linuxNative || macNative;
+    } catch {
+      event.returnValue = false;
+    }
+  });
+  if (!macNative && !linuxNative) return;
   const root = app.isPackaged
-    ? path.join(process.resourcesPath, "native/mac")
-    : path.join(__dirname, "../../static/native/mac");
-  const worker = path.join(root, "SwiftCaptureWorker");
+    ? path.join(
+        process.resourcesPath,
+        linuxNative ? "native/linux" : "native/mac",
+      )
+    : path.join(
+        __dirname,
+        linuxNative ? "../../release/native/linux" : "../../static/native/mac",
+      );
+  const worker = path.join(
+    root,
+    linuxNative ? "HauntCaptureWorker" : "SwiftCaptureWorker",
+  );
+  const CaptureWorker = linuxNative ? linux.LinuxCapture : Capture;
   const publisherBinary = path.join(root, "HauntMediaWorker");
   const captures = new Map(),
     publishers = new Map(),
@@ -44,7 +64,7 @@ function installNativeMedia(parent, validateSender) {
   };
   const refreshSources = () => {
     if (!catalogPending)
-      catalogPending = listSources(worker)
+      catalogPending = (linuxNative ? linux.listSources : listSources)(worker)
         .then((value) => {
           const devicesChanged =
             !!catalog &&
@@ -115,6 +135,8 @@ function installNativeMedia(parent, validateSender) {
       )
     )
       throw Error("Invalid or duplicate capture request");
+    if (linuxNative && request.purpose !== "screen")
+      throw Error("Use browser capture for Linux cameras.");
     for (const name of ["device", "deviceLabel", "audioDevice", "audioLabel"])
       if (
         request[name] !== undefined &&
@@ -149,16 +171,21 @@ function installNativeMedia(parent, validateSender) {
       if (request.purpose === "screen") {
         if (![15, 30, 60].includes(request.fps))
           throw Error("Screen capture supports 15, 30 or 60 FPS.");
-        const list = await sources();
+        const list = linuxNative ? await refreshSources() : await sources();
         const chosen = replacement
           ? { video: replacement.source, audio: replacement.options.audio }
           : await chooseCapture(parent, request.audio === true, {
               native: true,
               sources: list.screens,
+              ...(linuxNative ? { linuxNative: list } : {}),
             });
         if (!chosen.video || !active()) return null;
         options.source = chosen.video.id;
         options.audio = !!chosen.audio;
+        if (linuxNative) {
+          options.audioSource = chosen.linuxAudio?.id;
+          options.audio = !!options.audioSource;
+        }
         const size = chosen.video;
         options.sourceSize = size;
         const scale = Math.min(
@@ -211,7 +238,7 @@ function installNativeMedia(parent, validateSender) {
         await stopCapture(replacement);
         captures.delete(request.id);
       }
-      const capture = new Capture(worker, options);
+      const capture = new CaptureWorker(worker, options);
       const entry = {
         capture,
         purpose: request.purpose,
@@ -265,10 +292,12 @@ function installNativeMedia(parent, validateSender) {
             () =>
               done(
                 Error(
-                  "SwiftCapture did not produce video. Check macOS capture permissions.",
+                  linuxNative
+                    ? "Linux capture did not produce video. Check the screen sharing portal."
+                    : "SwiftCapture did not produce video. Check macOS capture permissions.",
                 ),
               ),
-            20000,
+            linuxNative ? 150000 : 20000,
           );
           const success = () => done();
           const failure = (error) => done(error);
@@ -289,8 +318,12 @@ function installNativeMedia(parent, validateSender) {
           return null;
         }
         if (
-          capture.video.width !== options.width ||
-          capture.video.height !== options.height ||
+          (linuxNative
+            ? capture.video.width > options.width
+            : capture.video.width !== options.width) ||
+          (linuxNative
+            ? capture.video.height > options.height
+            : capture.video.height !== options.height) ||
           Math.abs(capture.video.fps - options.fps) > 0.1
         )
           throw Error(
@@ -310,6 +343,7 @@ function installNativeMedia(parent, validateSender) {
       } catch (error) {
         await stopCapture(entry);
         captures.delete(request.id);
+        if (linuxNative && error.message === "Capture cancelled") return null;
         if (replacement)
           send({ id: request.id, kind: "error", message: error.message });
         throw error;
@@ -325,6 +359,28 @@ function installNativeMedia(parent, validateSender) {
     validateSender(event);
     const entry = captures.get(id);
     if (!entry) throw Error("Capture source is no longer available.");
+    if (linuxNative) {
+      if (
+        !Number.isInteger(mode?.width) ||
+        !Number.isInteger(mode?.height) ||
+        mode.width < 2 ||
+        mode.height < 2 ||
+        mode.width > 8192 ||
+        mode.height > 8192 ||
+        ![15, 30, 60].includes(mode?.fps)
+      )
+        throw Error("Invalid screen capture mode.");
+      if (pending.has(entry.purpose))
+        throw Error("Capture mode change is already in progress.");
+      pending.add(entry.purpose);
+      try {
+        const video = await entry.capture.configure(mode);
+        entry.request = { ...entry.request, ...mode };
+        return { id, video, audio: entry.options.audio };
+      } finally {
+        pending.delete(entry.purpose);
+      }
+    }
     return startCapture(
       event,
       {
@@ -368,7 +424,12 @@ function installNativeMedia(parent, validateSender) {
       seen.add(track.purpose);
       if (["camera", "screen"].includes(track.purpose)) {
         const c = captures.get(track.capture);
-        if (!c || c.purpose !== track.purpose)
+        const browserCamera =
+          linuxNative &&
+          track.purpose === "camera" &&
+          track.capture === undefined &&
+          track.codec === "avc1.42e033";
+        if (!browserCamera && (!c || c.purpose !== track.purpose))
           throw Error("Unknown native capture");
         if (
           track.layers !== undefined &&
@@ -381,7 +442,9 @@ function installNativeMedia(parent, validateSender) {
           throw Error("Invalid native video layers");
         return {
           purpose: track.purpose,
-          fmtp: c.capture.video.fmtp,
+          fmtp: browserCamera
+            ? "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e033"
+            : c.capture.video.fmtp,
           layers: track.layers?.map((layer) => layer.id),
         };
       }
@@ -403,6 +466,9 @@ function installNativeMedia(parent, validateSender) {
       send({ id: request.id, kind: "error", message: error.message });
     });
     publisher.captureBindings = request.tracks.filter((track) => track.capture);
+    publisher.browserBindings = request.tracks.filter(
+      (track) => track.codec && !track.capture,
+    );
     publisher.on("keyframe", (message) =>
       send({
         id: request.id,
@@ -450,16 +516,25 @@ function installNativeMedia(parent, validateSender) {
       if (
         !publisher ||
         !["camera", "screen"].includes(purpose) ||
-        !["m", "l"].includes(layer) ||
+        !["h", "m", "l"].includes(layer) ||
         !(data instanceof Uint8Array) ||
         data.byteLength > 1024 * 1024 ||
         !Number.isSafeInteger(timestamp) ||
         timestamp < 0 ||
         typeof key !== "boolean" ||
-        !publisher.captureBindings?.some(
-          (track) =>
-            track.purpose === purpose &&
-            track.layers?.some((item) => item.id === layer),
+        !(
+          publisher.captureBindings?.some(
+            (track) =>
+              layer !== "h" &&
+              track.purpose === purpose &&
+              track.layers?.some((item) => item.id === layer),
+          ) ||
+          publisher.browserBindings?.some(
+            (track) =>
+              track.purpose === purpose &&
+              (track.layers?.some((item) => item.id === layer) ||
+                layer === "h"),
+          )
         )
       )
         throw Error("Invalid lower-layer video packet");

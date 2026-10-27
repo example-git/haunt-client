@@ -114,7 +114,18 @@
       {
         "from": "release/native/linux",
         "to": "native/linux",
-        "filter": ["HauntAudioWorker", "HauntShortcutWorker"]
+        "filter": [
+          "HauntAudioWorker",
+          "HauntShortcutWorker",
+          "HauntCaptureWorker",
+          "HauntMediaWorker",
+          "lib/**/*",
+          "plugins/**/*",
+          "pipewire/**/*",
+          "spa/**/*",
+          "pipewire-config/**/*",
+          "NOTICE.txt"
+        ]
       }
     ],
     "target": [

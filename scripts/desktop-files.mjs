@@ -13,6 +13,7 @@ export const desktopFiles = [
   "tray.cjs",
   "linux-desktop.cjs",
   "linux-audio.cjs",
+  "linux-capture.cjs",
   "desktop-tools.cjs",
   "range-download.cjs",
   "deep-links.cjs",

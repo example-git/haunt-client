@@ -74,7 +74,7 @@ grep -q PipeWire test-results/wayland/audio-server.txt
 pactl load-module module-null-sink sink_name=haunt_fixture rate=48000 channels=2 sink_properties=device.description=Haunt_test_output
 pactl load-module module-null-sink sink_name=haunt_playback rate=48000 channels=2 sink_properties=device.description=Haunt_receiver_output
 pactl set-default-sink haunt_playback
-/usr/libexec/xdg-desktop-portal-wlr --loglevel=DEBUG > test-results/wayland/portal-wlr.log 2>&1 &
+../../portal-wlr/build/xdg-desktop-portal-wlr --loglevel=DEBUG > test-results/wayland/portal-wlr.log 2>&1 &
 pids+=("$!")
 /usr/libexec/xdg-desktop-portal --verbose > test-results/wayland/portal.log 2>&1 &
 pids+=("$!")
@@ -82,4 +82,5 @@ gdbus wait --session --timeout 30 org.freedesktop.portal.Desktop
 wayland-info > test-results/wayland/protocols.txt
 dpkg-query -W sway pipewire wireplumber xdg-desktop-portal xdg-desktop-portal-wlr > test-results/wayland/packages.txt
 git rev-parse HEAD > test-results/wayland/client-sha.txt
+HAUNT_CAPTURE_EXISTING_SESSION=1 node scripts/check-linux-capture-worker.mjs
 npm run test:integration 2>&1 | tee test-results/wayland/runtime.log

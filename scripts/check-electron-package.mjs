@@ -61,7 +61,12 @@ if (process.platform === "darwin") {
   );
 }
 if (process.platform === "linux") {
-  for (const name of ["HauntAudioWorker", "HauntShortcutWorker"]) {
+  for (const name of [
+    "HauntAudioWorker",
+    "HauntShortcutWorker",
+    "HauntCaptureWorker",
+    "HauntMediaWorker",
+  ]) {
     const helper = path.join(path.dirname(filename), "native/linux", name);
     const bytes = await fs.readFile(helper);
     assert.equal(

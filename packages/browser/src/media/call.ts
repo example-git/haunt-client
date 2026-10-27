@@ -1114,7 +1114,7 @@ export class Call {
                 prefs.cameraModes[prefs.camera],
               )
             : prefs.screenMode;
-        const native = nativeCaptureAvailable()
+        const native = nativeCaptureAvailable(purpose)
           ? await NativeCapture.open(purpose, sourceAudio, prefs)
           : undefined;
         if (native === null) return;
