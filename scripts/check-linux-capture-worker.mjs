@@ -149,6 +149,9 @@ try {
       fps: 30,
       audioSource,
     });
+    capture.child.stderr.on("data", (data) => {
+      diagnostics = (diagnostics + data).slice(-12000);
+    });
     capture.on("failure", (error) => {
       failure = error;
       diagnostics += error.message;
@@ -177,7 +180,13 @@ try {
   };
   start(catalog.audioSources.find((a) => a.pid === first.pid).id);
   const isolated = await measure([997], [1601]);
-  await until(() => video.length >= 20 && configs.length === 1);
+  await until(() => video.length >= 20 && configs.length === 1).catch(
+    (error) => {
+      throw Error(
+        `${error.message}\n${JSON.stringify({ configs, videoPackets: video.length, audioSamples: pcm.length })}`,
+      );
+    },
+  );
   const encoded = path.join(scratch, "video.h264");
   await fs.writeFile(encoded, Buffer.concat(video));
   const probe = JSON.parse(

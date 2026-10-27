@@ -89,5 +89,5 @@ wayland-info > test-results/wayland/protocols.txt
 dpkg-query -W pipewire wireplumber xdg-desktop-portal xdg-desktop-portal-wlr > test-results/wayland/packages.txt
 sway --version > test-results/wayland/compositor.txt
 git rev-parse HEAD > test-results/wayland/client-sha.txt
-HAUNT_CAPTURE_EXISTING_SESSION=1 node scripts/check-linux-capture-worker.mjs
+GST_DEBUG="3,pipewiresrc:6,videorate:6,x264enc:5" GST_DEBUG_FILE="$PWD/test-results/wayland/gstreamer-%p.log" HAUNT_CAPTURE_EXISTING_SESSION=1 node scripts/check-linux-capture-worker.mjs
 npm run test:integration 2>&1 | tee test-results/wayland/runtime.log
