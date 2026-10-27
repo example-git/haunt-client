@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
-import { createHash, verify } from "node:crypto";
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+import os from "node:os";
+import path from "node:path";
 import { expect } from "@playwright/test";
 import { fillSignin } from "./signin-fields.mjs";
+const require = createRequire(import.meta.url);
+const {
+  verifyManifest,
+  requestURL,
+  response: updateResponse,
+  download: updateDownload,
+} = require("../apps/desktop/updates.cjs");
 
 export async function checkPublicDownloads(browser, fixtures) {
   const context = await browser.newContext({
@@ -28,27 +38,33 @@ export async function checkPublicDownloads(browser, fixtures) {
     assert.equal(response.status, 200);
     const metadata = await response.json();
     const config = JSON.parse(await fs.readFile("static/updates.json", "utf8"));
-    const payloadBytes = Buffer.from(metadata.manifest.payload, "base64");
-    assert.ok(
-      verify(
-        null,
-        payloadBytes,
-        config.publicKey,
-        Buffer.from(metadata.manifest.signature, "base64"),
-      ),
-    );
-    const payload = JSON.parse(payloadBytes),
-      installer = payload.targets["linux-x64"].installer;
-    const address = `https://github.com/${config.repository}/releases/download/client-v${payload.version}/${installer.file}`;
+    const release = verifyManifest(metadata.manifest, config, "linux", "x64"),
+      installer = release.installer;
+    const address = `https://github.com/example-git/haunt/releases/download/v${release.version}/${installer.file}`;
     assert.equal(metadata.downloads["linux-x64"], address);
     const legacy = await fetch(
       fixture.url +
-        `/api/v1/client-updates/client-v${payload.version}/${installer.file}`,
+        `/api/v1/client-updates/client-v${release.version}/${installer.file}`,
       { redirect: "manual" },
     );
     assert.equal(legacy.status, 302);
-    assert.equal(legacy.headers.get("location"), address);
-    assert.ok(Number(legacy.headers.get("content-length")) < 1024);
+    const location = requestURL(legacy.headers.get("location"), config);
+    assert.ok(
+      (await legacy.arrayBuffer()).byteLength <
+        Buffer.byteLength(location.href) + 1024,
+    );
+    const temporary = await fs.mkdtemp(
+      path.join(os.tmpdir(), "haunt-public-updater-"),
+    );
+    try {
+      await updateDownload(
+        await updateResponse(location.href, config),
+        path.join(temporary, installer.file),
+        installer,
+      );
+    } finally {
+      await fs.rm(temporary, { recursive: true, force: true });
+    }
     await page.goto(fixture.url);
     await page.getByRole("button", { name: "Add server", exact: true }).click();
     await fillSignin(page, fixture.url, "owner");
@@ -108,7 +124,7 @@ export async function checkPublicDownloads(browser, fixtures) {
       "test-results/public-downloads.json",
       JSON.stringify(
         {
-          version: payload.version,
+          version: release.version,
           download: address,
           size: installer.size,
           sha256: installer.sha256,
@@ -117,6 +133,7 @@ export async function checkPublicDownloads(browser, fixtures) {
           anonymousMetadata: true,
           noCredentialsToGitHub: true,
           legacyRedirect: true,
+          legacyDownloadHashVerified: true,
           noArtifactProxy: true,
           darkAndPastelHeaderContrast: true,
         },
@@ -125,7 +142,7 @@ export async function checkPublicDownloads(browser, fixtures) {
       ) + "\n",
     );
     console.log(
-      "Production browser: signed metadata, anonymous direct GitHub installer click and exact file hash, and legacy updater redirect passed.",
+      "Production browser: signed metadata, anonymous installer click, and exact browser and legacy updater file hashes passed.",
     );
   } finally {
     await context.close();
