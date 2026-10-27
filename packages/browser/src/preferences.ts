@@ -21,6 +21,11 @@ import {
   type ServerPluginPreferences,
 } from "./audio-plugins/saved-settings";
 import { openDB } from "idb";
+import {
+  defaultArchivePolicy,
+  validArchivePolicy,
+  type ArchivePolicy,
+} from "@haunt/core";
 import { defaultAccent, normalizeAccent } from "./palette";
 import type { NotificationPolicy, NotificationRule } from "@haunt/core";
 import {
@@ -29,6 +34,7 @@ import {
   type NarratorSettings,
 } from "./narrator/settings";
 export interface ClientPreferences extends NotificationPolicy {
+  archive: ArchivePolicy;
   narrator: NarratorSettings;
   narratorServers: Record<string, NarratorSettings>;
   audioPlugins: Record<string, ServerPluginPreferences>;
@@ -64,6 +70,7 @@ export interface ClientPreferences extends NotificationPolicy {
   channels: Record<string, NotificationRule>;
 }
 const defaults: ClientPreferences = {
+  archive: defaultArchivePolicy,
   narrator: normalizeNarratorSettings(undefined),
   narratorServers: {},
   audioPlugins: {},
@@ -137,6 +144,7 @@ function read(): ClientPreferences {
   try {
     const raw = JSON.parse(localStorage.getItem(key) ?? "{}");
     const next = { ...defaults };
+    if (validArchivePolicy(raw.archive)) next.archive = raw.archive;
     next.narrator = normalizeNarratorSettings(raw.narrator);
     next.narratorServers = normalizeNarratorServers(raw.narratorServers);
     next.audioPlugins = parsePluginPreferences(raw.audioPlugins);
@@ -219,6 +227,8 @@ export const subscribePreferences = (fn: () => void) => {
   };
 };
 export function setPreferences(patch: Partial<ClientPreferences>) {
+  if (patch.archive !== undefined && !validArchivePolicy(patch.archive))
+    throw Error("Invalid archive download budget.");
   if (patch.screenMode && !validVideoMode(patch.screenMode))
     throw Error("Invalid screen-share video setting.");
   if (

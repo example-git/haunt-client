@@ -121,6 +121,7 @@ export class MediaCache {
     key: string,
     download: (signal: AbortSignal) => Promise<Blob>,
     signal: AbortSignal,
+    valid?: (blob: Blob) => Promise<boolean>,
   ): Promise<Blob> {
     if (signal.aborted) return Promise.reject(signal.reason);
     let entry = this.pending.get(key);
@@ -134,7 +135,7 @@ export class MediaCache {
       created.promise = (async () => {
         const saved = await this.store.get(key).catch(() => undefined);
         controller.signal.throwIfAborted();
-        if (saved) return saved;
+        if (saved && (!valid || (await valid(saved)))) return saved;
         return mediaTask(async () => {
           const blob = await download(controller.signal);
           controller.signal.throwIfAborted();
@@ -188,9 +189,10 @@ export function cachedMedia(
   key: string,
   download: (signal: AbortSignal) => Promise<Blob>,
   signal: AbortSignal,
+  valid?: (blob: Blob) => Promise<boolean>,
 ) {
   shared ??= new MediaCache(mediaStore());
-  return shared.load(key, download, signal);
+  return shared.load(key, download, signal, valid);
 }
 export const mediaKey = (
   instance: InstanceClient,

@@ -47,7 +47,7 @@ jobs:
           gh run download "$ARTIFACT_RUN" --repo "$GITHUB_REPOSITORY" --name "release-$target" --dir release/updates
       - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi plank openbox imagemagick desktop-file-utils x11-utils dunst tesseract-ocr xdotool pipewire pipewire-pulse wireplumber pulseaudio-utils
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 python3-dbus python3-gi plank openbox imagemagick desktop-file-utils x11-utils dunst tesseract-ocr xdotool pipewire pipewire-pulse wireplumber pulseaudio-utils libpulse-dev libglib2.0-dev libx11-dev
       - name: Install macOS desktop tools
         if: runner.os == 'macOS'
         run: brew install tesseract imagemagick cliclick

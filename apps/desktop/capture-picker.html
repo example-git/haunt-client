@@ -21,7 +21,13 @@
         ><input type="checkbox" id="audio" /><span id="audio-label"
           >Share system audio (all apps)</span
         ></label
-      ><button id="cancel">Cancel</button>
+      ><select
+        id="audio-output"
+        aria-label="Shared audio output"
+        hidden
+      ></select>
+      <span id="audio-error" role="status" hidden></span>
+      <button id="cancel">Cancel</button>
     </footer>
     <script src="capture-picker.js"></script>
   </body>

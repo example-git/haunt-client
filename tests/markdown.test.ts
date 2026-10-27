@@ -10,6 +10,15 @@ import catalog from "../apps/web/src/emoji-data.json";
 const flatten = (nodes: MarkdownNode[]): MarkdownNode[] =>
   nodes.flatMap((node) => [node, ...flatten(node.children)]);
 describe("chat markdown and emoji sizing", () => {
+  it("renders Haunt links while rejecting other native protocols", () => {
+    const url = "haunt://open?server=https%3A%2F%2Fcommunity.example";
+    const links = flatten(
+      parseMessageMarkdown(
+        `[message](${url}) [file](file:///etc/passwd) [wrong](haunt://settings?server=x)`,
+      ),
+    ).filter((node) => node.type === "link_open");
+    expect(links.map((node) => node.href)).toEqual([url]);
+  });
   const names = new Set(["party_wave"]);
   it("enlarges only whole messages made of recognized emoji and whitespace", () => {
     for (const text of [

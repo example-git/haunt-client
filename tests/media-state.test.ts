@@ -382,6 +382,43 @@ describe("reactive call safety", () => {
     });
     expect(raw.enabled).toBe(true);
   });
+  it("gates push-to-talk immediately, preserves share audio and retains manual mute", async () => {
+    vi.useFakeTimers();
+    const { call, raw, processed } = await connected();
+    const screen = new Track("video"),
+      audio = new Track();
+    navigator.mediaDevices.getDisplayMedia = vi.fn(
+      async () => new Stream([screen, audio]),
+    ) as any;
+    const share = call.toggleVideo("screen");
+    await vi.advanceTimersByTimeAsync(1200);
+    await share;
+    call.setPushToTalk(true, false);
+    expect([
+      raw.enabled,
+      processed.enabled,
+      audio.enabled,
+      screen.enabled,
+    ]).toEqual([false, false, true, true]);
+    call.setPushToTalk(true, true);
+    expect([raw.enabled, processed.enabled, audio.enabled]).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    await call.setState({ muted: true });
+    call.setPushToTalk(true, false);
+    call.setPushToTalk(true, true);
+    expect([raw.enabled, processed.enabled, audio.enabled]).toEqual([
+      false,
+      false,
+      true,
+    ]);
+    call.setPushToTalk(false, false);
+    expect(raw.enabled).toBe(false);
+    await call.setState({ muted: false });
+    expect(raw.enabled).toBe(true);
+  });
 
   it("keeps local media blocked and closes the transport if signaling rejects deafen", async () => {
     const { call, raw, incoming, hold, acknowledgements, transport } =

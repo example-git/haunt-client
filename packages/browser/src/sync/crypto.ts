@@ -4,6 +4,20 @@ import * as opaque from "@serenity-kit/opaque";
 import { serverOrigin } from "@haunt/core";
 
 export const version = "haunt-sync-v1";
+export function vaultKeyScope(name: string) {
+  let scope = name.startsWith("archive:") ? name.slice(8) : name;
+  if (name.startsWith("archive-chunk:")) {
+    const match =
+      /^archive-chunk:(full|server:[A-Za-z0-9_-]{43}):[A-Za-z0-9_-]{43}$/.exec(
+        name,
+      );
+    if (!match) throw Error("Invalid snapshot scope.");
+    scope = match[1];
+  }
+  if (scope !== "full" && !/^server:[A-Za-z0-9_-]{43}$/.test(scope))
+    throw Error("Invalid snapshot scope.");
+  return scope;
+}
 const encode = new TextEncoder();
 export function origin(value: string): string {
   const url = new URL(value);

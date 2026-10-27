@@ -119,6 +119,9 @@ export async function checkUIPolish(page, { appearance, close }) {
     .click({ position: { x: 375, y: 400 } });
   await expect(page.locator(".server-rail")).toBeHidden();
   const reply = page.locator(".message.has-reply").last();
+  await page.locator(".messages").evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
+  });
   await reply.scrollIntoViewIfNeeded();
   await input.focus();
   await expect(reply.locator(".message-options-toggle")).toBeHidden();

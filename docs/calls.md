@@ -5,6 +5,21 @@ outgoing resolutions and frame rates. Selections stay on this device, and active
 captures show their actual settings. Changing an active capture keeps its source
 and independent source audio.
 
+Linux desktop screen sharing offers an audio-output selector in the capture
+picker. Enable system audio and select the output carrying the sound. Haunt
+captures that output's monitor through PulseAudio or PipeWire's PulseAudio
+service; it does not substitute a microphone. The selected output includes all
+applications playing to it, even when sharing one window. Stopping the share
+also stops its audio capture. Browser screen audio remains browser-dependent.
+
+Desktop Devices settings enable global microphone/deafen shortcuts and push to
+talk. Linux uses held F9 on X11 or the desktop's GlobalShortcuts portal on
+Wayland; the portal may offer a different binding. An unavailable binding shows
+an error. Other platforms provide F9 while Haunt is focused. Push to talk gates
+only the microphone and preserves manual mute, moderator restrictions and
+independent share audio. The tray shows call/share state and offers mute,
+deafen, stop-sharing and leave actions.
+
 Camera choices follow the selected device. Browser clients verify exact
 resolution/FPS combinations before offering them; native macOS capture uses the
 device's format catalog. Available FPS choices change with resolution, including
@@ -44,3 +59,7 @@ access. Offline checks retry without showing an unverified offer. Reconnecting
 restores the member's own mute/deafen choices under current moderator restrictions;
 camera and screen sharing stay off. Deliberate leave, dismissal, logout, account
 removal, deleted channels and revoked access clear the remembered channel.
+
+Embedded and attached videos offer local playback speed and picture in picture.
+The speed is saved on the device. Single-file videos can be saved; HLS posts
+remain streamed. Image previews support native clipboard copying and downloads.

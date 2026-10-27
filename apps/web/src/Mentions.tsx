@@ -2,6 +2,7 @@ import { openProfile } from "./Profile";
 import { UserName } from "./UserName";
 import { EmojiText } from "./EmojiText";
 import { ExternalLink } from "./RichContent";
+import { hauntLink } from "@haunt/browser/deep-links";
 import { messageLinks, mentions, type InstanceClient } from "@haunt/core";
 import { useSyncExternalStore, type ReactNode } from "react";
 export function MentionText({
@@ -23,6 +24,21 @@ export function MentionText({
   const output: ReactNode[] = [];
   let offset = 0;
   const links = messageLinks(text);
+  for (const match of text.matchAll(/\bhaunt:\/\/open\/?\?[^\s<>]+/gi)) {
+    const raw = match[0].replace(/[),.;]+$/, "");
+    const url = hauntLink(raw);
+    if (
+      url &&
+      !links.some((link) => match.index >= link.start && match.index < link.end)
+    )
+      links.push({
+        url,
+        preview: false,
+        start: match.index,
+        end: match.index + raw.length,
+      });
+  }
+  links.sort((a, b) => a.start - b.start);
   const plain = (value: string, start: number) => {
     const pieces: ReactNode[] = [];
     let at = 0;

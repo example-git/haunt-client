@@ -1,4 +1,5 @@
 import type { DMEncryption } from "./dm.js";
+import { ArchiveBudget, historyDelay } from "./history.js";
 import {
   cachedMessage,
   isEncryptedEnvelope,
@@ -390,6 +391,11 @@ export class InstanceClient {
       this.changed({ status: "online", readiness: "ready", error: undefined });
       void this.dmEncryption?.start().catch(() => {});
       this.scheduleRefresh();
+      if (this.active && this.pagedHistory)
+        this.startArchive(
+          this.active,
+          this.snapshot.readStates[this.active]?.last_seq ?? 0,
+        );
     } catch (error) {
       if (generation !== this.generation || this.stopped) return;
       if (
@@ -411,6 +417,8 @@ export class InstanceClient {
   }
   private disconnected(error = "Connection interrupted. Reconnecting…") {
     if (this.stopped || this.reconnect) return;
+    for (const controller of this.archiveControllers.values())
+      controller.abort();
     this.events?.close();
     clearTimeout(this.refreshTimer);
     this.changed({ status: "offline", error, voiceRooms: {} });
@@ -564,7 +572,9 @@ export class InstanceClient {
         }
         // Retention events intentionally keep older downloaded content.
         await this.store.setCursor(this.scope, Number(event.id));
-        this.changed();
+        if (event.type.startsWith("message."))
+          this.changedMessages(String(event.conversation_id));
+        else this.changed();
       })
       .catch((error) => this.disconnected(friendlyError(error)))
       .finally(() => {
@@ -708,7 +718,311 @@ export class InstanceClient {
     }
     this.changed();
   }
+  private historySyncs = new Map<string, Promise<number>>();
+  private archives = new Map<string, Promise<void>>();
+  private archiveControllers = new Map<string, AbortController>();
+  private archiveHeads = new Map<string, number>();
+  private manualArchives = new Set<string>();
+  private historyRanges = new Map<string, { from: number; to: number }[]>();
+  private get archiveBudget() {
+    return (this.runtime.archiveBudget ??= new ArchiveBudget());
+  }
+  private archiveStatus(
+    conversation: string,
+    state: NonNullable<Snapshot["archives"]>[string]["state"],
+    downloaded = this.snapshot.archives?.[conversation]?.downloaded ?? 0,
+    error?: string,
+  ) {
+    this.changed({
+      archives: {
+        ...this.snapshot.archives,
+        [conversation]: { state, downloaded, error },
+      },
+    });
+  }
+  async pauseArchive(conversation: string) {
+    this.manualArchives.delete(conversation);
+    this.archiveControllers.get(conversation)?.abort();
+    await this.store.setCursor(
+      this.historyKey(conversation, "archive-paused"),
+      1,
+    );
+    await this.archives.get(conversation);
+    this.archiveStatus(conversation, "paused");
+  }
+  async resumeArchive(conversation: string) {
+    this.archiveControllers.get(conversation)?.abort();
+    await this.archives.get(conversation);
+    await this.store.setCursor(
+      this.historyKey(conversation, "archive-paused"),
+      0,
+    );
+    this.manualArchives.add(conversation);
+    const through =
+      this.archiveHeads.get(conversation) ??
+      this.snapshot.readStates[conversation]?.last_seq;
+    if (through !== undefined) this.startArchive(conversation, through);
+    else if (this.snapshot.status === "online")
+      await this.syncHistory(conversation);
+  }
+  async updateArchivePolicy() {
+    for (const controller of this.archiveControllers.values())
+      controller.abort();
+    await Promise.all(this.archives.values());
+    if (this.active)
+      this.startArchive(this.active, this.archiveHeads.get(this.active) ?? 0);
+  }
+  private historyKey(conversation: string, kind: string) {
+    return JSON.stringify([this.scope, "history", conversation, kind]);
+  }
+  private get pagedHistory() {
+    return this.account.instance.capabilities?.includes(
+      "messages.history_pages.v1",
+    );
+  }
+  private async historyPage(
+    conversation: string,
+    query: {
+      after?: number;
+      before?: number;
+      latest?: boolean;
+      changes_after?: number;
+      limit?: number;
+    },
+    background?: AbortSignal,
+  ) {
+    const request = async () => {
+      const fetch = () =>
+        this.http.GET("/api/v1/conversations/{id}/messages", {
+          params: {
+            path: { id: conversation },
+            query: { limit: 100, ...query },
+          },
+          signal: background,
+        });
+      if (!background) return fetch();
+      this.archiveStatus(conversation, "waiting");
+      return this.archiveBudget.run(
+        background,
+        () => this.runtime.archiveAvailable?.() ?? true,
+        async () => {
+          this.archiveStatus(conversation, "downloading");
+          const value = await fetch();
+          const bytes = new TextEncoder().encode(
+            JSON.stringify(value.data ?? value.error ?? {}),
+          ).byteLength;
+          return { value, bytes };
+        },
+      );
+    };
+    let response = await request();
+    for (
+      let attempt = 0;
+      response.response.status === 503 && attempt < 3 && !this.stopped;
+      attempt++
+    ) {
+      const seconds = Number(response.response.headers.get("Retry-After")) || 1;
+      await historyDelay(
+        Math.min(5000, Math.max(250, seconds * 1000)) + Math.random() * 500,
+        background ?? new AbortController().signal,
+      );
+      if (this.stopped) break;
+      response = await request();
+    }
+    const page = await unwrap(Promise.resolve(response));
+    const messages = [];
+    for (const raw of page.messages ?? [])
+      messages.push(await this.decodeMessage(raw));
+    await this.store.merge(this.scope, messages);
+    if (query.changes_after === undefined) {
+      const rows = page.messages ?? [];
+      const from =
+        query.after !== undefined
+          ? query.after
+          : page.has_more
+            ? (rows[0]?.seq ?? page.last_seq)
+            : 0;
+      const to =
+        query.before ??
+        (query.after !== undefined && page.has_more
+          ? (rows.at(-1)?.seq ?? query.after) + 1
+          : page.last_seq + 1);
+      const ranges = this.historyRanges.get(conversation) ?? [];
+      ranges.push({ from, to });
+      ranges.sort((a, b) => a.from - b.from);
+      const merged: typeof ranges = [];
+      for (const range of ranges) {
+        const last = merged.at(-1);
+        if (last && range.from <= last.to)
+          last.to = Math.max(last.to, range.to);
+        else merged.push({ ...range });
+      }
+      this.historyRanges.set(conversation, merged.slice(-128));
+    }
+    for (const message of messages)
+      if (message.author_id === this.account.login.user.id)
+        await this.store.removePending(this.scope, message.request_id);
+    this.changedMessages(conversation);
+    return { ...page, messages };
+  }
+  private changedMessages(conversation: string) {
+    this.changed({
+      messageRevisions: {
+        ...this.snapshot.messageRevisions,
+        [conversation]:
+          (this.snapshot.messageRevisions?.[conversation] ?? 0) + 1,
+      },
+    });
+  }
   async syncHistory(conversation: string): Promise<number> {
+    if (!this.pagedHistory) return this.syncLegacyHistory(conversation);
+    const running = this.historySyncs.get(conversation);
+    if (running) return running;
+    const job = (async () => {
+      const hadCached =
+        (await this.store.messages(this.scope, conversation, { limit: 1 }))
+          .length > 0;
+      const latest = await this.historyPage(conversation, { latest: true });
+      const key = this.historyKey(conversation, "changes");
+      let cursor = await this.store.cursor(key);
+      if (cursor > latest.event_cursor) cursor = 0;
+      if (cursor || hadCached) {
+        while (cursor < latest.event_cursor && !this.stopped) {
+          const changed = await this.historyPage(conversation, {
+            changes_after: cursor,
+          });
+          if (changed.next_change <= cursor)
+            throw Error("Server returned nonadvancing message changes");
+          cursor = changed.next_change;
+          await this.store.setCursor(key, cursor);
+          if (!changed.has_more) break;
+        }
+      } else {
+        await this.store.setCursor(key, latest.event_cursor);
+      }
+      if (!latest.has_more)
+        await this.store.setCursor(
+          this.historyKey(conversation, "archive"),
+          latest.last_seq,
+        );
+      this.startArchive(conversation, latest.last_seq);
+      return latest.event_cursor;
+    })().finally(() => this.historySyncs.delete(conversation));
+    this.historySyncs.set(conversation, job);
+    return job;
+  }
+  private startArchive(conversation: string, through: number) {
+    this.archiveHeads.set(conversation, through);
+    if (this.archiveControllers.get(conversation)?.signal.aborted) {
+      void this.archives.get(conversation)?.then(() => {
+        if (!this.stopped)
+          this.startArchive(
+            conversation,
+            this.archiveHeads.get(conversation) ?? through,
+          );
+      });
+      return;
+    }
+    if (
+      this.stopped ||
+      this.archives.has(conversation) ||
+      this.active !== conversation ||
+      this.snapshot.status !== "online"
+    )
+      return;
+    const controller = new AbortController();
+    this.archiveControllers.set(conversation, controller);
+    const job = (async () => {
+      const key = this.historyKey(conversation, "archive");
+      let after = await this.store.cursor(key);
+      controller.signal.throwIfAborted();
+      if (after >= through) {
+        this.archiveStatus(conversation, "complete");
+        return;
+      }
+      if (
+        (await this.store.cursor(
+          this.historyKey(conversation, "archive-paused"),
+        )) ||
+        (!this.manualArchives.has(conversation) &&
+          !this.archiveBudget.policy().automatic)
+      ) {
+        this.archiveStatus(conversation, "paused");
+        return;
+      }
+      while (
+        after < through &&
+        !this.stopped &&
+        this.active === conversation &&
+        this.snapshot.status === "online"
+      ) {
+        controller.signal.throwIfAborted();
+        const page = await this.historyPage(
+          conversation,
+          { after },
+          controller.signal,
+        );
+        const next = page.has_more
+          ? (page.messages.at(-1)?.seq ?? after)
+          : page.last_seq;
+        if (next <= after)
+          throw Error("Server returned nonadvancing archive history");
+        after = next;
+        await this.store.setCursor(key, after);
+        controller.signal.throwIfAborted();
+        this.archiveStatus(
+          conversation,
+          "waiting",
+          (this.snapshot.archives?.[conversation]?.downloaded ?? 0) +
+            page.messages.length,
+        );
+        if (!page.has_more) break;
+      }
+      if (after >= through) this.archiveStatus(conversation, "complete");
+    })()
+      .catch((error) => {
+        if (!controller.signal.aborted)
+          this.archiveStatus(
+            conversation,
+            "error",
+            undefined,
+            friendlyError(error),
+          );
+      })
+      .finally(() => {
+        this.archives.delete(conversation);
+        this.archiveControllers.delete(conversation);
+      });
+    this.archives.set(conversation, job);
+  }
+  async loadOlder(conversation: string, before: number) {
+    if (!this.pagedHistory) return;
+    const local = await this.messages(conversation, { before, limit: 100 });
+    if (!local.length) this.historyRanges.delete(conversation);
+    const archived = await this.store.cursor(
+      this.historyKey(conversation, "archive"),
+    );
+    const ranges = [
+      ...(this.historyRanges.get(conversation) ?? []),
+      { from: 0, to: archived + 1 },
+    ];
+    const covered = ranges.find(
+      (r) =>
+        r.to >= before &&
+        (local.length === 100 ? r.from <= local[0].seq : r.from === 0),
+    );
+    if (covered || this.snapshot.status === "offline")
+      return {
+        messages: local,
+        has_more: covered?.from !== 0 || local.length === 100,
+      };
+    return this.historyPage(conversation, { before });
+  }
+  async loadNewer(conversation: string, after: number) {
+    if (!this.pagedHistory) return;
+    return this.historyPage(conversation, { after });
+  }
+  private async syncLegacyHistory(conversation: string): Promise<number> {
     const previous =
       this.snapshot.status === "online"
         ? ((
@@ -754,7 +1068,7 @@ export class InstanceClient {
       if (last <= after) throw Error("Server returned nonadvancing history");
       after = last;
     }
-    this.changed();
+    this.changedMessages(conversation);
     return cursor;
   }
   private async allConversations() {
@@ -791,6 +1105,9 @@ export class InstanceClient {
     }
   }
   async selectConversation(id: string) {
+    if (this.active !== id)
+      for (const controller of this.archiveControllers.values())
+        controller.abort();
     this.active = id;
     if (this.snapshot.status === "online") {
       if (this.accountFeed) await this.syncHistory(id);
@@ -942,9 +1259,23 @@ export class InstanceClient {
     const byID = new Map(repaired.map((message) => [message.id, message]));
     return safe.map((message) => byID.get(message.id) ?? message);
   }
-  /** Resolve a downloaded reply without loading unrelated history. */
   async message(conversation: string, id: string) {
     let message = await this.store.message(this.scope, conversation, id);
+    if (!message && this.pagedHistory) {
+      try {
+        message = await this.decodeMessage(
+          await unwrap(
+            this.http.GET("/api/v1/conversations/{id}/messages/{message}", {
+              params: { path: { id: conversation, message: id } },
+            }),
+          ),
+        );
+        await this.store.merge(this.scope, [message]);
+      } catch (error) {
+        if (!(error instanceof APIError && [403, 404].includes(error.status)))
+          throw error;
+      }
+    }
     if (!message) return;
     if (cachedMessage(message).security === "pending") {
       await this.resolveCachedMessages([message]);
@@ -1001,7 +1332,7 @@ export class InstanceClient {
       created_at: new Date().toISOString(),
     };
     await this.store.putPending(this.scope, message);
-    this.changed();
+    this.changedMessages(conversation);
     return this.retry(message);
   }
   async retry(message: PendingMessage) {
@@ -1065,12 +1396,15 @@ export class InstanceClient {
       throw error;
     } finally {
       this.sending.delete(message.request_id);
-      this.changed();
+      this.changedMessages(message.conversation_id);
     }
   }
   async discard(id: string) {
+    const pending = (await this.store.pending(this.scope)).find(
+      (message) => message.request_id === id,
+    );
     await this.store.removePending(this.scope, id);
-    this.changed();
+    if (pending) this.changedMessages(pending.conversation_id);
   }
   async edit(message: Message, body: string) {
     const encryption = this.isDM(message.conversation_id)
@@ -1110,7 +1444,7 @@ export class InstanceClient {
       else throw error;
     }
     await this.store.merge(this.scope, [await this.decodeMessage(result)]);
-    this.changed();
+    this.changedMessages(message.conversation_id);
   }
   async deleteMessage(message: Message) {
     const result = await unwrap(
@@ -1119,7 +1453,7 @@ export class InstanceClient {
       }),
     );
     await this.store.merge(this.scope, [result]);
-    this.changed();
+    this.changedMessages(message.conversation_id);
   }
   async createDM(members: string[]) {
     const conversation = await unwrap(
@@ -1269,6 +1603,8 @@ export class InstanceClient {
     return this.events.command(message, reply, match);
   }
   stop() {
+    for (const controller of this.archiveControllers.values())
+      controller.abort();
     this.readinessAbort?.abort();
     this.presence.clear();
     this.stopped = true;

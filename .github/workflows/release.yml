@@ -45,10 +45,10 @@ jobs:
       - run: npm ci
       - run: npm test -- --run tests/desktop-updates.test.ts tests/desktop-installer.test.ts tests/desktop-appearance.test.ts tests/desktop-tray.test.ts tests/desktop-notifications.test.ts
       - run: npm run build
-      - run: npm run electron:stage
       - name: Install RPM build tools
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm libpulse-dev libglib2.0-dev libx11-dev
+      - run: npm run electron:stage
       - run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never
       - run: npm run electron:check
       - name: Start packaged Windows client

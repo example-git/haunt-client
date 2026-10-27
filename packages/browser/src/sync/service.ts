@@ -23,6 +23,7 @@ import {
   unb64,
   validateRoot,
   vaultAAD,
+  vaultKeyScope,
   version,
   type Ciphertext,
   type ProofKeys,
@@ -119,7 +120,14 @@ export class SyncService {
       signal: AbortSignal.timeout(30_000),
     });
     if (response.status === 204) return undefined as T;
-    const result = await response.json();
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      if (!response.ok)
+        throw new SyncError(response.status, "sync_request_failed");
+      throw Error("Invalid sync service response.");
+    }
     if (!response.ok)
       throw new SyncError(
         response.status,
@@ -421,12 +429,12 @@ export class SyncService {
     const start = await registration(newPassword);
     const challenge = await this.request<
       Challenge & {
-        vaults: { scope: string; revision: number; ciphertext: Ciphertext }[];
+        paged_vaults: boolean;
       }
     >(
       "/v1/recovery/start",
       "POST",
-      { request: start.registrationRequest },
+      { request: start.registrationRequest, paged_vaults: true },
       keys,
       reply.access_token,
     );
@@ -447,56 +455,77 @@ export class SyncService {
       nextSecrets,
       rootAAD(this.issuer, reply.account_id, "recovery-wrap"),
     );
-    const vaults = [];
-    for (const vault of challenge.vaults) {
-      if (
-        !Number.isSafeInteger(vault.revision) ||
-        vault.revision < 1 ||
-        (vault.scope !== "full" &&
-          !/^server:[A-Za-z0-9_-]{43}$/.test(vault.scope))
-      )
+    if (!challenge.paged_vaults)
+      throw Error(
+        "Update Haunt Sync to enable incremental archive key rotation.",
+      );
+    let vaultHash = await digest("haunt-sync-migration-v1");
+    const migrationPath =
+      "/v1/recovery/" + encodeURIComponent(challenge.challenge_id) + "/vault";
+    for (;;) {
+      const page = await this.request<{
+        vault: {
+          scope: string;
+          revision: number;
+          ciphertext: Ciphertext;
+        } | null;
+        digest: string;
+      }>(migrationPath, "GET", undefined, keys, reply.access_token);
+      if (page.digest !== vaultHash)
+        throw Error("Invalid snapshot migration digest.");
+      const vault = page.vault;
+      if (!vault) break;
+      const keyScope = vaultKeyScope(vault.scope);
+      if (!Number.isSafeInteger(vault.revision) || vault.revision < 1)
         throw Error("Invalid snapshot migration response.");
       const value = await open(
         await derive(
           secrets.root,
-          "vault:" + vault.scope,
+          "vault:" + keyScope,
           this.issuer,
           reply.account_id,
         ),
         vault.ciphertext,
         vaultAAD(this.issuer, reply.account_id, vault.scope, vault.revision),
       );
-      vaults.push({
-        scope: vault.scope,
-        expected_revision: vault.revision,
-        ciphertext: await seal(
-          await derive(
-            root,
-            "vault:" + vault.scope,
-            this.issuer,
-            reply.account_id,
-          ),
-          value,
-          vaultAAD(
-            this.issuer,
-            reply.account_id,
-            vault.scope,
-            vault.revision + 1,
-          ),
+      const ciphertext = await seal(
+        await derive(root, "vault:" + keyScope, this.issuer, reply.account_id),
+        value,
+        vaultAAD(
+          this.issuer,
+          reply.account_id,
+          vault.scope,
+          vault.revision + 1,
         ),
-      });
+      );
+      const nextHash = await digest(
+        vaultHash +
+          "\0" +
+          vault.scope +
+          "\0" +
+          vault.revision +
+          "\0" +
+          ciphertext.version +
+          "\0" +
+          ciphertext.nonce +
+          "\0" +
+          ciphertext.data,
+      );
+      const staged = await this.request<{ digest: string }>(
+        migrationPath + "/" + encodeURIComponent(vault.scope),
+        "PUT",
+        {
+          expected_revision: vault.revision,
+          ciphertext,
+          previous_hash: vaultHash,
+        },
+        keys,
+        reply.access_token,
+      );
+      if (staged.digest !== nextHash)
+        throw Error("Invalid snapshot migration digest.");
+      vaultHash = nextHash;
     }
-    const vaultHash = await digest(
-      JSON.stringify(
-        vaults.map((v) => [
-          v.scope,
-          v.expected_revision,
-          v.ciphertext.version,
-          v.ciphertext.nonce,
-          v.ciphertext.data,
-        ]),
-      ),
-    );
     const recoverySigner = await crypto.subtle.importKey(
       "jwk",
       secrets.recoverySigner,
@@ -542,7 +571,7 @@ export class SyncService {
           recovery_proof: proof,
           recovery_wrapped_key: recoveryWrapped,
           recovery_public_key: replacementRecovery.publicKey,
-          vaults,
+          staged_vaults: true,
         },
         keys,
         reply.access_token,
@@ -597,17 +626,39 @@ export class SyncService {
     session: Session,
     name = session.scope,
     key = session.backupKey,
-  ): Promise<{ revision: number; value?: T }> {
+    known?: number,
+  ): Promise<{
+    revision: number;
+    value?: T;
+    unchanged?: boolean;
+    sequence?: number;
+  }> {
+    if (known !== undefined && (!Number.isSafeInteger(known) || known < 0))
+      throw Error("Invalid known sync revision.");
     const reply = await this.request<{
       revision: number;
       ciphertext: Ciphertext | null;
+      unchanged?: boolean;
+      sequence?: number;
     }>(
-      "/v1/vault/" + encodeURIComponent(name),
+      "/v1/vault/" +
+        encodeURIComponent(name) +
+        (known === undefined ? "" : `?known_revision=${known}`),
       "GET",
       undefined,
       session.keys,
       session.token,
     );
+    if (reply.unchanged) {
+      if (
+        known === undefined ||
+        known < 1 ||
+        reply.revision !== known ||
+        reply.ciphertext !== null
+      )
+        throw Error("Invalid sync revision.");
+      return { revision: known, unchanged: true };
+    }
     if (
       !Number.isSafeInteger(reply.revision) ||
       reply.revision < 0 ||
@@ -616,6 +667,7 @@ export class SyncService {
       throw Error("Invalid sync revision.");
     return {
       revision: reply.revision,
+      ...(reply.sequence === undefined ? {} : { sequence: reply.sequence }),
       ...(reply.ciphertext
         ? {
             value: await open<T>(
@@ -626,6 +678,51 @@ export class SyncService {
           }
         : {}),
     };
+  }
+  async archiveChanges(session: Session, after: number, through?: number) {
+    const result = await this.request<{
+      entries: { scope: string; revision: number; sequence: number }[];
+      cursor: number;
+      through: number;
+    }>(
+      "/v1/archive/" +
+        encodeURIComponent(session.scope) +
+        `?after=${after}` +
+        (through === undefined ? "" : `&through=${through}`),
+      "GET",
+      undefined,
+      session.keys,
+      session.token,
+    );
+    const integer = (value: number) =>
+      Number.isSafeInteger(value) && value >= 0;
+    if (
+      !integer(result.cursor) ||
+      !integer(result.through) ||
+      result.cursor < after ||
+      result.cursor > result.through ||
+      (through !== undefined && result.through !== through) ||
+      !Array.isArray(result.entries) ||
+      result.entries.length > 200
+    )
+      throw Error("Invalid archive change cursor.");
+    let previous = after;
+    for (const entry of result.entries) {
+      if (
+        !integer(entry.sequence) ||
+        entry.sequence <= previous ||
+        entry.sequence > result.cursor ||
+        !integer(entry.revision) ||
+        entry.revision < 1 ||
+        !entry.scope.startsWith("archive-chunk:" + session.scope + ":") ||
+        vaultKeyScope(entry.scope) !== session.scope
+      )
+        throw Error("Invalid archive change entry.");
+      previous = entry.sequence;
+    }
+    if (result.cursor < result.through && result.cursor === after)
+      throw Error("Archive change cursor did not advance.");
+    return result;
   }
   async write(
     session: Session,
@@ -641,7 +738,7 @@ export class SyncService {
       value,
       vaultAAD(this.issuer, session.account, name, expected + 1),
     );
-    return this.request<{ revision: number }>(
+    return this.request<{ revision: number; sequence?: number }>(
       "/v1/vault/" + encodeURIComponent(name),
       "PUT",
       { expected_revision: expected, ciphertext: encrypted },

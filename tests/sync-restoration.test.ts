@@ -175,6 +175,8 @@ it.each([2, 3])(
         return Response.json({
           origins: sources.map((source) => source.origin),
         });
+      if (url.pathname.startsWith("/v1/archive/"))
+        return Response.json({ entries: [], cursor: 0, through: 0 });
       expect(url.pathname).toMatch(/^\/v1\/vault\//);
       const stored = vaults.get(url.pathname) ?? {
         revision: 0,

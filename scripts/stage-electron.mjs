@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runtimeConfig } from "./update-runtime.mjs";
 import { buildNotificationReplacement } from "./build-notification-replacement.mjs";
+import { buildLinuxAudio } from "./build-linux-audio.mjs";
 import "./check-native-media.mjs";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const app = path.join(root, "electron-app");
@@ -13,6 +14,7 @@ const pkg = JSON.parse(
 await fs.access(path.join(root, "dist/index.html"));
 await fs.access(path.join(root, "dist/THIRD-PARTY-NOTICES.txt"));
 await buildNotificationReplacement();
+await buildLinuxAudio();
 // Only replace generated files in this project's dedicated packaging directory.
 for (const name of ["dist", "apps", "resources"])
   await fs.rm(path.join(app, name), { recursive: true, force: true });

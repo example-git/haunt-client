@@ -1,0 +1,62 @@
+name: Native Wayland capture
+on:
+  push:
+    branches: [dev]
+    paths:
+      - .github/workflows/wayland.yml
+      - apps/desktop/**
+      - packages/browser/src/media/**
+      - native/linux-*.c
+      - scripts/check-wayland.mjs
+      - scripts/check-linux-share-audio.mjs
+      - scripts/ci/check-wayland.sh
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: server/client
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: example-git/haunt-server
+          ref: b8e79640e1b14bdf2bf2629402e18d1b4ed618da
+          path: server
+      - uses: actions/checkout@v5
+        with:
+          path: server/client
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: server/client/package-lock.json
+      - name: Install Wayland and PipeWire test environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends sway swaybg wayland-utils pipewire pipewire-pulse wireplumber pulseaudio-utils xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus-x11 ffmpeg libpulse-dev libglib2.0-dev libx11-dev libgtk-3-0 libnss3 libgbm1 libasound2t64
+      - name: Start disposable database
+        run: |
+          docker run -d --name chatxo-identity-check -p 127.0.0.1:32768:5432 -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=chatxo_check postgres:16-alpine
+          for attempt in $(seq 1 60); do
+            if docker exec chatxo-identity-check pg_isready -U postgres -d chatxo_check; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - run: npm ci
+      - run: npm run build && node scripts/build-linux-audio.mjs
+      - name: Native Wayland video and PipeWire output audio through server relay
+        run: dbus-run-session -- bash scripts/ci/check-wayland.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-wayland-capture
+          path: server/client/test-results
+          retention-days: 14

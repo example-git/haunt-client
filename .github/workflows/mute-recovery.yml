@@ -83,7 +83,7 @@ jobs:
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg xvfb xauth libasound2t64 libnss3 libgbm1 libgtk-3-0
+          sudo apt-get install -y --no-install-recommends ffmpeg xvfb xauth libpulse-dev libglib2.0-dev libx11-dev libasound2t64 libnss3 libgbm1 libgtk-3-0
           test -x /usr/bin/google-chrome
       - name: Start disposable PostgreSQL
         run: |

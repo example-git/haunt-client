@@ -110,6 +110,7 @@ export function AccountSettings({
             "narrator",
             "servers",
             "backups",
+            "history",
             "sync",
             "updates",
           ].includes(tab) && (

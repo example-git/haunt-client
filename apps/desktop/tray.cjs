@@ -68,6 +68,9 @@ function installTray({
       : new Tray(base.resize({ width: 24, height: 24 }));
   let quitting = false,
     disposed = false;
+  let latest = { count: 0, unread: false, icon: base },
+    call,
+    action = () => {};
   const show = () => {
     if (window.isDestroyed()) return;
     if (window.isMinimized()) window.restore();
@@ -81,6 +84,32 @@ function installTray({
         { type: "separator" },
         { label: "Show Haunt", click: show },
         { label: "Hide Haunt", click: () => window.hide() },
+        ...(call?.active
+          ? [
+              { type: "separator" },
+              {
+                label: call.sharing ? "In call · Screen sharing" : "In call",
+                enabled: false,
+              },
+              {
+                label: call.muted ? "Unmute microphone" : "Mute microphone",
+                click: () => action("mute"),
+              },
+              {
+                label: call.deafened ? "Undeafen" : "Deafen",
+                click: () => action("deafen"),
+              },
+              ...(call.sharing
+                ? [
+                    {
+                      label: "Stop sharing screen",
+                      click: () => action("stop-screen"),
+                    },
+                  ]
+                : []),
+              { label: "Leave call", click: () => action("leave") },
+            ]
+          : []),
         { type: "separator" },
         { label: "Quit Haunt", click: () => app.quit() },
       ]),
@@ -101,13 +130,16 @@ function installTray({
   app.on("activate", show);
   const update = ({ count, unread, icon, overlay }) => {
     if (disposed) return;
+    latest = { count, unread, icon, overlay };
     const label = count > 99 ? "99+" : String(count);
     const status = count
       ? `${count} unread notification${count === 1 ? "" : "s"}`
       : unread
         ? "Unread messages"
         : "No unread messages";
-    tray.setToolTip(`Haunt — ${status}`);
+    tray.setToolTip(
+      `Haunt — ${status}${call?.active ? (call.sharing ? " · Screen sharing" : " · In call") : ""}`,
+    );
     menu(status);
     if (platform === "darwin") {
       tray.setTitle(count ? label : unread ? "•" : "", {
@@ -134,6 +166,15 @@ function installTray({
     dispose();
     throw error;
   }
-  return { update, show, dispose };
+  return {
+    update,
+    show,
+    dispose,
+    setCall(value, callback) {
+      call = value;
+      action = callback;
+      update(latest);
+    },
+  };
 }
 module.exports = { installTray, updateAppBadge };

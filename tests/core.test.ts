@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import "fake-indexeddb/auto";
 import {
   Client,
+  InstanceClient,
   APIError,
   friendlyError,
   EventSocket,
@@ -945,4 +946,205 @@ describe("lightweight account gateway", () => {
       vi.useRealTimers();
     }
   });
+});
+
+describe("paged history synchronization", () => {
+  it("reconciles a legacy cache from zero before saving its first change checkpoint", async () => {
+    const saved = account();
+    saved.instance.capabilities = ["messages.history_pages.v1"];
+    const store = new MemoryStore();
+    const queries: string[] = [];
+    const client = new InstanceClient(
+      saved,
+      {
+        randomUUID: () => crypto.randomUUID(),
+        socket: () => new Socket("one"),
+        fetch: async (input) => {
+          const query = new URL((input as Request).url).searchParams;
+          queries.push(query.toString());
+          return response({
+            messages: query.has("changes_after")
+              ? [
+                  {
+                    ...message("old", 1, ""),
+                    deleted: true,
+                    edited_at: "2026-10-03T00:00:00Z",
+                  },
+                ]
+              : [message("latest", 200)],
+            last_seq: 200,
+            event_cursor: 501,
+            next_change: 501,
+            has_more: !query.has("changes_after"),
+            pruned_through: 0,
+            gap: false,
+          });
+        },
+      },
+      store,
+      new MemoryVault(),
+    );
+    await store.merge(client.scope, [message("old", 1, "stale body")]);
+    await client.syncHistory("conversation");
+    expect(queries).toEqual([
+      "limit=100&latest=true",
+      "limit=100&changes_after=0",
+    ]);
+    expect(
+      (await store.message(client.scope, "conversation", "old"))?.deleted,
+    ).toBe(true);
+    await client.syncHistory("conversation");
+    expect(queries.slice(2)).toEqual(["limit=100&latest=true"]);
+    client.stop();
+  });
+
+  it("retries temporary history admission pressure before failing the channel load", async () => {
+    vi.useFakeTimers();
+    const saved = account();
+    saved.instance.capabilities = ["messages.history_pages.v1"];
+    let requests = 0;
+    const client = new InstanceClient(
+      saved,
+      {
+        randomUUID: () => crypto.randomUUID(),
+        socket: () => new Socket("one"),
+        fetch: async () =>
+          ++requests === 1
+            ? new Response(JSON.stringify({ error: "busy" }), {
+                status: 503,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Retry-After": "1",
+                },
+              })
+            : response({
+                messages: [message("latest", 200)],
+                last_seq: 200,
+                event_cursor: 501,
+                next_change: 501,
+                has_more: false,
+                pruned_through: 0,
+                gap: false,
+              }),
+      },
+      new MemoryStore(),
+      new MemoryVault(),
+    );
+    try {
+      const pending = client.syncHistory("conversation");
+      await vi.advanceTimersByTimeAsync(1500);
+      await pending;
+      expect(requests).toBe(2);
+      expect((await client.messages("conversation"))[0].id).toBe("latest");
+    } finally {
+      client.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  for (const durable of [false, true])
+    it(`${durable ? "IndexedDB" : "memory"} loads a bounded tail and reconciles old changes without replaying the archive`, async () => {
+      const saved = account();
+      saved.instance.capabilities = ["messages.history_pages.v1"];
+      const store = durable
+        ? new IndexedDBStore(`history-pages-${crypto.randomUUID()}`)
+        : new MemoryStore();
+      const queries: URLSearchParams[] = [];
+      let head = 1000;
+      const runtime: Runtime = {
+        randomUUID: () => crypto.randomUUID(),
+        socket: () => new Socket("one"),
+        fetch: async (input) => {
+          const query = new URL((input as Request).url).searchParams;
+          queries.push(query);
+          let rows: Message[],
+            hasMore = false,
+            next = head;
+          if (query.has("changes_after")) {
+            const after = Number(query.get("changes_after"));
+            rows =
+              after < 1001
+                ? [
+                    {
+                      ...message("1", 1, "edited while offline"),
+                      edited_at: "2026-10-02T00:00:00Z",
+                    },
+                  ]
+                : [
+                    {
+                      ...message("2", 2, ""),
+                      deleted: true,
+                      edited_at: "2026-10-03T00:00:00Z",
+                    },
+                  ];
+            hasMore = after < 1001;
+            next = hasMore ? 1001 : head;
+          } else {
+            const before = Number(query.get("before")) || 1001;
+            rows = Array.from({ length: 100 }, (_, i) =>
+              message(String(before - 100 + i), before - 100 + i),
+            );
+            hasMore = true;
+          }
+          return response({
+            messages: rows,
+            last_seq: 1000,
+            event_cursor: head,
+            next_change: next,
+            has_more: hasMore,
+            pruned_through: 0,
+            gap: false,
+          });
+        },
+      };
+      const client = new InstanceClient(
+        saved,
+        runtime,
+        store,
+        new MemoryVault(),
+      );
+      await Promise.all([
+        client.syncHistory("conversation"),
+        client.syncHistory("conversation"),
+      ]);
+      expect(queries).toHaveLength(1);
+      expect(
+        (await client.messages("conversation", { limit: 1000 })).map(
+          (m) => m.seq,
+        ),
+      ).toEqual(Array.from({ length: 100 }, (_, i) => 901 + i));
+      await client.syncHistory("conversation");
+      expect(queries).toHaveLength(2);
+      await store.merge(client.scope, [message("1", 1), message("2", 2)]);
+      head = 1002;
+      await client.syncHistory("conversation");
+      expect(queries.slice(2).map((q) => q.toString())).toEqual([
+        "limit=100&latest=true",
+        "limit=100&changes_after=1000",
+        "limit=100&changes_after=1001",
+      ]);
+      expect(
+        (await store.message(client.scope, "conversation", "1"))?.body,
+      ).toBe("edited while offline");
+      expect(
+        (await store.message(client.scope, "conversation", "2"))?.deleted,
+      ).toBe(true);
+      await client.loadOlder("conversation", 901);
+      expect(
+        (await client.messages("conversation", { limit: 300 })).filter(
+          (m) => m.seq >= 801,
+        ),
+      ).toHaveLength(200);
+      const key = JSON.stringify([
+        client.scope,
+        "history",
+        "conversation",
+        "changes",
+      ]);
+      expect(await store.cursor(key)).toBe(1002);
+      await store.clear(client.scope);
+      expect(await store.cursor(key)).toBe(0);
+      client.stop();
+      if (store instanceof IndexedDBStore) await store.close();
+    });
 });

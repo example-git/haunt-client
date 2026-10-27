@@ -1,5 +1,7 @@
 import "fake-indexeddb/auto";
 import { describe, it, expect } from "vitest";
+import { IndexedDBStore } from "../packages/browser/src/storage";
+import { syncTextArchive } from "../packages/browser/src/sync/text-archive";
 import {
   approvePairing,
   beginWebPairing,
@@ -77,6 +79,46 @@ describe.skipIf(!issuer)("real sync Go API and browser OPAQUE", () => {
     const durable = await loadSession();
     expect(durable!.keys.privateKey.extractable).toBe(false);
     expect((await service.read(durable!)).value).toEqual(backup);
+    const archiveScope = JSON.stringify(["community", "member"]);
+    const archive = new IndexedDBStore(crypto.randomUUID());
+    const otherArchive = new IndexedDBStore(crypto.randomUUID());
+    try {
+      await archive.merge(archiveScope, [
+        {
+          id: "saved-message",
+          seq: 1,
+          conversation_id: "room",
+          author_id: "author",
+          request_id: "request",
+          body: "synthetic-community-secret saved text",
+          created_at: "2026-10-26T00:00:00Z",
+          deleted: false,
+          attachment_ids: [],
+        },
+      ]);
+      await syncTextArchive(second, archive);
+      const saved = await service.read(second, "archive:full");
+      expect(saved.revision).toBe(1);
+      expect(
+        await service.read(second, "archive:full", second.backupKey, 1),
+      ).toEqual({ revision: 1, unchanged: true });
+      await syncTextArchive(second, archive);
+      expect((await service.read(second, "archive:full")).revision).toBe(1);
+      await syncTextArchive(second, otherArchive);
+      expect(
+        (await otherArchive.archivedMessages(archiveScope)).messages[0].body,
+      ).toContain("saved text");
+      expect(await otherArchive.messages(archiveScope, "room")).toHaveLength(0);
+      await archive.removeArchivedMessage(archiveScope, "saved-message");
+      await syncTextArchive(second, archive);
+      await syncTextArchive(second, otherArchive);
+      expect(
+        (await otherArchive.archivedMessages(archiveScope)).messages,
+      ).toHaveLength(0);
+    } finally {
+      await archive.close();
+      await otherArchive.close();
+    }
     await forgetSession();
     const races = await Promise.allSettled([
       service.write(first, { ...backup, writer: "first" }, 1),
@@ -173,6 +215,43 @@ describe.skipIf(!issuer)("real sync Go API and browser OPAQUE", () => {
     );
     expect(web.scope).toBe(await serverScope(caller));
     expect(web.origin).toBe(caller);
+    for (const path of [
+      "/v1/archive/full?after=0",
+      "/v1/vault/" +
+        encodeURIComponent("archive-chunk:full:" + (await digest("foreign"))),
+    ]) {
+      await expect(
+        service.request(path, "GET", undefined, webKeys, web.access_token),
+      ).rejects.toMatchObject({ status: 403 });
+    }
+    expect(
+      await service.request<{ entries: unknown[] }>(
+        "/v1/archive/" + encodeURIComponent(web.scope) + "?after=0",
+        "GET",
+        undefined,
+        webKeys,
+        web.access_token,
+      ),
+    ).toMatchObject({ entries: [] });
+
+    await expect(
+      service.request(
+        "/v1/vault/archive:full",
+        "GET",
+        undefined,
+        webKeys,
+        web.access_token,
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(
+      await service.request(
+        "/v1/vault/" + encodeURIComponent("archive:" + web.scope),
+        "GET",
+        undefined,
+        webKeys,
+        web.access_token,
+      ),
+    ).toEqual({ revision: 0, ciphertext: null });
     await expect(
       service.request("/v1/oauth/token", "POST", exchange, webKeys),
     ).rejects.toMatchObject({ status: 400 });
@@ -224,6 +303,13 @@ describe.skipIf(!issuer)("real sync Go API and browser OPAQUE", () => {
       { serverSnapshot: "synthetic-community-secret" },
       0,
       await serverScope(caller),
+      await service.scopeKey(first, caller),
+    );
+    await service.write(
+      first,
+      { text: "synthetic-community-secret archive" },
+      0,
+      "archive:" + (await serverScope(caller)),
       await service.scopeKey(first, caller),
     );
     const recoveringKeys = await proofKeys();
@@ -334,6 +420,19 @@ describe.skipIf(!issuer)("real sync Go API and browser OPAQUE", () => {
     expect((await service.read(rotated)).value).toMatchObject({
       migrationWriter: "other device",
     });
+    expect((await service.read(rotated, "archive:full")).value).toMatchObject({
+      format: "haunt-text-archive",
+      version: 2,
+    });
+    expect(
+      (
+        await service.read(
+          rotated,
+          "archive:" + (await serverScope(caller)),
+          await service.scopeKey(rotated, caller),
+        )
+      ).value,
+    ).toEqual({ text: "synthetic-community-secret archive" });
     await expect(service.read(restored)).rejects.toMatchObject({ status: 401 });
     await expect(
       service.signIn(email, newPassword, undefined, keyword),

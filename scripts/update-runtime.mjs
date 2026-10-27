@@ -41,6 +41,9 @@ export async function runtimeConfig(
   ];
   if (platform === "linux")
     names.push(
+      "native/linux-audio.c",
+      "native/linux-shortcuts.c",
+      "scripts/build-linux-audio.mjs",
       "static/linux/package-type",
       "static/linux/rpm-after-remove.sh",
       "static/linux/rpm-after-install.sh",

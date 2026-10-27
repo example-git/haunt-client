@@ -20,7 +20,18 @@ const earlier = await community.messages(conversationId, {
 });
 ```
 
-`messages()` reads the local archive in ascending order, returning at most 200 messages by default (maximum 10,000 per call). Use `before` to page backward. `selectConversation(id)` loads that conversation’s retained history. `refresh()` reconciles the directory, read state and selected history; `refresh(false)` skips history. Live events apply automatically to every authorized conversation through one account feed. Quiet servers do not poll HTTP. After an HTTP mutation, use `refreshAfterChange()` to wait past any earlier in-flight snapshot and then fetch the new directory. `saveArt(kind, blobOrNull)` handles raw avatar/icon/banner upload or removal and refreshes metadata; `art(kind, userID?)` returns an authorized image Blob.
+`messages()` reads the local archive in ascending order, returning at most 200 messages by default (maximum 10,000 per call). Use `before` to page backward. `selectConversation(id)` opens the newest page first on servers advertising `messages.history_pages.v1`; a budgeted archive job downloads older history separately. `loadOlder()` reuses covered local ranges, and `loadNewer()` fetches forward pages. `refresh()` reconciles the directory, read state and selected history; `refresh(false)` skips history. Live events apply automatically to every authorized conversation through one account feed. Quiet servers do not poll HTTP. After an HTTP mutation, use `refreshAfterChange()` to wait past any earlier in-flight snapshot and then fetch the new directory. `saveArt(kind, blobOrNull)` handles raw avatar/icon/banner upload or removal and refreshes metadata; `art(kind, userID?)` returns an authorized image Blob.
+
+`Runtime.archiveBudget` accepts a shared `ArchiveBudget` with automatic-download,
+bytes-per-second and requests-per-minute policy. Without an explicit budget,
+instances using the same runtime share the default 64 KiB/s, 30 requests/minute
+budget. `archiveAvailable()` supplies platform visibility/data-saver policy.
+`pauseArchive()`, `resumeArchive()` and `Snapshot.archives` expose per-conversation
+controls and progress; `updateArchivePolicy()` reapplies changed preferences.
+`MessageStore.search(scope, conversation, query, options)` searches downloaded text
+with account isolation, all-word matching, cancellation and `before` pagination.
+Implementations must update their index with message edits/deletions. Legacy
+servers without paged-history capability retain the older foreground sync path.
 
 `Snapshot.voiceRooms` maps channel IDs to current voice participants and their mute/deafen/camera/screen state. Call `setForeground(true)` only while this server’s roster is displayed and `setForeground(false)` when switching away. It defaults to off; no call admission or media adapter is needed. The server filters rooms by access and sends complete ephemeral replacements. An empty map does not imply that every member is offline.
 

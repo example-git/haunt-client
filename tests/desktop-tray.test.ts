@@ -87,6 +87,28 @@ for (const platform of ["darwin", "win32", "linux"]) {
       );
     else expect(app.setBadgeCount).toHaveBeenLastCalledWith(0);
     if (platform === "linux") expect(window.setIcon).not.toHaveBeenCalled();
+    const callAction = vi.fn();
+    control.setCall(
+      { active: true, muted: true, deafened: false, sharing: true },
+      callAction,
+    );
+    const callMenu = Tray.current.setContextMenu.mock.lastCall![0];
+    callMenu
+      .find((item: { label: string }) => item.label === "Unmute microphone")
+      .click();
+    callMenu
+      .find((item: { label: string }) => item.label === "Stop sharing screen")
+      .click();
+    expect(callAction.mock.calls).toEqual([["mute"], ["stop-screen"]]);
+    expect(Tray.current.setToolTip.mock.lastCall?.[0]).toContain(
+      "Screen sharing",
+    );
+    control.setCall(undefined, callAction);
+    expect(
+      Tray.current.setContextMenu.mock.lastCall![0].some(
+        (item: { label: string }) => item.label === "Leave call",
+      ),
+    ).toBe(false);
     const event = { preventDefault: vi.fn() };
     window.emit("close", event);
     expect(event.preventDefault).toHaveBeenCalledOnce();

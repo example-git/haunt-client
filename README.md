@@ -94,6 +94,11 @@ Build on a supported host for the target platform. Desktop updates verify releas
 signatures, preserve user profiles, and support failed-startup rollback. See the
 [release guide](docs/releases.md) for packaging, versioning, and update behavior.
 
+Linux desktop builds also require a C compiler, `pkg-config`, and development
+packages for PulseAudio, GLib and X11 (`libpulse-dev libglib2.0-dev libx11-dev`
+on Debian/Ubuntu). Desktop staging builds the audio and shortcut helpers for
+the host architecture.
+
 ## Repository layout
 
 - `apps/web/`: shared React interface.

@@ -14,6 +14,8 @@ import {
   type Session,
 } from "@haunt/browser/sync/service";
 import { applySyncBackup, collectSyncBackup } from "./sync-backup";
+import { syncTextArchive } from "@haunt/browser/sync/text-archive";
+import { client, messageStore } from "./runtime";
 
 interface Status {
   session?: Session;
@@ -44,7 +46,29 @@ export async function syncNow(choice?: "local" | "cloud", force = false) {
   force ||= !!state.session?.resyncRequired;
   update({ busy: true, error: "", conflict: false });
   try {
-    await engine.sync(choice, force);
+    const session = engine.session;
+    if (session.scope !== "full") await engine.sync(choice, force);
+    const scopes =
+      session.scope === "full"
+        ? undefined
+        : new Set(
+            [...client.instances.values()]
+              .filter((i) => i.origin === session.origin)
+              .map((i) => i.scope),
+          );
+    let archiveError: unknown;
+    try {
+      await syncTextArchive(session, messageStore, scopes, force);
+    } catch (error) {
+      if (
+        error instanceof SyncSessionReplaced ||
+        (error instanceof SyncError && error.status === 401)
+      )
+        throw error;
+      archiveError = error;
+    }
+    if (session.scope === "full") await engine.sync(choice, force);
+    if (archiveError) throw archiveError;
     if (state.session?.resyncRequired) {
       state.session.resyncRequired = false;
       await saveSession(state.session, false);
@@ -73,7 +97,6 @@ export async function syncNow(choice?: "local" | "cloud", force = false) {
     update({
       error:
         (force ? "Full resync did not finish. " : "Sync stopped working. ") +
-        "Your local settings and sign-ins are unchanged. " +
         (error instanceof Error
           ? error.message
           : "Try again or sign in again."),
@@ -108,6 +131,7 @@ export async function enableSync(session: Session, force = false) {
     fullClient
       ? async (_service, _session, backup, force) => {
           const warnings: string[] = [];
+          const archiveErrors: string[] = [];
           const delegated = await service.request<{ origins: string[] }>(
             "/v1/vaults",
             "GET",
@@ -129,6 +153,13 @@ export async function enableSync(session: Session, force = false) {
               backupKey,
               baseline: session.serverBaselines?.[name],
             };
+            const scopes = new Set(
+              backup.accounts
+                .filter((a) => a.origin === target)
+                .map((a) =>
+                  JSON.stringify([a.instance.instance_id, a.login.user.id]),
+                ),
+            );
             const childEngine = new SyncEngine(
               child,
               () => collectSyncBackup(target),
@@ -143,7 +174,20 @@ export async function enableSync(session: Session, force = false) {
             );
             await childEngine.sync(undefined, force);
             warnings.push(...childEngine.warnings);
+            try {
+              await syncTextArchive(child, messageStore, scopes, force);
+            } catch (error) {
+              if (
+                error instanceof SyncSessionReplaced ||
+                (error instanceof SyncError && error.status === 401)
+              )
+                throw error;
+              archiveErrors.push(
+                `Message archive for ${target} did not sync: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
           }
+          if (archiveErrors.length) throw Error(archiveErrors.join(" "));
           return warnings;
         }
       : undefined,

@@ -24,7 +24,24 @@ export async function checkScreen(executablePath, afterCheck) {
   let desktop, cleaning, wm, captureWindow;
   const cleanup = () =>
     (cleaning ??= (async () => {
-      await desktop?.close().catch(() => {});
+      let closeError, closeTimer;
+      try {
+        await Promise.race([
+          desktop?.close(),
+          new Promise((_, reject) => {
+            closeTimer = setTimeout(
+              () =>
+                reject(Error("Owned Electron did not exit within 15 seconds")),
+              15000,
+            );
+          }),
+        ]);
+      } catch (error) {
+        closeError = error;
+        desktop?.process().kill("SIGKILL");
+      } finally {
+        clearTimeout(closeTimer);
+      }
       for (const child of [captureWindow, wm, xvfb]) {
         if (!child?.pid) continue;
         const signal = (value) => {
@@ -54,6 +71,7 @@ export async function checkScreen(executablePath, afterCheck) {
         await exited;
       }
       await fs.rm(scratch, { recursive: true, force: true });
+      if (closeError) throw closeError;
     })());
   activeCleanup = cleanup;
   try {
@@ -117,7 +135,6 @@ export async function checkScreen(executablePath, afterCheck) {
         ...(afterCheck
           ? [
               "--use-fake-device-for-media-stream",
-              "--use-fake-ui-for-media-stream",
               `--use-file-for-fake-audio-capture=${path.resolve("tests/fixtures/noise-speech.wav")}`,
             ]
           : []),
@@ -140,6 +157,15 @@ export async function checkScreen(executablePath, afterCheck) {
       timeout: 30000,
     });
     desktop.process().stdout.on("data", (data) => process.stdout.write(data));
+    if (process.env.HAUNT_DESKTOP_SHUTDOWN_TRACE === "1")
+      await desktop.evaluate(({ app, BrowserWindow }) => {
+        for (const event of ["before-quit", "will-quit", "quit"])
+          app.on(event, () => console.log(`Desktop shutdown: ${event}`));
+        for (const window of BrowserWindow.getAllWindows())
+          window.on("closed", () =>
+            console.log("Desktop shutdown: window closed"),
+          );
+      });
     desktop.process().stderr.on("data", (data) => {
       if (String(data).includes("CAPTURE")) process.stderr.write(data);
     });

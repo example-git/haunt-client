@@ -1,4 +1,10 @@
 import { cachedMessage } from "./message-content.js";
+import {
+  searchableWords,
+  searchWords,
+  searchLimit,
+  type SearchOptions,
+} from "./search.js";
 import type {
   Message,
   MessageStore,
@@ -12,6 +18,32 @@ export class MemoryStore implements MessageStore {
   private rows = new Map<Scope, Map<string, Message>>();
   private cursors = new Map<Scope, number>();
   private outbox = new Map<Scope, Map<string, PendingMessage>>();
+  async search(
+    scope: Scope,
+    conversation: string,
+    query: string,
+    options: SearchOptions = {},
+  ) {
+    options.signal?.throwIfAborted();
+    const words = searchWords(query);
+    if (!words.length) return { messages: [], hasMore: false };
+    const rows = [...(this.rows.get(scope)?.values() ?? [])]
+      .filter((m) => {
+        if (
+          m.conversation_id !== conversation ||
+          m.seq >= (options.before ?? Infinity)
+        )
+          return false;
+        const terms = new Set(searchableWords(m));
+        return words.every((word) => terms.has(word));
+      })
+      .sort((a, b) => b.seq - a.seq);
+    const limit = searchLimit(options);
+    return {
+      messages: rows.slice(0, limit).map(cachedMessage),
+      hasMore: rows.length > limit,
+    };
+  }
   async message(scope: Scope, conversation: string, id: string) {
     const value = this.rows.get(scope)?.get(id);
     return value?.conversation_id === conversation
@@ -63,6 +95,9 @@ export class MemoryStore implements MessageStore {
   async clear(scope: Scope) {
     this.rows.delete(scope);
     this.cursors.delete(scope);
+    const prefix = JSON.stringify([scope, "history"]).slice(0, -1) + ",";
+    for (const key of this.cursors.keys())
+      if (key.startsWith(prefix)) this.cursors.delete(key);
     this.outbox.delete(scope);
   }
 }

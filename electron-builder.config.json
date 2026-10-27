@@ -6,6 +6,7 @@
   },
   "npmRebuild": false,
   "publish": null,
+  "protocols": [{ "name": "Haunt links", "schemes": ["haunt"] }],
   "directories": {
     "app": "electron-app",
     "buildResources": "static",
@@ -109,6 +110,13 @@
     "icon": "static/icon.ico"
   },
   "linux": {
+    "extraResources": [
+      {
+        "from": "release/native/linux",
+        "to": "native/linux",
+        "filter": ["HauntAudioWorker", "HauntShortcutWorker"]
+      }
+    ],
     "target": [
       {
         "target": "AppImage"
@@ -152,6 +160,7 @@
       "libuuid",
       "libsecret",
       "alsa-lib",
+      "pulseaudio-libs",
       "mesa-libgbm"
     ],
     "fpm": [

@@ -60,6 +60,25 @@ if (process.platform === "darwin") {
     "Notification replacement targets Apple Silicon",
   );
 }
+if (process.platform === "linux") {
+  for (const name of ["HauntAudioWorker", "HauntShortcutWorker"]) {
+    const helper = path.join(path.dirname(filename), "native/linux", name);
+    const bytes = await fs.readFile(helper);
+    assert.equal(
+      bytes.subarray(0, 4).toString("hex"),
+      "7f454c46",
+      `${name} is ELF`,
+    );
+    assert.equal(bytes[4], 2, `${name} is 64-bit`);
+    assert.equal(bytes[5], 1, `${name} is little-endian`);
+    assert.equal(
+      bytes.readUInt16LE(18),
+      process.arch === "arm64" ? 183 : 62,
+      `${name} targets the package architecture`,
+    );
+    assert((await fs.stat(helper)).mode & 0o111, `${name} is executable`);
+  }
+}
 const packagedIdentity = JSON.parse(
   asar.extractFile(filename, "package.json").toString(),
 );

@@ -1,4 +1,6 @@
 import { DesktopUpdates } from "./DesktopUpdates";
+import { DesktopStorage } from "./DesktopStorage";
+import { DesktopCallControls } from "./DesktopCalls";
 import { UserName } from "./UserName";
 import { VideoSettings } from "./VideoSettings";
 import {
@@ -265,6 +267,7 @@ export const clientSettingsTabs = [
   ["audio-plugins", "Server audio plugins"],
   ["narrator", "Text to speech"],
   ["backups", "Backup & restore"],
+  ["history", "History & downloads"],
   ["sync", "Encrypted sync"],
   ["updates", "Client updates"],
 ] as const;
@@ -501,6 +504,89 @@ export function ClientSettingsContent({
       )}
       <ErrorNotice error={error} />
       {tab === "updates" && <DesktopUpdates />}
+      {tab === "history" && (
+        <>
+          <section className="form">
+            <h3>History & downloads</h3>
+            <label className="setting-toggle">
+              Automatically archive the open conversation
+              <input
+                type="checkbox"
+                checked={prefs.archive.automatic}
+                onChange={(event) =>
+                  setPreferences({
+                    archive: {
+                      ...prefs.archive,
+                      automatic: event.target.checked,
+                    },
+                  })
+                }
+              />
+            </label>
+            <label>
+              Archive download limit (KiB/s)
+              <input
+                type="number"
+                min={1}
+                max={4096}
+                step={1}
+                required
+                defaultValue={prefs.archive.bytesPerSecond / 1024}
+                onChange={(event) => {
+                  if (
+                    event.currentTarget.validity.valid &&
+                    Number.isFinite(event.currentTarget.valueAsNumber)
+                  )
+                    setPreferences({
+                      archive: {
+                        ...prefs.archive,
+                        bytesPerSecond:
+                          event.currentTarget.valueAsNumber * 1024,
+                      },
+                    });
+                  else event.currentTarget.reportValidity();
+                }}
+              />
+            </label>
+            <label>
+              Archive requests per minute
+              <input
+                type="number"
+                min={1}
+                max={120}
+                step={1}
+                required
+                defaultValue={prefs.archive.requestsPerMinute}
+                onChange={(event) => {
+                  if (
+                    event.currentTarget.validity.valid &&
+                    Number.isFinite(event.currentTarget.valueAsNumber)
+                  )
+                    setPreferences({
+                      archive: {
+                        ...prefs.archive,
+                        requestsPerMinute: event.currentTarget.valueAsNumber,
+                      },
+                    });
+                  else event.currentTarget.reportValidity();
+                }}
+              />
+            </label>
+            <p className="muted">
+              These limits are shared across connected servers in this window.
+              One archive page may arrive at once; later pages wait for its
+              download budget. Background archiving waits while this window is
+              hidden or data saver is enabled. Opening recent messages and
+              manually loading older pages remain available.
+            </p>
+            <p className="muted">
+              Search runs on downloaded messages on this device. Downloads
+              resume from their saved position.
+            </p>
+          </section>
+          {window.hauntDesktop?.storage && <DesktopStorage />}
+        </>
+      )}
       {tab === "audio-plugins" && (
         <section className="form">
           <label>
@@ -751,6 +837,9 @@ export function ClientSettingsContent({
           </p>
           <ServerNotificationRules instances={instances} instance={instance} />
         </div>
+      )}
+      {tab === "devices" && window.hauntDesktop?.calls && (
+        <DesktopCallControls />
       )}
       {tab === "devices" && (
         <div className="form">

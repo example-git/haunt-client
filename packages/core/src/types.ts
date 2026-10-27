@@ -60,6 +60,12 @@ export interface PendingMessage {
 }
 /** Implement with IndexedDB on the web or a transactional SQLite adapter on Android. */
 export interface MessageStore {
+  search(
+    scope: Scope,
+    conversation: string,
+    query: string,
+    options?: import("./search.js").SearchOptions,
+  ): Promise<import("./search.js").SearchPage>;
   message(
     scope: Scope,
     conversation: string,
@@ -90,6 +96,8 @@ export interface SocketLike {
   close(): void;
 }
 export interface Runtime {
+  archiveBudget?: import("./history.js").ArchiveBudget;
+  archiveAvailable?: () => boolean;
   /** Restore local startup resources independently of network connection setup. */
   prepareConnection?: (
     client: import("./client.js").InstanceClient,
@@ -102,6 +110,14 @@ export interface Runtime {
 export type ConnectionStatus =
   "connecting" | "syncing" | "online" | "offline" | "signed-out";
 export interface Snapshot {
+  archives?: Record<
+    string,
+    {
+      state: "waiting" | "downloading" | "paused" | "complete" | "error";
+      downloaded: number;
+      error?: string;
+    }
+  >;
   status: ConnectionStatus;
   readiness?: "checking" | "ready" | "unavailable" | "unknown";
   error?: string;
@@ -115,5 +131,6 @@ export interface Snapshot {
   permissions: number;
   rolePosition: number;
   revision: number;
+  messageRevisions?: Record<string, number>;
 }
 export type WireEvent = { type: string; [key: string]: unknown };

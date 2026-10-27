@@ -125,5 +125,35 @@ class DiskMediaCache {
     this.writes = task.catch(() => {});
     return task;
   }
+  async stats() {
+    await this.init();
+    await this.writes;
+    return {
+      bytes: this.bytes,
+      entries: this.entries.size,
+      budget: this.budget,
+    };
+  }
+  configure(budget, clear = false) {
+    if (
+      !Number.isInteger(budget) ||
+      budget < 16 * 1024 * 1024 ||
+      budget > 8 * 1024 * 1024 * 1024
+    )
+      return Promise.reject(
+        Error("Choose a media cache budget from 16 to 8192 MiB."),
+      );
+    const task = this.writes.then(async () => {
+      await this.init();
+      this.budget = clear ? 0 : budget;
+      try {
+        await this.trim();
+      } finally {
+        this.budget = budget;
+      }
+    });
+    this.writes = task.catch(() => {});
+    return task;
+  }
 }
 module.exports = { DiskMediaCache };
