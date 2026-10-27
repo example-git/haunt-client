@@ -72,6 +72,28 @@ export function HistorySearch({
   const archive = state.archives?.[conversation];
   return (
     <section className="history-tools" aria-label="Conversation history">
+      <div className="history-search-bar">
+        <input
+          type="search"
+          aria-label="Search downloaded messages"
+          placeholder="Search downloaded messages"
+          value={query}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setOpen(false);
+          }}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setBefore(undefined);
+            setOpen(true);
+          }}
+        />
+        {open && (
+          <button className="text-button" onClick={() => setOpen(false)}>
+            Close search
+          </button>
+        )}
+      </div>
       <div className="button-row">
         <button
           className="text-button"
@@ -82,13 +104,6 @@ export function HistorySearch({
           }}
         >
           Copy channel link
-        </button>
-        <button
-          className="text-button"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
-          Search downloaded messages
         </button>
         <span className="muted small" role="status">
           {archive?.state === "complete"
@@ -125,18 +140,6 @@ export function HistorySearch({
       )}
       {open && (
         <div className="history-search">
-          <label>
-            Search downloaded messages
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setBefore(undefined);
-              }}
-              placeholder="Match all words"
-            />
-          </label>
           <p className="muted small" role="status">
             {busy
               ? `Searching local history${indexed ? ` · ${indexed.toLocaleString()} messages indexed` : ""}…`

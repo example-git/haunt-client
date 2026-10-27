@@ -1944,8 +1944,10 @@ export function ConversationView({
     [historyBefore, setHistoryBefore] = useState<number>(),
     [olderAvailable, setOlderAvailable] = useState(true),
     [loadingHistory, setLoadingHistory] = useState(false),
+    [awayFromLatest, setAwayFromLatest] = useState(false),
     [replyingTo, setReplyingTo] = useState<Message>(),
     [highlighted, setHighlighted] = useState(""),
+    [jump, setJump] = useState<{ id: string }>(),
     [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -1954,15 +1956,14 @@ export function ConversationView({
   const dropTarget = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null),
     list = useRef<HTMLDivElement>(null),
-    previousHeight = useRef(0),
-    stick = useRef(true),
-    pendingReplyJump = useRef<string | undefined>(undefined);
+    stick = useRef(true);
   useEffect(() => {
     setHistoryBefore(undefined);
     setOlderAvailable(true);
     setLimit(100);
-    pendingReplyJump.current = undefined;
+    setJump(undefined);
     stick.current = true;
+    setAwayFromLatest(false);
   }, [instance, conversation]);
   useEffect(() => {
     let live = true;
@@ -1995,10 +1996,6 @@ export function ConversationView({
     historyBefore,
   ]);
   useLayoutEffect(() => {
-    if (pendingReplyJump.current && revealReply(pendingReplyJump.current)) {
-      pendingReplyJump.current = undefined;
-      return;
-    }
     if (stick.current && list.current)
       list.current.scrollTop = list.current.scrollHeight;
   }, [messages, pending.length]);
@@ -2032,22 +2029,9 @@ export function ConversationView({
     acknowledge();
     return subscribeWindowActivity(acknowledge, document);
   }, [messages, conversation, state.status, visible]);
-  function revealReply(id: string) {
-    const owner = list.current?.ownerDocument;
-    if (!owner) return false;
-    const target = owner.getElementById(`message-${id}`);
-    if (!target) return false;
-    target.scrollIntoView({ behavior: "instant", block: "center" });
-    setHighlighted(id);
-    owner.defaultView?.setTimeout(
-      () => setHighlighted((current) => (current === id ? "" : current)),
-      1600,
-    );
-    return true;
-  }
   const navigateReply = async (id: string) => {
     stick.current = false;
-    if (revealReply(id)) return;
+    setAwayFromLatest(true);
     const target =
       messages.find((message) => message.id === id) ??
       (await instance.message(conversation, id));
@@ -2055,10 +2039,17 @@ export function ConversationView({
       throw Error(
         "This message is unavailable or you no longer have access to it.",
       );
-    await instance.loadOlder(conversation, target.seq + 1);
-    pendingReplyJump.current = id;
-    setLimit(100);
-    setHistoryBefore(target.seq + 1);
+    if (!messages.slice(-limit).some((message) => message.id === id)) {
+      await instance.loadOlder(conversation, target.seq + 1);
+      setLimit(100);
+      setHistoryBefore(target.seq + 1);
+    }
+    setJump({ id });
+    setHighlighted(id);
+    window.setTimeout(
+      () => setHighlighted((current) => (current === id ? "" : current)),
+      1600,
+    );
   };
   useEffect(() => {
     const open = () => {
@@ -2082,33 +2073,15 @@ export function ConversationView({
         ref={list}
         onScroll={() => {
           const e = list.current!;
-          const resized = previousHeight.current !== e.scrollHeight;
-          previousHeight.current = e.scrollHeight;
-          // Scroll anchoring can move the viewport when an image loads or the
-          // oldest row drops out of the 100-message window. Preserve following
-          // through that layout change; scrolling back still disables it.
-          if (resized && stick.current) e.scrollTop = e.scrollHeight;
-          else
-            stick.current =
-              historyBefore === undefined &&
-              e.scrollHeight - e.scrollTop - e.clientHeight < 120;
+          stick.current =
+            historyBefore === undefined &&
+            e.scrollHeight - e.scrollTop - e.clientHeight < 120;
+          setAwayFromLatest(!stick.current);
           acknowledge();
         }}
       >
         <div className="history-note">
           <span>Downloaded messages stay on this device</span>
-          {historyBefore !== undefined && (
-            <button
-              className="text-button"
-              onClick={() => {
-                stick.current = true;
-                setHistoryBefore(undefined);
-                setLimit(100);
-              }}
-            >
-              Return to latest messages
-            </button>
-          )}
         </div>
         {(messages.length > limit ||
           (olderAvailable && !!messages.length && messages[0].seq > 1)) && (
@@ -2117,6 +2090,7 @@ export function ConversationView({
             disabled={loadingHistory}
             onClick={() => {
               stick.current = false;
+              setAwayFromLatest(true);
               setLoadingHistory(true);
               const before = messages[0].seq;
               void instance
@@ -2142,7 +2116,7 @@ export function ConversationView({
           items={messages.slice(-limit)}
           scroll={list}
           following={stick}
-          focus={pendingReplyJump.current}
+          focus={jump}
         >
           {(message, index, items) => (
             <Fragment key={message.id}>
@@ -2252,6 +2226,24 @@ export function ConversationView({
         ))}
         <div ref={bottom} />
       </div>
+      {(awayFromLatest || historyBefore !== undefined) && (
+        <div className="history-latest">
+          <button
+            className="primary"
+            onClick={() => {
+              setJump(undefined);
+              stick.current = true;
+              setAwayFromLatest(false);
+              setHistoryBefore(undefined);
+              setLimit(100);
+              if (list.current)
+                list.current.scrollTop = list.current.scrollHeight;
+            }}
+          >
+            Return to latest messages
+          </button>
+        </div>
+      )}
       <ErrorNotice error={error} />
       {writable ? (
         <Composer

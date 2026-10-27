@@ -175,7 +175,10 @@ try {
     };
     page.on("request", countSearch);
     await page
-      .getByRole("button", { name: "Search downloaded messages", exact: true })
+      .getByRole("searchbox", {
+        name: "Search downloaded messages",
+        exact: true,
+      })
       .click();
     await page
       .getByRole("searchbox", {
