@@ -120,9 +120,11 @@ async function chooseCapture(parent, audioRequested, options = {}) {
     picker.once("closed", () => finish());
     picker.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     picker.webContents.on("will-navigate", (event) => event.preventDefault());
-    picker.once("ready-to-show", () => picker.show());
     void picker
       .loadFile(path.join(__dirname, "capture-picker.html"))
+      .then(() => {
+        if (!finished && !picker.isDestroyed()) picker.show();
+      })
       .catch(() => finish());
   });
 }

@@ -21,7 +21,11 @@ export async function checkScreen(executablePath, afterCheck) {
     { detached: true, stdio: ["ignore", "pipe", "pipe"] },
   );
   xvfb.stderr.on("data", () => {});
-  let desktop, cleaning, wm, captureWindow;
+  let desktop,
+    cleaning,
+    wm,
+    captureWindow,
+    diagnostics = "";
   const cleanup = () =>
     (cleaning ??= (async () => {
       let closeError, closeTimer;
@@ -169,6 +173,7 @@ export async function checkScreen(executablePath, afterCheck) {
           );
       });
     desktop.process().stderr.on("data", (data) => {
+      diagnostics = (diagnostics + data).slice(-24000);
       if (String(data).includes("CAPTURE")) process.stderr.write(data);
     });
     assert(
@@ -176,7 +181,13 @@ export async function checkScreen(executablePath, afterCheck) {
         scratch + path.sep,
       ),
     );
-    await desktop.evaluate(({ dialog, desktopCapturer }) => {
+    await desktop.evaluate(({ app, dialog, desktopCapturer }) => {
+      app.on("render-process-gone", (_event, _contents, details) =>
+        console.error("CAPTURE renderer exit", JSON.stringify(details)),
+      );
+      app.on("child-process-gone", (_event, details) =>
+        console.error("CAPTURE child exit", JSON.stringify(details)),
+      );
       globalThis.captureDiagnostics = { pickerCalls: 0, sourceCalls: 0 };
       dialog.showMessageBox = async () => {
         globalThis.captureDiagnostics.pickerCalls++;
@@ -359,6 +370,9 @@ export async function checkScreen(executablePath, afterCheck) {
       );
     }
     console.log("PASS native Electron picker cancellation");
+  } catch (error) {
+    console.error("Owned Electron diagnostics:", diagnostics);
+    throw error;
   } finally {
     await cleanup();
     activeCleanup = undefined;
