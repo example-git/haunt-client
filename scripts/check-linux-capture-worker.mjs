@@ -93,7 +93,12 @@ try {
         "rate=48000",
         "channels=2",
       ]);
-      await exec("pactl", ["set-default-sink", "haunt_fixture"]);
+      await until(() =>
+        exec("pactl", ["set-default-sink", "haunt_fixture"]).then(
+          () => true,
+          () => false,
+        ),
+      );
     } else {
       if (
         process.env.HAUNT_CAPTURE_AUDIO_SERVER &&
