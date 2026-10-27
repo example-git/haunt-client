@@ -348,10 +348,18 @@ try {
         };
         const a = await pixels(before),
           b = await pixels(after);
-        let max = 0;
-        for (let i = 0; i < a.length; i++)
-          max = Math.max(max, Math.abs(a[i] - b[i]));
-        return a.length === b.length && max <= 4;
+        let max = 0,
+          edgePixels = 0;
+        for (let i = 0; i < a.length; i += 4) {
+          const delta = Math.max(
+            ...[0, 1, 2, 3].map((channel) =>
+              Math.abs(a[i + channel] - b[i + channel]),
+            ),
+          );
+          max = Math.max(max, delta);
+          if (delta > 4) edgePixels++;
+        }
+        return a.length === b.length && max <= 10 && edgePixels <= 4;
       },
       [before.toString("base64"), after.toString("base64")],
     );

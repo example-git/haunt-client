@@ -1956,10 +1956,13 @@ export function ConversationView({
   const dropTarget = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null),
     list = useRef<HTMLDivElement>(null),
+    historyNavigation = useRef(0),
     stick = useRef(true);
   useEffect(() => {
+    historyNavigation.current++;
     setHistoryBefore(undefined);
     setOlderAvailable(true);
+    setLoadingHistory(false);
     setLimit(100);
     setJump(undefined);
     stick.current = true;
@@ -2030,17 +2033,21 @@ export function ConversationView({
     return subscribeWindowActivity(acknowledge, document);
   }, [messages, conversation, state.status, visible]);
   const navigateReply = async (id: string) => {
+    const navigation = ++historyNavigation.current;
+    setLoadingHistory(false);
     stick.current = false;
     setAwayFromLatest(true);
     const target =
       messages.find((message) => message.id === id) ??
       (await instance.message(conversation, id));
+    if (navigation !== historyNavigation.current) return;
     if (!target)
       throw Error(
         "This message is unavailable or you no longer have access to it.",
       );
     if (!messages.slice(-limit).some((message) => message.id === id)) {
       await instance.loadOlder(conversation, target.seq + 1);
+      if (navigation !== historyNavigation.current) return;
       setLimit(100);
       setHistoryBefore(target.seq + 1);
     }
@@ -2089,6 +2096,7 @@ export function ConversationView({
             className="text-button load-more"
             disabled={loadingHistory}
             onClick={() => {
+              const navigation = ++historyNavigation.current;
               stick.current = false;
               setAwayFromLatest(true);
               setLoadingHistory(true);
@@ -2100,12 +2108,16 @@ export function ConversationView({
                     before,
                     limit: 100,
                   });
+                  if (navigation !== historyNavigation.current) return;
                   setOlderAvailable(!!page?.has_more || local.length === 100);
                   if (limit < 1000) setLimit(limit + 100);
                   else setHistoryBefore(messages[messages.length - 100].seq);
                 })
                 .catch((error) => setError(friendlyError(error)))
-                .finally(() => setLoadingHistory(false));
+                .finally(() => {
+                  if (navigation === historyNavigation.current)
+                    setLoadingHistory(false);
+                });
             }}
           >
             {loadingHistory ? "Loading older messages…" : "Show older messages"}
@@ -2174,10 +2186,12 @@ export function ConversationView({
             className="text-button load-more"
             disabled={loadingHistory}
             onClick={() => {
+              const navigation = ++historyNavigation.current;
               setLoadingHistory(true);
               void instance
                 .loadNewer(conversation, messages.at(-1)?.seq ?? 0)
                 .then((page) => {
+                  if (navigation !== historyNavigation.current) return;
                   if (page?.messages.length) {
                     setHistoryBefore(page.messages.at(-1)!.seq + 1);
                   } else {
@@ -2187,7 +2201,10 @@ export function ConversationView({
                   }
                 })
                 .catch((error) => setError(friendlyError(error)))
-                .finally(() => setLoadingHistory(false));
+                .finally(() => {
+                  if (navigation === historyNavigation.current)
+                    setLoadingHistory(false);
+                });
             }}
           >
             Show newer messages
@@ -2231,6 +2248,8 @@ export function ConversationView({
           <button
             className="primary"
             onClick={() => {
+              historyNavigation.current++;
+              setLoadingHistory(false);
               setJump(undefined);
               stick.current = true;
               setAwayFromLatest(false);

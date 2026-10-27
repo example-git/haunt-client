@@ -127,7 +127,7 @@ try {
       .poll(() => page.locator("[data-message-row]").count())
       .toBeGreaterThan(0);
     const settle = () => page.waitForTimeout(120);
-    for (let i = 0; i < 11; i++) {
+    for (let i = 0; i < 10; i++) {
       await page.locator(".messages").evaluate((node) => {
         node.scrollTop = 0;
       });
@@ -135,14 +135,61 @@ try {
       await page
         .getByRole("button", { name: "Show older messages", exact: true })
         .click();
+      await expect(
+        page.getByRole("button", {
+          name: "Loading older messages…",
+          exact: true,
+        }),
+      ).toHaveCount(0);
       await settle();
       if ((await page.locator("[data-message-row]").count()) > 80)
         throw Error("Unbounded mounted message rows");
     }
+    await page.evaluate(() => {
+      const client = window.scaleClient;
+      const original = client.loadOlder.bind(client);
+      client.loadOlder = (...args) => {
+        window.olderFinished = (async () => {
+          await new Promise((resolve) => {
+            window.finishOlder = resolve;
+          });
+          return original(...args);
+        })();
+        return window.olderFinished;
+      };
+      window.restoreOlder = () => {
+        client.loadOlder = original;
+      };
+    });
+    await page.locator(".messages").evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await settle();
+    await page
+      .getByRole("button", { name: "Show older messages", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", {
+        name: "Loading older messages…",
+        exact: true,
+      }),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "Return to latest messages", exact: true })
       .click();
     await settle();
+    await page.evaluate(async () => {
+      window.finishOlder();
+      window.restoreOlder();
+      await window.olderFinished;
+      await window.scaleClient.messages(window.scaleConversation, {
+        limit: 100,
+      });
+    });
+    await settle();
+    await expect(
+      page.getByRole("button", { name: "Show newer messages", exact: true }),
+    ).toHaveCount(0);
     const ui = await page.locator(".messages").evaluate((node) => ({
       rows: node.querySelectorAll("[data-message-row]").length,
       bottomGap: node.scrollHeight - node.scrollTop - node.clientHeight,

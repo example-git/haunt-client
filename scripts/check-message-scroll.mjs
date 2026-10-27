@@ -182,8 +182,18 @@ try {
       .locator(`[data-message-row="${before.id}"]`)
       .evaluate(
         (row) =>
-          row.getBoundingClientRect().top -
-          row.closest(".messages").getBoundingClientRect().top,
+          new Promise((resolve) =>
+            requestAnimationFrame(() =>
+              setTimeout(
+                () =>
+                  resolve(
+                    row.getBoundingClientRect().top -
+                      row.closest(".messages").getBoundingClientRect().top,
+                  ),
+                0,
+              ),
+            ),
+          ),
       );
     assert.ok(
       Math.abs(after - before.top) <= 2,

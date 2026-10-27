@@ -49,7 +49,7 @@ export function MessageWindow({
         : viewport.top;
   if (focusIndex >= 0)
     top = Math.max(0, offsets[focusIndex] - viewport.height / 2);
-  const overscan = Math.max(800, viewport.height * 2);
+  const overscan = Math.max(800, viewport.height);
   let start = 0;
   while (start < items.length && offsets[start + 1] < top - overscan) start++;
   let end = start;
