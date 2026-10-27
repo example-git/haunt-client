@@ -102,11 +102,11 @@ export function MessageWindow({
               scrollPosition.current,
               node.scrollHeight - node.clientHeight,
             ),
-        ) > 1
-      ) {
-        focusAnchor.current = undefined;
-        anchor.current = undefined;
-      }
+        ) <= 1
+      )
+        return;
+      focusAnchor.current = undefined;
+      anchor.current = undefined;
       if (node.scrollHeight - node.scrollTop - node.clientHeight >= 120)
         following.current = false;
       remember();
