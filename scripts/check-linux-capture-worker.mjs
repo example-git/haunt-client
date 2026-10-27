@@ -166,7 +166,11 @@ try {
       )
       .map(({ index, sink, mute, volume }) => ({ index, sink, mute, volume }))
       .sort((a, b) => a.index - b.index);
-  const before = await snapshot();
+  let before;
+  await until(async () => {
+    before = await snapshot();
+    return before.length === 2 && before.every((input) => input.sink !== 0xffffffff);
+  });
   const defaults = async () =>
     (await exec("pactl", ["info"])).stdout
       .split("\n")
