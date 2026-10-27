@@ -8,10 +8,9 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const {
-  LinuxCapture,
-  listSources,
-} = require("../apps/desktop/linux-capture.cjs");
+const { LinuxCapture, listSources } = require(
+  process.env.HAUNT_CAPTURE_MODULE || "../apps/desktop/linux-capture.cjs",
+);
 const exec = promisify(execFile);
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const scratch = await fs.mkdtemp(

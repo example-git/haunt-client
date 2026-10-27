@@ -61,6 +61,13 @@ jobs:
         run: node scripts/check-packaged-startup.mjs
       - run: npm run updates:pack
         id: pack
+      - name: Verify bundled Linux runtime installation and update
+        if: matrix.platform == 'linux'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/check-linux-runtime-install.mjs prepare
+          docker run --rm -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash scripts/ci/check-linux-runtime-install.sh
       - name: Install and launch the RPM on Fedora
         if: matrix.platform == 'linux'
         run: docker run --rm --cap-add=SYS_ADMIN -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash scripts/ci/check-fedora-rpm.sh
@@ -99,6 +106,7 @@ jobs:
             test-results/installed-upgrade-*.json
             test-results/message-badge*
             test-results/fedora-rpm-*.json
+            test-results/linux-runtime-install-*.json
             test-results/fedora-notifications-*.json
             test-results/notification-*
             test-results/mac-local-update.json

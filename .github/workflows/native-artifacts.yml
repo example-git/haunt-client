@@ -66,6 +66,11 @@ jobs:
       - name: Verify Fedora RPM and KDE notifications
         if: ${{ !cancelled() && runner.os == 'Linux' && steps.source.outcome == 'success' }}
         run: docker run --rm --cap-add=SYS_ADMIN -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash scripts/ci/check-fedora-rpm.sh
+      - name: Verify bundled Linux runtime installation and update
+        if: ${{ !cancelled() && runner.os == 'Linux' && steps.source.outcome == 'success' }}
+        run: |
+          node scripts/check-linux-runtime-install.mjs prepare
+          docker run --rm -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash scripts/ci/check-linux-runtime-install.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:

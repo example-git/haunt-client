@@ -9,7 +9,7 @@ import {
   generateKeyPairSync,
   sign,
 } from "node:crypto";
-import { runtimeConfig } from "./update-runtime.mjs";
+import { releaseConfig, runtimeConfig } from "./update-runtime.mjs";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const require = createRequire(import.meta.url);
 const { verifyManifest } = require("../apps/desktop/updates.cjs");
@@ -109,7 +109,7 @@ if (command === "keygen") {
   );
   console.log(`Prepared ${key} payload and baseline installer.`);
 } else if (command === "manifest") {
-  const config = await runtimeConfig("linux", "x64");
+  const config = await releaseConfig();
   const key = createPrivateKey(
     process.env.HAUNT_UPDATE_PRIVATE_KEY ||
       (await fs.readFile(process.env.HAUNT_UPDATE_PRIVATE_KEY_FILE)),

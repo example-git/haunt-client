@@ -1,4 +1,5 @@
 import { desktopFiles } from "./desktop-files.mjs";
+import { nativeRuntimeHash } from "./update-runtime.mjs";
 import fs from "node:fs/promises";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -61,6 +62,13 @@ if (process.platform === "darwin") {
   );
 }
 if (process.platform === "linux") {
+  const directory = path.join(path.dirname(filename), "native/linux");
+  const runtime = JSON.parse(asar.extractFile(filename, "update-runtime.json"));
+  assert.equal(
+    await nativeRuntimeHash(directory),
+    runtime.nativeRuntime,
+    "The installer supplies the native libraries identified by the updater",
+  );
   for (const name of [
     "HauntAudioWorker",
     "HauntShortcutWorker",
