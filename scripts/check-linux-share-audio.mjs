@@ -9,6 +9,7 @@ import { checkScreen } from "./check-screen.mjs";
 import {
   checkWayland,
   checkWaylandVideo,
+  checkWaylandAudio,
   cancelWaylandPortal,
 } from "./check-wayland.mjs";
 import { fillSignin } from "./signin-fields.mjs";
@@ -127,11 +128,14 @@ export async function checkLinuxShareAudio(
     });
     playback.stdin.on("error", () => {});
     let position = 0;
+    let toneEnabled = true;
     ticker = setInterval(() => {
       if (playback.stdin.writableLength > 48000) return;
       const bytes = Buffer.alloc(7680);
       for (let i = 0; i < 960; i++) {
-        const value = 0.15 * Math.sin((2 * Math.PI * 997 * position++) / 48000);
+        const value = toneEnabled
+          ? 0.15 * Math.sin((2 * Math.PI * 997 * position++) / 48000)
+          : 0;
         bytes.writeFloatLE(value, i * 8);
         bytes.writeFloatLE(value, i * 8 + 4);
       }
@@ -210,6 +214,9 @@ export async function checkLinuxShareAudio(
           await expect(picker.getByLabel("Shared audio output")).toContainText(
             "Haunt_test_output",
           );
+          await picker
+            .getByLabel("Shared audio output")
+            .selectOption({ label: "Haunt_test_output" });
           await picker.locator("#audio").setChecked(audio);
           const selected = cancel
             ? picker.getByRole("button", { name: "Cancel", exact: true })
@@ -272,6 +279,17 @@ export async function checkLinuxShareAudio(
           .poll(() => peak(receiver, "screen_audio"))
           .toBeGreaterThan(0.03);
         await expect(control("Deafen")).toHaveAttribute("aria-pressed", "true");
+        if (wayland) {
+          await checkWaylandAudio(receiver);
+          toneEnabled = false;
+          await expect
+            .poll(() => peak(receiver, "screen_audio"))
+            .toBeLessThan(0.001);
+          toneEnabled = true;
+          await expect
+            .poll(() => peak(receiver, "screen_audio"))
+            .toBeGreaterThan(0.03);
+        }
         await control("Deafen").click();
         await control("Unmute microphone").click();
         if (!wayland) {

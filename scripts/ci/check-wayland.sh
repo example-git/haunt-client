@@ -18,6 +18,7 @@ pids=()
 cleanup() {
   for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done
   wait || true
+  if mountpoint -q "$XDG_RUNTIME_DIR/doc"; then fusermount3 -u "$XDG_RUNTIME_DIR/doc"; fi
   rm -rf "$XDG_RUNTIME_DIR"
 }
 trap cleanup EXIT
@@ -71,7 +72,8 @@ for attempt in $(seq 1 100); do
 done
 grep -q PipeWire test-results/wayland/audio-server.txt
 pactl load-module module-null-sink sink_name=haunt_fixture rate=48000 channels=2 sink_properties=device.description=Haunt_test_output
-pactl set-default-sink haunt_fixture
+pactl load-module module-null-sink sink_name=haunt_playback rate=48000 channels=2 sink_properties=device.description=Haunt_receiver_output
+pactl set-default-sink haunt_playback
 /usr/libexec/xdg-desktop-portal-wlr --loglevel=DEBUG > test-results/wayland/portal-wlr.log 2>&1 &
 pids+=("$!")
 /usr/libexec/xdg-desktop-portal --verbose > test-results/wayland/portal.log 2>&1 &
