@@ -496,7 +496,9 @@ static void add_tap(uint32_t index, uint32_t sink, const char *monitor) {
   Tap *tap = g_new0(Tap, 1); tap->index = index; tap->sink = sink;
   tap->source = gst_element_factory_make("appsrc", NULL);
   GstCaps *caps = gst_caps_from_string("audio/x-raw,format=F32LE,rate=48000,channels=2,layout=interleaved");
-  g_object_set(tap->source, "caps", caps, "format", GST_FORMAT_TIME, "is-live", TRUE, "do-timestamp", TRUE, "max-bytes", (guint64)(48000 * 8 / 4), "leaky-type", 2, NULL);
+  g_object_set(tap->source, "caps", caps, "format", GST_FORMAT_TIME, "is-live", TRUE, "do-timestamp", TRUE,
+    "min-latency", (gint64)0, "max-latency", (gint64)(GST_SECOND / 4),
+    "max-bytes", (guint64)(48000 * 8 / 4), "leaky-type", 2, NULL);
   gst_caps_unref(caps); gst_bin_add(GST_BIN(audio), tap->source);
   tap->pad = gst_element_request_pad_simple(mixer, "sink_%u");
   GstPad *src = gst_element_get_static_pad(tap->source, "src");
