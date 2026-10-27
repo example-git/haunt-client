@@ -12,35 +12,47 @@ export function MessageWindow({
   scroll,
   following,
   focus,
+  atLatest,
+  onFollowingChange,
   children,
 }: {
   items: Message[];
   scroll: RefObject<HTMLDivElement | null>;
   following: RefObject<boolean>;
-  focus?: { id: string };
+  focus?: { id: string } | { latest: true };
+  atLatest: boolean;
+  onFollowingChange: (following: boolean) => void;
   children: (message: Message, index: number, items: Message[]) => ReactNode;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const heights = useRef(new Map<string, number>());
   const anchor = useRef<{ id: string; top: number } | undefined>(undefined);
-  const focused = useRef<{ id: string } | undefined>(undefined);
-  const focusAnchor = useRef<string | undefined>(undefined);
+  const focused = useRef<typeof focus>(undefined);
+  const pinned = useRef<string | undefined>(undefined);
+  const edge = useRef<"start" | "end" | undefined>(undefined);
+  const current = useRef({ atLatest, onFollowingChange });
+  current.current = { atLatest, onFollowingChange };
   const scrollPosition = useRef(0);
   const width = useRef(0);
-  const layout = useRef<
-    { ids: string[]; offsets: number[]; start: number; end: number } | undefined
-  >(undefined);
+  const layout = useRef<{ ids: string[] } | undefined>(undefined);
   const [viewport, setViewport] = useState({ top: Infinity, height: 800 });
   const [, measure] = useState(0);
   const offsets = [0];
   for (const item of items)
     offsets.push(offsets.at(-1)! + (heights.current.get(item.id) ?? 100));
   const total = offsets.at(-1)!;
+  const prepended =
+    !!layout.current?.ids.length &&
+    layout.current.ids[0] !== items[0]?.id &&
+    items.some((item) => item.id === layout.current!.ids[0]);
+  if (prepended && !following.current) pinned.current = anchor.current?.id;
   const anchorIndex = items.findIndex((item) => item.id === anchor.current?.id);
   const focusIndex =
-    focus && focus !== focused.current
+    focus && "id" in focus && focus !== focused.current
       ? items.findIndex((item) => item.id === focus.id)
       : -1;
+  if (focusIndex >= 0 && focus && "id" in focus) pinned.current = focus.id;
+  else if (following.current) pinned.current = undefined;
   let top =
     following.current || !Number.isFinite(viewport.top)
       ? Math.max(0, total - viewport.height)
@@ -49,7 +61,9 @@ export function MessageWindow({
         : viewport.top;
   if (focusIndex >= 0)
     top = Math.max(0, offsets[focusIndex] - viewport.height / 2);
-  const overscan = Math.max(800, viewport.height);
+  if (edge.current === "start") top = 0;
+  else if (edge.current === "end") top = Math.max(0, total - viewport.height);
+  const overscan = Math.max(1200, viewport.height * 3);
   let start = 0;
   while (start < items.length && offsets[start + 1] < top - overscan) start++;
   let end = start;
@@ -66,7 +80,7 @@ export function MessageWindow({
     offsets[visibleEnd] < top + viewport.height
   )
     visibleEnd++;
-  const extra = Math.max(4, 80 - (visibleEnd - visibleStart));
+  const extra = Math.max(4, 256 - (visibleEnd - visibleStart));
   start = Math.max(start, visibleStart - Math.floor(extra / 2));
   end = Math.min(end, visibleEnd + Math.ceil(extra / 2));
 
@@ -79,8 +93,7 @@ export function MessageWindow({
       ...container.querySelectorAll<HTMLElement>("[data-message-row]"),
     ];
     const row =
-      rows.find((row) => row.dataset.messageRow === focusAnchor.current) ??
-      rows.find((row) => row.dataset.messageRow === anchor.current?.id) ??
+      rows.find((row) => row.dataset.messageRow === pinned.current) ??
       rows.find((row) => {
         const rect = row.getBoundingClientRect();
         return rect.bottom > bounds.top && rect.top < bounds.bottom;
@@ -97,7 +110,8 @@ export function MessageWindow({
     };
     scrollPosition.current = node.scrollTop;
     setViewport((old) =>
-      Math.abs(old.top - next.top) > 0.5 || old.height !== next.height
+      Math.abs(old.top - next.top) > next.height / 2 ||
+      old.height !== next.height
         ? next
         : old,
     );
@@ -106,25 +120,116 @@ export function MessageWindow({
   useLayoutEffect(() => {
     const node = scroll.current ?? root.current?.parentElement;
     if (!node) return;
+    let frame = 0;
+    let touchY = 0;
+    let dragging = false;
+    const follow = (value: boolean) => {
+      const next =
+        current.current.atLatest &&
+        (value || node.scrollHeight <= node.clientHeight + 1);
+      if (following.current === next) return;
+      following.current = next;
+      current.current.onFollowingChange(next);
+    };
+    const releaseAnchor = () => {
+      if (!pinned.current) return;
+      pinned.current = undefined;
+      measure((value) => value + 1);
+    };
     const update = () => {
+      const maximum = Math.max(0, node.scrollHeight - node.clientHeight);
+      const delta = node.scrollTop - Math.min(scrollPosition.current, maximum);
+      if (delta < -1 && maximum - node.scrollTop > 1) follow(false);
+      else if (delta > 1 && maximum - node.scrollTop <= 1) follow(true);
+      if (!frame)
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          remember();
+        });
+    };
+    const wheel = (event: WheelEvent) => {
+      releaseAnchor();
+      if (event.deltaY < 0) follow(false);
+    };
+    const key = (event: KeyboardEvent) => {
       if (
-        Math.abs(
-          node.scrollTop -
-            Math.min(
-              scrollPosition.current,
-              node.scrollHeight - node.clientHeight,
-            ),
-        ) <= 1
+        (event.target as HTMLElement).closest(
+          "input, textarea, [contenteditable=true]",
+        )
       )
         return;
-      focusAnchor.current = undefined;
-      anchor.current = undefined;
-      if (node.scrollHeight - node.scrollTop - node.clientHeight >= 120)
-        following.current = false;
-      remember();
+      if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        releaseAnchor();
+        edge.current = event.key === "Home" ? "start" : "end";
+        follow(event.key === "End");
+        measure((value) => value + 1);
+        return;
+      }
+      if (
+        [
+          "ArrowUp",
+          "ArrowDown",
+          "PageUp",
+          "PageDown",
+          "Home",
+          "End",
+          " ",
+        ].includes(event.key)
+      )
+        releaseAnchor();
+      if (
+        ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
+        (event.key === " " && event.shiftKey)
+      )
+        follow(false);
     };
-    node.addEventListener("scroll", update, { passive: true, capture: true });
-    return () => node.removeEventListener("scroll", update, true);
+    const touchStart = (event: TouchEvent) => {
+      releaseAnchor();
+      touchY = event.touches[0]?.clientY ?? 0;
+    };
+    const touchMove = (event: TouchEvent) => {
+      const y = event.touches[0]?.clientY ?? touchY;
+      if (y > touchY) follow(false);
+      touchY = y;
+    };
+    const pointer = (event: PointerEvent) => {
+      if (event.target === node) {
+        releaseAnchor();
+        if (
+          event.clientX >=
+          node.getBoundingClientRect().left + node.clientWidth
+        ) {
+          dragging = true;
+          follow(false);
+        }
+      }
+    };
+    const pointerUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      if (node.scrollHeight - node.scrollTop - node.clientHeight <= 1)
+        follow(true);
+    };
+    node.addEventListener("scroll", update, { passive: true });
+    node.addEventListener("wheel", wheel, { passive: true });
+    node.addEventListener("keydown", key);
+    node.addEventListener("touchstart", touchStart, { passive: true });
+    node.addEventListener("touchmove", touchMove, { passive: true });
+    node.addEventListener("pointerdown", pointer, { passive: true });
+    window.addEventListener("pointerup", pointerUp, { passive: true });
+    window.addEventListener("pointercancel", pointerUp, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      node.removeEventListener("scroll", update);
+      node.removeEventListener("wheel", wheel);
+      node.removeEventListener("keydown", key);
+      node.removeEventListener("touchstart", touchStart);
+      node.removeEventListener("touchmove", touchMove);
+      node.removeEventListener("pointerdown", pointer);
+      window.removeEventListener("pointerup", pointerUp);
+      window.removeEventListener("pointercancel", pointerUp);
+    };
   }, [scroll]);
 
   useLayoutEffect(() => {
@@ -157,58 +262,53 @@ export function MessageWindow({
       return changed;
     };
     const restore = () => {
-      const target = rows.find((row) => row.dataset.messageRow === focus?.id);
-      if (focusIndex >= 0 && target) {
+      const target =
+        focus && "id" in focus
+          ? rows.find((row) => row.dataset.messageRow === focus.id)
+          : undefined;
+      if (edge.current) {
+        node.scrollTop = edge.current === "start" ? 0 : node.scrollHeight;
+        edge.current = undefined;
+        focused.current = focus;
+      } else if (focus !== focused.current && target) {
         target.scrollIntoView({ block: "center", behavior: "instant" });
         focused.current = focus;
-        focusAnchor.current = focus!.id;
-        anchor.current = {
-          id: focus!.id,
-          top:
-            target.getBoundingClientRect().top -
-            node.getBoundingClientRect().top,
-        };
-      } else if (following.current) {
-        node.scrollTop = node.scrollHeight;
-      } else if (anchor.current) {
+      } else if (following.current && current.current.atLatest) {
+        if (node.scrollHeight - node.scrollTop - node.clientHeight > 1)
+          node.scrollTop = node.scrollHeight;
+        if (focus !== focused.current && focus && "latest" in focus)
+          current.current.onFollowingChange(true);
+        focused.current = focus;
+      } else if (
+        anchor.current &&
+        (!CSS.supports("overflow-anchor", "auto") || prepended)
+      ) {
         const row = rows.find(
           (row) => row.dataset.messageRow === anchor.current!.id,
         );
-        if (row)
-          node.scrollTop +=
+        if (row) {
+          const delta =
             row.getBoundingClientRect().top -
             node.getBoundingClientRect().top -
-            anchor.current.top;
+            anchor.current.top +
+            (CSS.supports("overflow-anchor", "auto")
+              ? 0
+              : node.scrollTop - scrollPosition.current);
+          if (Math.abs(delta) > 0.5) node.scrollTop += delta;
+        }
       }
       scrollPosition.current = node.scrollTop;
     };
-    if (!measureRows()) {
-      const old = layout.current;
-      if (
-        focusIndex >= 0 ||
-        following.current ||
-        !old ||
-        old.start !== start ||
-        old.end !== end ||
-        items.length !== old.ids.length ||
-        items.some(
-          (item, index) =>
-            item.id !== old.ids[index] || offsets[index] !== old.offsets[index],
-        ) ||
-        total !== old.offsets.at(-1)
-      )
-        restore();
-      remember();
-      layout.current = {
-        ids: items.map((item) => item.id),
-        offsets,
-        start,
-        end,
-      };
-    }
+    measureRows();
+    restore();
+    remember();
+    layout.current = { ids: items.map((item) => item.id) };
     if (!focus) focused.current = undefined;
     const observer = new ResizeObserver(() => {
-      if (measureRows()) restore();
+      if (measureRows()) {
+        restore();
+        remember();
+      }
       if (node.clientHeight !== viewport.height) {
         restore();
         remember();
@@ -226,18 +326,28 @@ export function MessageWindow({
   });
 
   return (
-    <div ref={root} style={{ overflowAnchor: "none" }}>
-      <div aria-hidden="true" style={{ height: offsets[start] }} />
+    <div ref={root}>
+      <div
+        aria-hidden="true"
+        style={{ height: offsets[start], overflowAnchor: "none" }}
+      />
       {items.slice(start, end).map((message, index) => (
         <div
           key={message.id}
           data-message-row={message.id}
-          style={{ display: "flow-root" }}
+          style={{
+            display: "flow-root",
+            overflowAnchor:
+              pinned.current && pinned.current !== message.id ? "none" : "auto",
+          }}
         >
           {children(message, start + index, items)}
         </div>
       ))}
-      <div aria-hidden="true" style={{ height: total - offsets[end] }} />
+      <div
+        aria-hidden="true"
+        style={{ height: total - offsets[end], overflowAnchor: "none" }}
+      />
     </div>
   );
 }

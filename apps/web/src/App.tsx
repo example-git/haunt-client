@@ -1947,15 +1947,14 @@ export function ConversationView({
     [awayFromLatest, setAwayFromLatest] = useState(false),
     [replyingTo, setReplyingTo] = useState<Message>(),
     [highlighted, setHighlighted] = useState(""),
-    [jump, setJump] = useState<{ id: string }>(),
+    [jump, setJump] = useState<{ id: string } | { latest: true }>(),
     [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
   const dropTarget = useRef<HTMLDivElement>(null);
-  const bottom = useRef<HTMLDivElement>(null),
-    list = useRef<HTMLDivElement>(null),
+  const list = useRef<HTMLDivElement>(null),
     historyNavigation = useRef(0),
     stick = useRef(true);
   useEffect(() => {
@@ -1998,20 +1997,6 @@ export function ConversationView({
     limit,
     historyBefore,
   ]);
-  useLayoutEffect(() => {
-    if (stick.current && list.current)
-      list.current.scrollTop = list.current.scrollHeight;
-  }, [messages, pending.length]);
-  useEffect(() => {
-    const element = list.current;
-    if (!element) return;
-    const observer = new ResizeObserver(() => {
-      if (stick.current && list.current)
-        list.current.scrollTop = list.current.scrollHeight;
-    });
-    for (const row of element.children) observer.observe(row);
-    return () => observer.disconnect();
-  }, [messages, pending]);
   const acknowledge = () => {
     if (
       visible &&
@@ -2078,14 +2063,8 @@ export function ConversationView({
       <div
         className={`messages ${compact ? "chat-display-compact" : ""}`}
         ref={list}
-        onScroll={() => {
-          const e = list.current!;
-          stick.current =
-            historyBefore === undefined &&
-            e.scrollHeight - e.scrollTop - e.clientHeight < 120;
-          setAwayFromLatest(!stick.current);
-          acknowledge();
-        }}
+        tabIndex={0}
+        aria-label={`${title} messages`}
       >
         <div className="history-note">
           <span>Downloaded messages stay on this device</span>
@@ -2129,6 +2108,11 @@ export function ConversationView({
           scroll={list}
           following={stick}
           focus={jump}
+          atLatest={historyBefore === undefined}
+          onFollowingChange={(following) => {
+            setAwayFromLatest(!following);
+            if (following) acknowledge();
+          }}
         >
           {(message, index, items) => (
             <Fragment key={message.id}>
@@ -2241,7 +2225,6 @@ export function ConversationView({
             )}
           </div>
         ))}
-        <div ref={bottom} />
       </div>
       {(awayFromLatest || historyBefore !== undefined) && (
         <div className="history-latest">
@@ -2250,13 +2233,11 @@ export function ConversationView({
             onClick={() => {
               historyNavigation.current++;
               setLoadingHistory(false);
-              setJump(undefined);
+              setJump({ latest: true });
               stick.current = true;
               setAwayFromLatest(false);
               setHistoryBefore(undefined);
               setLimit(100);
-              if (list.current)
-                list.current.scrollTop = list.current.scrollHeight;
             }}
           >
             Return to latest messages

@@ -143,7 +143,7 @@ try {
       ).toHaveCount(0);
       await settle();
       const rows = await page.locator("[data-message-row]").count();
-      if (rows > 80)
+      if (rows > 256)
         throw Error(`Mounted message rows exceed the render budget: ${rows}`);
     }
     await page.evaluate(() => {

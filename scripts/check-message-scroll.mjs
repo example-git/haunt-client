@@ -37,11 +37,13 @@ const imagesReady = new Promise((resolve) => {
 });
 const requested = new Set();
 let arriving = [];
+let metadataDelay = 0;
 try {
   await server.listen();
   browser = await chromium.launch({
     executablePath: process.env.CHROME_PATH || "/usr/bin/google-chrome",
     headless: true,
+    ignoreDefaultArgs: ["--hide-scrollbars"],
   });
   page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
   page.on("pageerror", (error) => errors.push(error.message));
@@ -52,6 +54,8 @@ try {
       const seq = Number(match[1]);
       requested.add(seq);
       await metadataReady;
+      if (metadataDelay)
+        await new Promise((resolve) => setTimeout(resolve, metadataDelay));
       await route
         .fulfill({
           json: {
@@ -247,6 +251,114 @@ try {
     )
     .toBeLessThan(2);
   await expect(latest).toHaveCount(0);
+  await list.evaluate((node) => {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      Element.prototype,
+      "scrollTop",
+    );
+    window.scrollWrites = [];
+    Object.defineProperty(node, "scrollTop", {
+      configurable: true,
+      get() {
+        return descriptor.get.call(this);
+      },
+      set(value) {
+        window.scrollWrites.push({ before: descriptor.get.call(this), value });
+        descriptor.set.call(this, value);
+      },
+    });
+    window.scrollFrames = [];
+    window.recordScroll = true;
+    const record = () => {
+      if (!window.recordScroll) return;
+      const bounds = node.getBoundingClientRect();
+      const row = [...node.querySelectorAll("[data-message-row]")].find(
+        (row) => {
+          const rect = row.getBoundingClientRect();
+          return rect.bottom > bounds.top && rect.top < bounds.bottom;
+        },
+      );
+      window.scrollFrames.push(
+        row
+          ? {
+              seq: Number(row.dataset.messageRow.split("-")[1]),
+              top: row.getBoundingClientRect().top - bounds.top,
+            }
+          : null,
+      );
+      requestAnimationFrame(record);
+    };
+    requestAnimationFrame(record);
+  });
+  const requestsBeforeWheel = requested.size;
+  metadataDelay = 150;
+  const bounds = await list.boundingBox();
+  await page.mouse.move(
+    bounds.x + bounds.width / 2,
+    bounds.y + bounds.height / 2,
+  );
+  for (let step = 0; step < 40; step++) {
+    await page.mouse.wheel(0, -110);
+    await settle();
+  }
+  await expect(page.locator(".embed-loading")).toHaveCount(0);
+  const wheel = await page.evaluate(() => {
+    window.recordScroll = false;
+    return { writes: window.scrollWrites, frames: window.scrollFrames };
+  });
+  assert.deepEqual(
+    wheel.writes,
+    [],
+    "Rendering must not write scrollTop during wheel input",
+  );
+  assert.ok(wheel.frames.length > 40);
+  assert.ok(
+    wheel.frames.every(Boolean),
+    "Prepared rows must cover every visible frame",
+  );
+  assert.ok(
+    wheel.frames.at(-1).seq < wheel.frames[0].seq - 5,
+    "Wheel input must traverse history",
+  );
+  for (let index = 1; index < wheel.frames.length; index++) {
+    const before = wheel.frames[index - 1],
+      after = wheel.frames[index];
+    assert.ok(
+      after.seq <= before.seq,
+      `Upward wheel reversed from ${before.seq} to ${after.seq}`,
+    );
+    if (after.seq === before.seq)
+      assert.ok(
+        after.top >= before.top - 2,
+        `Wheel moved backwards by ${before.top - after.top}px`,
+      );
+  }
+  assert.ok(
+    requested.size > requestsBeforeWheel,
+    "New embed metadata must load during scrolling",
+  );
+  const buffer = await list.evaluate((node) => {
+    const bounds = node.getBoundingClientRect();
+    const rows = [...node.querySelectorAll("[data-message-row]")];
+    return {
+      above: bounds.top - rows[0].getBoundingClientRect().top,
+      below: rows.at(-1).getBoundingClientRect().bottom - bounds.bottom,
+      height: node.clientHeight,
+      rows: rows.length,
+    };
+  });
+  assert.ok(buffer.above >= buffer.height * 2, JSON.stringify(buffer));
+  assert.ok(buffer.below >= buffer.height * 2, JSON.stringify(buffer));
+  report.push({
+    check: "continuous wheel with delayed embeds",
+    frames: wheel.frames.length,
+    writes: wheel.writes.length,
+    newRequests: requested.size - requestsBeforeWheel,
+    buffer,
+  });
+  metadataDelay = 0;
+  await latest.click();
+  await expect(latest).toHaveCount(0);
   for (let pass = 0; pass < 3; pass++) {
     await list.evaluate((node) => {
       node.scrollTop -= 1700;
@@ -364,6 +476,116 @@ try {
       ),
     )
     .toBeLessThan(2);
+  await list.focus();
+  await page.keyboard.press("Home");
+  await expect
+    .poll(() => list.evaluate((node) => node.scrollTop))
+    .toBeLessThan(1);
+  await settle();
+  const firstId = await page.evaluate(
+    async () =>
+      (await window.scrollClient.messages("channel", { limit: 100 }))[0].id,
+  );
+  await expect(
+    page.locator(`[data-message-row="${firstId}"]`),
+  ).toBeInViewport();
+  await page.mouse.move(bounds.x + 200, bounds.y + 200);
+  await page.mouse.wheel(0, -5000);
+  await settle();
+  assert.equal(await list.evaluate((node) => node.scrollTop), 0);
+  await expect(latest).toBeVisible();
+  await list.evaluate(() => {
+    window.scrollWrites = [];
+  });
+  await page.keyboard.press("PageDown");
+  await expect
+    .poll(() => list.evaluate((node) => node.scrollTop))
+    .toBeGreaterThan(100);
+  await settle();
+  const keyboardWrites = await page.evaluate(() => window.scrollWrites);
+  assert.deepEqual(keyboardWrites, [], "Page navigation must remain native");
+  await list.focus();
+  await page.keyboard.press("End");
+  await expect
+    .poll(() =>
+      list.evaluate(
+        (node) => node.scrollHeight - node.scrollTop - node.clientHeight,
+      ),
+    )
+    .toBeLessThan(2);
+  await expect(page.locator("#message-message-502")).toBeInViewport();
+  await expect(latest).toHaveCount(0);
+  await page.mouse.wheel(0, 5000);
+  await settle();
+  assert.ok(
+    await list.evaluate(
+      (node) => node.scrollHeight - node.scrollTop - node.clientHeight < 2,
+    ),
+  );
+  report.push({
+    check: "native keyboard navigation and hard list boundaries",
+    first: firstId,
+    last: "message-502",
+    keyboardWrites: keyboardWrites.length,
+  });
+  await page.keyboard.press("Home");
+  await expect(latest).toBeVisible();
+  await latest.click();
+  await settle();
+  assert.ok(
+    await list.evaluate(
+      (node) => node.scrollHeight - node.scrollTop - node.clientHeight < 2,
+    ),
+    "Return to latest must complete without scrolling animation",
+  );
+  await expect(page.locator("#message-message-502")).toBeInViewport();
+  report.push({ check: "instant return from oldest loaded message" });
+  const scrollbar = await list.evaluate((node) => {
+    window.scrollWrites = [];
+    const bounds = node.getBoundingClientRect();
+    return {
+      right: bounds.right,
+      bottom: bounds.bottom,
+      width: node.offsetWidth - node.clientWidth,
+      top: node.scrollTop,
+    };
+  });
+  assert.ok(
+    scrollbar.width > 0,
+    "Native scrollbar must be present for the drag check",
+  );
+  await page.mouse.move(
+    scrollbar.right - scrollbar.width / 2,
+    scrollbar.bottom - 30,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    scrollbar.right - scrollbar.width / 2,
+    scrollbar.bottom - 150,
+    { steps: 12 },
+  );
+  await page.mouse.up();
+  await settle();
+  const dragged = await list.evaluate((node) => ({
+    top: node.scrollTop,
+    writes: window.scrollWrites,
+  }));
+  assert.ok(
+    dragged.top < scrollbar.top - 200,
+    JSON.stringify({ scrollbar, dragged }),
+  );
+  assert.deepEqual(
+    dragged.writes,
+    [],
+    "Rendering must not write scrollTop during scrollbar dragging",
+  );
+  await expect(latest).toBeVisible();
+  report.push({
+    check: "native scrollbar drag",
+    distance: scrollbar.top - dragged.top,
+    writes: dragged.writes.length,
+  });
+  await latest.click();
   await page.screenshot({ path: path.join(output, "history.png") });
   assert.deepEqual(errors, []);
   await fs.writeFile(

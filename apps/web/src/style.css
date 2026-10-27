@@ -469,7 +469,8 @@ input[type="checkbox"] {
   padding-left: 15px;
 }
 .messages {
-  overflow-anchor: none;
+  overflow-anchor: auto;
+  overscroll-behavior: none;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -477,7 +478,11 @@ input[type="checkbox"] {
   scrollbar-color: var(--line) transparent;
   scrollbar-width: thin;
 }
+.messages > .load-more {
+  overflow-anchor: none;
+}
 .history-note {
+  overflow-anchor: none;
   display: flex;
   align-items: center;
   gap: 13px;
@@ -3677,7 +3682,6 @@ dialog {
 }
 
 /* The document is a viewport shell; only content regions can scroll. */
-.messages,
 .channel-scroll,
 .member-list,
 dialog,
