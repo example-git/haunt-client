@@ -170,6 +170,11 @@ export async function checkLinuxShareAudio(
             .getByRole("button", { name: "Sign in", exact: true })
             .click();
           await expect(page.getByRole("dialog")).toHaveCount(0);
+          const members = page.getByRole("button", {
+            name: "Dismiss member list",
+            exact: true,
+          });
+          if (await members.isVisible()) await members.click();
           await page
             .locator(`[data-channel-id="${fixtures.rtc.voice}"] button.channel`)
             .click();
