@@ -116,6 +116,7 @@ export function DesktopDownload({ instance }: { instance: InstanceClient }) {
           const releasePath = `client-v${verified.version}/${verified.file}`;
           const expected = new Set([
             `https://github.com/${updates.repository}/releases/download/${releasePath}`,
+            `https://github.com/example-git/haunt/releases/download/v${verified.version}/${verified.file}`,
             new URL(releasePath, new URL(".", source!.manifest_url)).href,
           ]);
           if (
