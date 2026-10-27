@@ -168,7 +168,10 @@ try {
     console.log(JSON.stringify({ history_ui: ui }));
     let searchRequests = 0;
     const countSearch = (request) => {
-      if (request.url().includes("/api/")) searchRequests++;
+      if (request.url().includes("/api/")) {
+        searchRequests++;
+        console.log("Local search request", request.method(), request.url());
+      }
     };
     page.on("request", countSearch);
     await page

@@ -499,7 +499,11 @@ static gboolean make_video(void) {
 
 static void tap_free(gpointer data) {
   Tap *tap = data;
-  if (tap->stream) { pa_stream_disconnect(tap->stream); pa_stream_unref(tap->stream); }
+  if (tap->stream) {
+    pa_stream_set_read_callback(tap->stream, NULL, NULL);
+    pa_stream_set_state_callback(tap->stream, NULL, NULL);
+    pa_stream_disconnect(tap->stream); pa_stream_unref(tap->stream);
+  }
   if (tap->source) {
     gst_element_set_state(tap->source, GST_STATE_NULL);
     GstPad *src = gst_element_get_static_pad(tap->source, "src");
