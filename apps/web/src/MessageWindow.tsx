@@ -57,6 +57,18 @@ export function MessageWindow({
     end++;
   start = Math.max(0, start - 2);
   end = Math.min(items.length, end + 2);
+  let visibleStart = start;
+  while (visibleStart < items.length && offsets[visibleStart + 1] < top)
+    visibleStart++;
+  let visibleEnd = visibleStart;
+  while (
+    visibleEnd < items.length &&
+    offsets[visibleEnd] < top + viewport.height
+  )
+    visibleEnd++;
+  const extra = Math.max(4, 80 - (visibleEnd - visibleStart));
+  start = Math.max(start, visibleStart - Math.floor(extra / 2));
+  end = Math.min(end, visibleEnd + Math.ceil(extra / 2));
 
   const remember = () => {
     const container = root.current,

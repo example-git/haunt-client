@@ -142,8 +142,9 @@ try {
         }),
       ).toHaveCount(0);
       await settle();
-      if ((await page.locator("[data-message-row]").count()) > 80)
-        throw Error("Unbounded mounted message rows");
+      const rows = await page.locator("[data-message-row]").count();
+      if (rows > 80)
+        throw Error(`Mounted message rows exceed the render budget: ${rows}`);
     }
     await page.evaluate(() => {
       const client = window.scaleClient;
