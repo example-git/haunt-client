@@ -176,6 +176,7 @@ if (process.argv[2] === "prepare") {
           ...process.env,
           HAUNT_CAPTURE_MODULE: path.join(module, "linux-capture.cjs"),
           HAUNT_CAPTURE_WORKER: binary,
+          HAUNT_CAPTURE_AUDIO_SERVER: "pipewire",
           HAUNT_EXPECT_ENCODER: "^x264enc$",
         },
         timeout: 90000,

@@ -66,31 +66,66 @@ try {
     process.env.DISPLAY = ":" + display.toString().trim();
     delete process.env.WAYLAND_DISPLAY;
     process.env.XDG_SESSION_TYPE = "x11";
-    const config = path.join(scratch, "pulse.pa");
-    process.env.PULSE_SERVER = "unix:" + path.join(scratch, "pulse.sock");
-    await fs.writeFile(
-      config,
-      `load-module module-native-protocol-unix socket=${path.join(scratch, "pulse.sock")} auth-anonymous=1\nload-module module-null-sink sink_name=haunt_fixture rate=48000 channels=2\nset-default-sink haunt_fixture\n`,
-    );
-    child(
-      "dbus-run-session",
-      [
-        "--",
-        "pulseaudio",
-        "-n",
-        "--file=" + config,
-        "--daemonize=no",
-        "--use-pid-file=no",
-        "--exit-idle-time=-1",
-      ],
-      { detached: true },
-    );
-    await until(() =>
-      fs.access(path.join(scratch, "pulse.sock")).then(
-        () => true,
-        () => false,
-      ),
-    );
+    if (process.env.HAUNT_CAPTURE_AUDIO_SERVER === "pipewire") {
+      const runtime = path.join(scratch, "runtime");
+      await fs.mkdir(runtime, { mode: 0o700 });
+      process.env.XDG_RUNTIME_DIR = runtime;
+      process.env.PULSE_SERVER = "unix:" + path.join(runtime, "pulse/native");
+      child("pipewire", []);
+      await until(() =>
+        fs.access(path.join(runtime, "pipewire-0")).then(
+          () => true,
+          () => false,
+        ),
+      );
+      child("wireplumber", []);
+      child("pipewire-pulse", []);
+      await until(() =>
+        exec("pactl", ["info"]).then(
+          () => true,
+          () => false,
+        ),
+      );
+      await exec("pactl", [
+        "load-module",
+        "module-null-sink",
+        "sink_name=haunt_fixture",
+        "rate=48000",
+        "channels=2",
+      ]);
+      await exec("pactl", ["set-default-sink", "haunt_fixture"]);
+    } else {
+      if (
+        process.env.HAUNT_CAPTURE_AUDIO_SERVER &&
+        process.env.HAUNT_CAPTURE_AUDIO_SERVER !== "pulse"
+      )
+        throw Error("Unsupported test audio server");
+      const config = path.join(scratch, "pulse.pa");
+      process.env.PULSE_SERVER = "unix:" + path.join(scratch, "pulse.sock");
+      await fs.writeFile(
+        config,
+        `load-module module-native-protocol-unix socket=${path.join(scratch, "pulse.sock")} auth-anonymous=1\nload-module module-null-sink sink_name=haunt_fixture rate=48000 channels=2\nset-default-sink haunt_fixture\n`,
+      );
+      child(
+        "dbus-run-session",
+        [
+          "--",
+          "pulseaudio",
+          "-n",
+          "--file=" + config,
+          "--daemonize=no",
+          "--use-pid-file=no",
+          "--exit-idle-time=-1",
+        ],
+        { detached: true },
+      );
+      await until(() =>
+        fs.access(path.join(scratch, "pulse.sock")).then(
+          () => true,
+          () => false,
+        ),
+      );
+    }
   }
   process.env.PULSE_SINK = "haunt_fixture";
   const first = child("python3", [

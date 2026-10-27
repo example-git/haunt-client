@@ -125,7 +125,8 @@ running. Opening settings alone never blocks installation. Sessions, caches,
 preferences and encryption keys stay outside the update directory.
 
 A fingerprint separates routine JS/UI changes from changes to Electron, the fixed
-launcher, packaging configuration, entitlements or native helpers. A different
+launcher, packaging configuration, entitlements, native helpers or bundled Linux
+library and plugin contents. A different
 fingerprint downloads a full baseline installer instead. A dismissible popup
 explains that the latest full app is required, shows platform-specific steps, and
 provides download/open-installer controls. Dismissing it keeps the title-bar update
@@ -171,6 +172,9 @@ sudo apt-get install libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxco
 ```
 
 Staging bundles the required GStreamer, PipeWire and PulseAudio libraries and
-plugins with their license notices. NVIDIA drivers and optional V4L2/NVMM vendor
+plugins with their license notices in both the RPM and AppImage. Installation
+supplies this app-local runtime even when system GStreamer is absent. Updates
+replace the complete package whenever its native runtime contents change;
+JS/UI-only updates reuse the installed runtime. NVIDIA drivers and optional V4L2/NVMM vendor
 plugins come from the user's installed driver or SDK. Wayland capture requires a
 running screen-sharing portal and PipeWire service; X11 audio supports PulseAudio.
