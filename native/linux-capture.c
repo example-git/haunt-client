@@ -431,7 +431,8 @@ static gboolean make_video(void) {
   GstElement *source = gst_bin_get_by_name(GST_BIN(video), "source");
   if (remote_fd >= 0) {
     char *node = g_strdup_printf("%u", node_id);
-    g_object_set(source, "fd", remote_fd, "path", node, "do-timestamp", TRUE, NULL); g_free(node);
+    g_object_set(source, "fd", remote_fd, "path", node, "do-timestamp", TRUE,
+      "always-copy", TRUE, "keepalive-time", MAX(1, 1000 / fps), NULL); g_free(node);
   } else if (xid) g_object_set(source, "is-live", TRUE, "do-timestamp", TRUE, "format", GST_FORMAT_TIME, "max-buffers", (guint64)2, "leaky-type", 2, NULL);
   else g_object_set(source, "startx", screen_x, "starty", screen_y, "endx", screen_x + screen_width - 1, "endy", screen_y + screen_height - 1, "use-damage", FALSE, NULL);
   gst_object_unref(source); video_configured = FALSE;
