@@ -2,6 +2,8 @@
 set -euo pipefail
 test "${CI:-}" = true
 test "${GITHUB_ACTIONS:-}" = true
+export PATH="$RUNNER_TEMP/wayland-sdk/bin:$PATH"
+export LD_LIBRARY_PATH="$RUNNER_TEMP/wayland-sdk/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 unset DISPLAY WAYLAND_DISPLAY SWAYSOCK
 export XDG_RUNTIME_DIR
 XDG_RUNTIME_DIR=$(mktemp -d /tmp/haunt-wayland.XXXXXX)
@@ -75,12 +77,17 @@ pactl load-module module-null-sink sink_name=haunt_fixture rate=48000 channels=2
 pactl load-module module-null-sink sink_name=haunt_playback rate=48000 channels=2 sink_properties=device.description=Haunt_receiver_output
 pactl set-default-sink haunt_playback
 ../../portal-wlr/build/xdg-desktop-portal-wlr --loglevel=DEBUG > test-results/wayland/portal-wlr.log 2>&1 &
-pids+=("$!")
+portal_pid=$!
+pids+=("$portal_pid")
+gdbus wait --session --timeout 30 org.freedesktop.impl.portal.desktop.wlr
+kill -0 "$portal_pid"
+gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.GetConnectionUnixProcessID org.freedesktop.impl.portal.desktop.wlr | grep -qw "$portal_pid"
 /usr/libexec/xdg-desktop-portal --verbose > test-results/wayland/portal.log 2>&1 &
 pids+=("$!")
 gdbus wait --session --timeout 30 org.freedesktop.portal.Desktop
 wayland-info > test-results/wayland/protocols.txt
-dpkg-query -W sway pipewire wireplumber xdg-desktop-portal xdg-desktop-portal-wlr > test-results/wayland/packages.txt
+dpkg-query -W pipewire wireplumber xdg-desktop-portal xdg-desktop-portal-wlr > test-results/wayland/packages.txt
+sway --version > test-results/wayland/compositor.txt
 git rev-parse HEAD > test-results/wayland/client-sha.txt
 HAUNT_CAPTURE_EXISTING_SESSION=1 node scripts/check-linux-capture-worker.mjs
 npm run test:integration 2>&1 | tee test-results/wayland/runtime.log

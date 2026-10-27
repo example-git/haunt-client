@@ -24,7 +24,7 @@ jobs:
       matrix:
         include:
           - desktop: wayland
-            packages: sway swaybg wayland-utils pipewire pipewire-pulse wireplumber xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
+            packages: swaybg wayland-utils pipewire pipewire-pulse wireplumber xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
           - desktop: x11
             packages: xvfb xauth xfwm4 xdotool pulseaudio
     runs-on: ubuntu-24.04
@@ -58,6 +58,7 @@ jobs:
           path: portal-wlr
       - name: Install Linux capture test environment
         run: |
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ${{ matrix.packages }} pulseaudio-utils dbus-x11 ffmpeg libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxcomposite-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire libgtk-3-0 libnss3 libgbm1 libasound2t64
       - name: Start disposable database
@@ -68,14 +69,27 @@ jobs:
             sleep 1
           done
           exit 1
-      - name: Build portal with shared-memory capture support
+      - name: Build software Wayland compositor and portal
         if: matrix.desktop == 'wayland'
         run: |
-          sudo apt-get install -y --no-install-recommends meson ninja-build libpipewire-0.3-dev libwayland-dev libinih-dev libgbm-dev libdrm-dev libsystemd-dev
+          sudo apt-get install -y --no-install-recommends meson ninja-build libpipewire-0.3-dev libwayland-dev libinih-dev libgbm-dev libdrm-dev libsystemd-dev libffi-dev libexpat1-dev libxml2-dev libjson-c-dev libpcre2-dev libxkbcommon-dev libcairo2-dev libpango1.0-dev libevdev-dev libinput-dev
           git clone --depth 1 --branch 1.45 https://gitlab.freedesktop.org/wayland/wayland-protocols.git "$RUNNER_TEMP/wayland-protocols"
           meson setup "$RUNNER_TEMP/wayland-protocols/build" "$RUNNER_TEMP/wayland-protocols" --prefix="$RUNNER_TEMP/wayland-sdk" -Dtests=false
           meson install -C "$RUNNER_TEMP/wayland-protocols/build"
-          CFLAGS="-include unistd.h" PKG_CONFIG_PATH="$RUNNER_TEMP/wayland-sdk/share/pkgconfig" meson setup ../../portal-wlr/build ../../portal-wlr -Dman-pages=disabled -Dsystemd=disabled
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/wayland-sdk/lib/pkgconfig:$RUNNER_TEMP/wayland-sdk/share/pkgconfig"
+          git clone --depth 1 --branch 0.19.2 https://gitlab.freedesktop.org/wlroots/wlroots.git "$RUNNER_TEMP/wlroots"
+          git clone --depth 1 --branch 1.23.1 https://gitlab.freedesktop.org/wayland/wayland.git "$RUNNER_TEMP/wlroots/subprojects/wayland"
+          git clone --depth 1 --branch libdrm-2.4.124 https://gitlab.freedesktop.org/mesa/drm.git "$RUNNER_TEMP/wlroots/subprojects/libdrm"
+          git clone --depth 1 --branch pixman-0.44.2 https://gitlab.freedesktop.org/pixman/pixman.git "$RUNNER_TEMP/wlroots/subprojects/pixman"
+          meson setup "$RUNNER_TEMP/wlroots/build" "$RUNNER_TEMP/wlroots" --prefix="$RUNNER_TEMP/wayland-sdk" --libdir=lib --wrap-mode=nodownload -Dbackends=[] -Drenderers=[] -Dallocators=[] -Dxwayland=disabled -Dsession=disabled -Dcolor-management=disabled -Dexamples=false
+          meson compile -C "$RUNNER_TEMP/wlroots/build"
+          meson install -C "$RUNNER_TEMP/wlroots/build"
+          export PATH="$RUNNER_TEMP/wayland-sdk/bin:$PATH" LD_LIBRARY_PATH="$RUNNER_TEMP/wayland-sdk/lib"
+          git clone --depth 1 --branch 1.11 https://github.com/swaywm/sway.git "$RUNNER_TEMP/sway"
+          meson setup "$RUNNER_TEMP/sway/build" "$RUNNER_TEMP/sway" --prefix="$RUNNER_TEMP/wayland-sdk" --libdir=lib -Dman-pages=disabled -Ddefault-wallpaper=false -Dswaybar=false -Dswaynag=false -Dtray=disabled -Dgdk-pixbuf=disabled
+          meson compile -C "$RUNNER_TEMP/sway/build"
+          meson install -C "$RUNNER_TEMP/sway/build"
+          CFLAGS="-include unistd.h" meson setup ../../portal-wlr/build ../../portal-wlr -Dman-pages=disabled -Dsystemd=disabled
           meson compile -C ../../portal-wlr/build
       - run: npm ci
       - run: npm run build && node scripts/build-linux-audio.mjs

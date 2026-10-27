@@ -87,6 +87,11 @@ export async function checkWayland(executablePath, afterCheck) {
       JSON.stringify(tree, null, 2),
     );
     await afterCheck(page, desktop);
+    assert.equal(
+      await desktop.evaluate(() => globalThis.captureDiagnostics.sourceCalls),
+      0,
+      "Native Wayland capture must use the portal worker",
+    );
   } catch (error) {
     for (const [i, page] of (desktop?.windows() || []).entries())
       await page

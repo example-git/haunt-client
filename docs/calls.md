@@ -5,12 +5,19 @@ outgoing resolutions and frame rates. Selections stay on this device, and active
 captures show their actual settings. Changing an active capture keeps its source
 and independent source audio.
 
-Linux desktop screen sharing offers an audio-output selector in the capture
-picker. Enable system audio and select the output carrying the sound. Haunt
-captures that output's monitor through PulseAudio or PipeWire's PulseAudio
-service; it does not substitute a microphone. The selected output includes all
-applications playing to it, even when sharing one window. Stopping the share
-also stops its audio capture. Browser screen audio remains browser-dependent.
+Linux desktop screen sharing uses bundled GStreamer capture. X11 windows retain
+their own contents when covered; Wayland uses the desktop's screen-sharing
+portal. The encoder probes installed NVIDIA nvcodec and V4L2/NVMM support and
+uses software H.264 when neither is usable.
+
+Screen shares default to the entire audio output. X11 window shares default to
+the window's application; Wayland window shares require selecting the audio app
+separately. The picker also offers entire-output audio or video without audio.
+Application capture includes that process and its children, with playback taps
+through PulseAudio or PipeWire's PulseAudio service. It leaves playback routing,
+volume and mute settings unchanged. Closing the selected source ends capture;
+stopping a share also stops its audio. Browser screen audio remains
+browser-dependent.
 
 Desktop Devices settings enable global microphone/deafen shortcuts and push to
 talk. Linux uses held F9 on X11 or the desktop's GlobalShortcuts portal on
