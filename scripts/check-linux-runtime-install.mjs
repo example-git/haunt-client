@@ -174,6 +174,7 @@ if (process.argv[2] === "prepare") {
     const module = await unpack(resources, name, [
       "linux-capture.cjs",
       "swiftcapture.cjs",
+      "capture-diagnostics.cjs",
     ]);
     for (const name of ["lib", "plugins", "pipewire", "spa", "pipewire-config"])
       assert.equal(
