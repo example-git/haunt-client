@@ -120,11 +120,6 @@
           "HauntShortcutWorker",
           "HauntCaptureWorker",
           "HauntMediaWorker",
-          "lib/**/*",
-          "plugins/**/*",
-          "pipewire/**/*",
-          "spa/**/*",
-          "pipewire-config/**/*",
           "NOTICE.txt"
         ]
       }

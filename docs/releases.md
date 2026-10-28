@@ -133,10 +133,20 @@ sudo apt-get install libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxco
   gstreamer1.0-plugins-ugly gstreamer1.0-pipewire
 ```
 
-Staging bundles the required GStreamer, PipeWire and PulseAudio libraries and
-plugins with their license notices in both the RPM and AppImage. Installation
-supplies this app-local runtime even when system GStreamer is absent. Updates
-replace the complete package whenever its native runtime contents change;
-JS/UI-only updates reuse the installed runtime. NVIDIA drivers and optional V4L2/NVMM vendor
-plugins come from the user's installed driver or SDK. Wayland capture requires a
-running screen-sharing portal and PipeWire service; X11 audio supports PulseAudio.
+Staging embeds the capture executable, GStreamer plugins, PipeWire client modules
+and PulseAudio libraries in one `HauntCaptureWorker` executable for both RPM and
+AppImage. On first use it extracts into `$XDG_CACHE_HOME/haunt/capture/<hash>`
+(or `~/.cache/haunt/capture/<hash>`) and reuses that runtime on later starts.
+Library, plugin and client configuration paths apply only to the worker; host
+session sockets and media pipes remain available. This is runtime packaging,
+not a filesystem or process sandbox.
+
+Linux x64 embeds the vendored Selkies GStreamer 1.24.12 runtime, including nvcodec
+and NVRTC 11.8.89. The build verifies its archive checksum and requires no upstream
+runtime download. ARM64 uses the distribution capture runtime. Both carry their
+license notices. Updates replace the complete installer whenever native runtime
+contents change; JS/UI-only updates reuse the installed runtime.
+
+NVIDIA drivers and optional V4L2/NVMM vendor plugins come from the installed driver
+or SDK. Wayland capture connects to the host screen-sharing portal and PipeWire
+service; X11 audio supports PulseAudio. No system GStreamer installation is required.

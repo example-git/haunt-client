@@ -1,33 +1,9 @@
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
-const path = require("node:path");
-const os = require("node:os");
 const { Capture } = require("./swiftcapture.cjs");
 
-function environment(binary) {
-  const root = path.dirname(binary);
-  return {
-    ...process.env,
-    LD_LIBRARY_PATH: [
-      path.join(root, "lib"),
-      "/opt/nvidia/deepstream/deepstream/lib",
-      "/usr/lib/aarch64-linux-gnu/tegra",
-      process.env.LD_LIBRARY_PATH,
-    ]
-      .filter(Boolean)
-      .join(path.delimiter),
-    GST_PLUGIN_SYSTEM_PATH_1_0: path.join(root, "plugins"),
-    GST_PLUGIN_PATH_1_0: "",
-    GST_REGISTRY_FORK: "no",
-    GST_REGISTRY_1_0: path.join(
-      process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"),
-      "haunt",
-      "gstreamer-registry.bin",
-    ),
-    PIPEWIRE_MODULE_DIR: path.join(root, "pipewire"),
-    PIPEWIRE_CONFIG_DIR: path.join(root, "pipewire-config"),
-    SPA_PLUGIN_DIR: path.join(root, "spa"),
-  };
+function environment() {
+  return { ...process.env };
 }
 
 async function listSources(binary) {

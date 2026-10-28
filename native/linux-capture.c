@@ -246,95 +246,134 @@ static gboolean play(GstElement *pipeline, int fd) {
   return start_pipeline(pipeline, "Cannot start GStreamer capture");
 }
 
+typedef enum { CONVERT_CUDA, CONVERT_NVMM, CONVERT_NV_SYSTEM, CONVERT_CPU } Conversion;
+
+typedef struct {
+  const char *encoder;
+  Conversion conversion;
+  const char *converter;
+} EncoderPlan;
+
 static gboolean encoder_option(GstElement *encoder, const char *property, const char *value) {
   GParamSpec *spec = g_object_class_find_property(G_OBJECT_GET_CLASS(encoder), property);
-  if (!spec || !(spec->flags & G_PARAM_WRITABLE)) return FALSE;
-  if (G_IS_PARAM_SPEC_ENUM(spec)) {
-    GEnumClass *values = g_type_class_ref(spec->value_type);
-    gboolean supported = g_enum_get_value_by_nick(values, value) != NULL;
-    g_type_class_unref(values);
-    if (!supported) return FALSE;
+  gboolean accepted = FALSE;
+  if (spec && (spec->flags & G_PARAM_WRITABLE) && (spec->flags & G_PARAM_READABLE) && !(spec->flags & G_PARAM_CONSTRUCT_ONLY)) {
+    GValue requested = G_VALUE_INIT, actual = G_VALUE_INIT;
+    g_value_init(&requested, spec->value_type);
+    g_value_init(&actual, spec->value_type);
+    if (gst_value_deserialize(&requested, value) && !g_param_value_validate(spec, &requested)) {
+      g_object_set_property(G_OBJECT(encoder), property, &requested);
+      g_object_get_property(G_OBJECT(encoder), property, &actual);
+      accepted = g_param_values_cmp(spec, &requested, &actual) == 0;
+    }
+    g_value_unset(&requested); g_value_unset(&actual);
   }
-  gst_util_set_object_arg(G_OBJECT(encoder), property, value);
-  return TRUE;
+  if (!accepted) fprintf(stderr, "%s rejected %s=%s\n", GST_OBJECT_NAME(encoder), property, value);
+  return accepted;
 }
 
-static void configure_encoder(GstElement *pipeline, const char *name, int w, int h) {
+static gboolean configure_encoder(GstElement *pipeline, const char *name, int w, int h) {
   GstElement *encoder = gst_bin_get_by_name(GST_BIN(pipeline), "encoder");
+  if (!encoder) return FALSE;
   gboolean v4l2 = g_str_equal(name, "nvv4l2h264enc");
   int bitrate = MAX(1000, (int)((double)w * h * fps * 0.07 / 1000));
   char *rate = g_strdup_printf("%d", v4l2 ? bitrate * 1000 : bitrate);
+  char *maximum = g_strdup_printf("%d", v4l2 ? bitrate * 1500 : bitrate * 3 / 2);
   char *interval = g_strdup_printf("%d", fps);
-  encoder_option(encoder, "bitrate", rate);
+  gboolean ok = encoder_option(encoder, "bitrate", rate);
+  const char *settings[12][2];
+  int count = 0;
   if (v4l2) {
-    encoder_option(encoder, "iframeinterval", interval);
-    encoder_option(encoder, "idrinterval", interval);
-    if (!encoder_option(encoder, "profile", "Constrained-Baseline"))
-      encoder_option(encoder, "profile", "Baseline");
-    encoder_option(encoder, "control-rate", "constant_bitrate");
-    encoder_option(encoder, "preset-id", "3");
-    encoder_option(encoder, "tuning-info-id", "UltraLowLatencyPreset");
-    encoder_option(encoder, "num-B-Frames", "0");
-    encoder_option(encoder, "insert-sps-pps", "true");
+    const char *values[][2] = {{"maxbitrate", maximum}, {"iframeinterval", interval}, {"idrinterval", interval},
+      {"control-rate", "1"}, {"preset-id", "1"}, {"tuning-info-id", "2"}, {"insert-sps-pps", "true"}, {"disable-cabac", "true"}};
+    count = G_N_ELEMENTS(values); memcpy(settings, values, sizeof(values));
   } else if (g_str_equal(name, "x264enc")) {
-    encoder_option(encoder, "tune", "zerolatency");
-    encoder_option(encoder, "speed-preset", "veryfast");
-    encoder_option(encoder, "key-int-max", interval);
-    encoder_option(encoder, "bframes", "0");
-    encoder_option(encoder, "byte-stream", "true");
+    const char *values[][2] = {{"tune", "zerolatency"}, {"speed-preset", "superfast"}, {"key-int-max", interval},
+      {"bframes", "0"}, {"byte-stream", "true"}, {"cabac", "false"}, {"aud", "true"}};
+    count = G_N_ELEMENTS(values); memcpy(settings, values, sizeof(values));
+  } else if (g_str_equal(name, "nvcudah264enc")) {
+    const char *values[][2] = {{"gop-size", interval}, {"max-bitrate", maximum}, {"rate-control", "vbr"},
+      {"tune", "low-latency"}, {"zero-reorder-delay", "true"}, {"repeat-sequence-header", "true"},
+      {"b-frames", "0"}, {"cabac", "false"}};
+    count = G_N_ELEMENTS(values); memcpy(settings, values, sizeof(values));
+  } else if (g_str_equal(name, "nvh264enc")) {
+    const char *values[][2] = {{"gop-size", interval}, {"max-bitrate", maximum}, {"preset", "low-latency-hq"},
+      {"rc-mode", "vbr"}, {"bframes", "0"}, {"aud", "true"}};
+    count = G_N_ELEMENTS(values); memcpy(settings, values, sizeof(values));
   } else {
-    encoder_option(encoder, "gop-size", interval);
-    if (!encoder_option(encoder, "preset", "p3"))
-      encoder_option(encoder, "preset", "low-latency-hq");
-    encoder_option(encoder, "tune", "ultra-low-latency");
-    if (!encoder_option(encoder, "rc-mode", "cbr"))
-      encoder_option(encoder, "rate-control", "cbr");
-    if (!encoder_option(encoder, "bframes", "0")) encoder_option(encoder, "b-frames", "0");
-    encoder_option(encoder, "rc-lookahead", "0");
-    encoder_option(encoder, "cabac", "false");
-    encoder_option(encoder, "zerolatency", "true");
-    encoder_option(encoder, "zero-reorder-delay", "true");
-    encoder_option(encoder, "repeat-sequence-header", "true");
+    ok = FALSE;
   }
-  g_free(rate); g_free(interval); gst_object_unref(encoder);
+  for (int i = 0; i < count; i++) ok = encoder_option(encoder, settings[i][0], settings[i][1]) && ok;
+  g_free(rate); g_free(maximum); g_free(interval); gst_object_unref(encoder);
+  return ok;
 }
 
-static char *encoder_chain(const char *name) {
-  const char *upload = "";
-  if (g_str_equal(name, "nvv4l2h264enc")) {
-    GstElementFactory *converter = gst_element_factory_find("nvvideoconvert");
-    if (converter) { upload = "nvvideoconvert ! video/x-raw(memory:NVMM),format=NV12 ! "; gst_object_unref(converter); }
-    else {
-      converter = gst_element_factory_find("nvvidconv");
-      if (!converter) return NULL;
-      gst_object_unref(converter); upload = "nvvidconv ! video/x-raw(memory:NVMM),format=NV12 ! ";
-    }
-  }
-  return g_strdup_printf("%s%s name=encoder ! h264parse config-interval=-1 ! "
-    "video/x-h264,profile=(string){constrained-baseline,baseline},stream-format=byte-stream,alignment=au ! "
-    "appsink name=capture emit-signals=true sync=false max-buffers=3 drop=true", upload, name);
-}
-
-static gboolean probe_encoder(const char *name, int w, int h) {
+static gboolean supports_caps(const char *name, GstPadDirection direction, const char *description) {
   GstElementFactory *factory = gst_element_factory_find(name);
   if (!factory) return FALSE;
-  gst_object_unref(factory);
-  char *chain = encoder_chain(name);
-  if (!chain) return FALSE;
-  char *description = g_strdup_printf("appsrc name=probe format=time caps=\"video/x-raw,format=NV12,width=%d,height=%d,framerate=%d/1,pixel-aspect-ratio=1/1\" ! %s", w, h, fps, chain);
+  GstCaps *caps = gst_caps_from_string(description);
+  gboolean supported = FALSE;
+  for (const GList *pad = gst_element_factory_get_static_pad_templates(factory); pad; pad = pad->next) {
+    GstStaticPadTemplate *definition = pad->data;
+    if (definition->direction == direction) {
+      GstCaps *available = gst_static_pad_template_get_caps(definition);
+      supported = gst_caps_can_intersect(caps, available);
+      gst_caps_unref(available);
+      if (supported) break;
+    }
+  }
+  gst_caps_unref(caps); gst_object_unref(factory);
+  return supported;
+}
+
+static gboolean plan_available(const EncoderPlan *plan) {
+  const char *memory = plan->conversion == CONVERT_CUDA ? "video/x-raw(memory:CUDAMemory),format=NV12" :
+    plan->conversion == CONVERT_NVMM ? "video/x-raw(memory:NVMM),format=NV12" : "video/x-raw,format=NV12";
+  if (!supports_caps(plan->encoder, GST_PAD_SINK, memory)) return FALSE;
+  if (plan->conversion == CONVERT_CUDA)
+    return supports_caps("cudaupload", GST_PAD_SINK, "video/x-raw,format=BGRx") &&
+      supports_caps("cudaupload", GST_PAD_SRC, "video/x-raw(memory:CUDAMemory),format=BGRx") &&
+      supports_caps("cudaconvert", GST_PAD_SINK, "video/x-raw(memory:CUDAMemory),format=BGRx") &&
+      supports_caps("cudaconvert", GST_PAD_SRC, memory);
+  if (plan->conversion == CONVERT_NVMM || plan->conversion == CONVERT_NV_SYSTEM)
+    return supports_caps(plan->converter, GST_PAD_SINK, "video/x-raw,format=BGRx") &&
+      supports_caps(plan->converter, GST_PAD_SRC, memory);
+  return supports_caps("videoconvert", GST_PAD_SRC, memory);
+}
+
+static char *encoder_chain(const EncoderPlan *plan, int w, int h) {
+  GString *chain = g_string_new(NULL);
+  if (plan->conversion == CONVERT_CUDA) {
+    g_string_append_printf(chain, "videoscale method=bilinear ! video/x-raw,width=%d,height=%d ! "
+      "cudaupload ! cudaconvert ! video/x-raw(memory:CUDAMemory),format=NV12", w, h);
+  } else if (plan->conversion == CONVERT_NVMM || plan->conversion == CONVERT_NV_SYSTEM) {
+    g_string_append_printf(chain, "%s%s ! video/x-raw%s,format=NV12", plan->converter,
+      plan->conversion == CONVERT_NVMM && g_str_equal(plan->converter, "nvvideoconvert") ? " nvbuf-memory-type=2 compute-hw=1" : "",
+      plan->conversion == CONVERT_NVMM ? "(memory:NVMM)" : "");
+  } else {
+    g_string_append(chain, "videoconvert ! videoscale method=bilinear ! video/x-raw,format=NV12");
+  }
+  g_string_append_printf(chain, ",width=%d,height=%d,framerate=%d/1,pixel-aspect-ratio=1/1 ! "
+    "%s name=encoder ! h264parse config-interval=1 ! video/x-h264,stream-format=byte-stream,alignment=au ! "
+    "appsink name=capture emit-signals=true sync=false max-buffers=4 drop=true", w, h, fps, plan->encoder);
+  return g_string_free(chain, FALSE);
+}
+
+static gboolean probe_encoder(const EncoderPlan *plan, int w, int h) {
+  if (!plan_available(plan)) return FALSE;
+  char *chain = encoder_chain(plan, w, h);
+  char *description = g_strdup_printf("appsrc name=probe format=time caps=\"video/x-raw,format=BGRx,width=%d,height=%d,framerate=%d/1,pixel-aspect-ratio=1/1\" ! %s", w, h, fps, chain);
   GError *error = NULL;
   GstElement *pipeline = gst_parse_launch(description, &error);
   g_free(description); g_free(chain);
   gboolean valid = FALSE;
-  if (!error && pipeline) {
-    configure_encoder(pipeline, name, w, h);
+  if (!error && pipeline && configure_encoder(pipeline, plan->encoder, w, h)) {
     GstElement *src = gst_bin_get_by_name(GST_BIN(pipeline), "probe");
     GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), "capture");
     if (gst_element_set_state(pipeline, GST_STATE_PLAYING) != GST_STATE_CHANGE_FAILURE) {
-      size_t stride = GST_ROUND_UP_4(w), rows = GST_ROUND_UP_2(h);
-      GstBuffer *buffer = gst_buffer_new_allocate(NULL, stride * rows * 3 / 2, NULL);
-      gst_buffer_memset(buffer, 0, 16, stride * rows);
-      gst_buffer_memset(buffer, stride * rows, 128, stride * rows / 2);
+      size_t bytes = (size_t)w * h * 4;
+      GstBuffer *buffer = gst_buffer_new_allocate(NULL, bytes, NULL);
+      gst_buffer_memset(buffer, 0, 0, bytes);
       GST_BUFFER_PTS(buffer) = 0; GST_BUFFER_DURATION(buffer) = GST_SECOND / fps;
       gst_app_src_push_buffer(GST_APP_SRC(src), buffer);
       gst_app_src_end_of_stream(GST_APP_SRC(src));
@@ -350,15 +389,22 @@ static gboolean probe_encoder(const char *name, int w, int h) {
       gst_object_unref(messages);
     }
   }
-  if (!valid) fprintf(stderr, "Encoder %s unavailable: %s\n", name, error ? error->message : "no encoded frame");
+  if (!valid) fprintf(stderr, "Encoder %s conversion %d unavailable: %s\n", plan->encoder, plan->conversion, error ? error->message : "no encoded frame");
   g_clear_error(&error);
   if (pipeline) { gst_element_set_state(pipeline, GST_STATE_NULL); gst_object_unref(pipeline); }
   return valid;
 }
 
 static void load_nvidia_plugins(void) {
+  GstPlugin *nvcodec = gst_plugin_load_by_name("nvcodec");
+  if (nvcodec) {
+    fprintf(stderr, "NVIDIA codec plugin: %s\n", gst_plugin_get_filename(nvcodec));
+    gst_object_unref(nvcodec);
+  } else fprintf(stderr, "NVIDIA codec plugin could not be loaded\n");
   const char *directories[] = {
     "/opt/nvidia/deepstream/deepstream/lib/gst-plugins",
+    "/usr/lib/x86_64-linux-gnu/gstreamer-1.0/deepstream",
+    "/usr/lib/aarch64-linux-gnu/gstreamer-1.0/deepstream",
     "/usr/lib/aarch64-linux-gnu/gstreamer-1.0",
     "/usr/lib/x86_64-linux-gnu/gstreamer-1.0", NULL
   };
@@ -474,21 +520,30 @@ static gboolean make_video(void) {
   double scale = MIN(1.0, MIN((double)output_width / source_width, (double)output_height / source_height));
   int w = MAX(2, ((int)(source_width * scale) / 2) * 2);
   int h = MAX(2, ((int)(source_height * scale) / 2) * 2);
-  const char *candidates[] = {"nvcudah264enc", "nvh264enc", "nvv4l2h264enc", NULL};
-  video_encoder = "x264enc";
-  for (int i = 0; candidates[i]; i++)
-    if (probe_encoder(candidates[i], w, h)) { video_encoder = candidates[i]; break; }
+  const EncoderPlan candidates[] = {
+    {"nvcudah264enc", CONVERT_CUDA, "cudaconvert"},
+    {"nvh264enc", CONVERT_CUDA, "cudaconvert"},
+    {"nvv4l2h264enc", CONVERT_NVMM, "nvvideoconvert"},
+    {"nvh264enc", CONVERT_NV_SYSTEM, "nvvideoconvert"},
+    {"x264enc", CONVERT_CPU, "videoconvert"}
+  };
+  const EncoderPlan *selected = NULL;
+  for (guint i = 0; i < G_N_ELEMENTS(candidates); i++)
+    if (probe_encoder(&candidates[i], w, h)) { selected = &candidates[i]; break; }
+  if (!selected) { fail("No capture encoder produced a video frame"); return FALSE; }
+  video_encoder = selected->encoder;
   fprintf(stderr, "Capture encoder: %s (%dx%d at %d fps)\n", video_encoder, w, h, fps);
-  char *chain = encoder_chain(video_encoder);
+  char *chain = encoder_chain(selected, w, h);
+  fprintf(stderr, "Capture pipeline: %s\n", chain);
   char *description = g_strdup_printf(
     "%s name=source ! queue max-size-buffers=3 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
-    "videorate ! video/x-raw,framerate=%d/1 ! videoconvert ! videoscale ! video/x-raw,format=NV12,width=%d,height=%d,pixel-aspect-ratio=1/1 ! %s",
-    remote_fd >= 0 || xid ? "appsrc" : "ximagesrc", fps, w, h, chain);
+    "videorate ! video/x-raw,framerate=%d/1 ! %s",
+    remote_fd >= 0 || xid ? "appsrc" : "ximagesrc", fps, chain);
   g_free(chain);
   GError *error = NULL;
   video = gst_parse_launch(description, &error); g_free(description);
   if (error) { fail(error->message); g_error_free(error); return FALSE; }
-  configure_encoder(video, video_encoder, w, h);
+  if (!configure_encoder(video, video_encoder, w, h)) { fail("Capture encoder rejected its configuration"); return FALSE; }
   GstElement *source = gst_bin_get_by_name(GST_BIN(video), "source");
   if (remote_fd >= 0 || xid) g_object_set(source, "is-live", TRUE, "do-timestamp", TRUE, "format", GST_FORMAT_TIME, "max-buffers", (guint64)2, "leaky-type", 2, NULL);
   else g_object_set(source, "startx", screen_x, "starty", screen_y, "endx", screen_x + screen_width - 1, "endy", screen_y + screen_height - 1, "use-damage", FALSE, NULL);

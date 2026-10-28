@@ -7,6 +7,9 @@ on:
       - apps/desktop/**
       - packages/browser/src/media/**
       - native/linux-*.c
+      - native/linux-capture-launcher/**
+      - vendor/selkies-gstreamer/**
+      - scripts/check-linux-capture-runtime.mjs
       - scripts/build-linux-capture.mjs
       - scripts/check-linux-capture-worker.mjs
       - scripts/check-wayland.mjs
@@ -95,6 +98,8 @@ jobs:
           meson install -C "$RUNNER_TEMP/sway/build"
           CFLAGS="-include unistd.h" meson setup ../../portal-wlr/build ../../portal-wlr -Dman-pages=disabled -Dsystemd=disabled
           meson compile -C ../../portal-wlr/build
+      - name: Verify capture runtime launcher
+        run: cd native/linux-capture-launcher && go test ./...
       - run: npm ci
       - run: npm run build && node scripts/build-linux-audio.mjs
       - name: Native Wayland video and PipeWire output audio through server relay

@@ -31,45 +31,50 @@ config.publicKey = process.env.HAUNT_UPDATE_PUBLIC_KEY || config.publicKey;
 if (process.argv[2] === "prepare") {
   await fs.mkdir(previousDirectory, { recursive: true });
   const { stdout } = await run("gh", [
-    "release",
-    "list",
-    "--repo",
-    "example-git/haunt",
-    "--limit",
-    "100",
-    "--json",
-    "tagName,isDraft,isPrerelease",
+    "api",
+    "repos/example-git/haunt/releases",
+    "--paginate",
+    "--jq",
+    ".[] | select(.draft == false and .prerelease == false) | .tag_name",
   ]);
-  const tag = JSON.parse(stdout)
-    .filter(
-      (r) =>
-        !r.isDraft && !r.isPrerelease && /^v\d+\.\d+\.\d+$/.test(r.tagName),
-    )
-    .map((r) => r.tagName)
+  const tags = stdout
+    .trim()
+    .split("\n")
+    .filter((tag) => /^v\d+\.\d+\.\d+$/.test(tag))
     .filter((t) => compare(t.slice(1), current.version) < 0)
-    .sort((a, b) => compare(b.slice(1), a.slice(1)))[0];
-  assert(tag, "An earlier published Linux package is required");
-  await run("gh", [
-    "release",
-    "download",
-    tag,
-    "--repo",
-    "example-git/haunt",
-    "--pattern",
-    "haunt-updates.json",
-    "--dir",
-    previousDirectory,
-    "--clobber",
-  ]);
-  const previous = verifyManifest(
-    JSON.parse(
-      await fs.readFile(path.join(previousDirectory, "haunt-updates.json")),
-    ),
-    config,
-    "linux",
-    process.arch,
+    .sort((a, b) => compare(b.slice(1), a.slice(1)));
+  let tag, previous;
+  for (const candidate of tags) {
+    await run("gh", [
+      "release",
+      "download",
+      candidate,
+      "--repo",
+      "example-git/haunt",
+      "--pattern",
+      "haunt-updates.json",
+      "--dir",
+      previousDirectory,
+      "--clobber",
+    ]);
+    const info = verifyManifest(
+      JSON.parse(
+        await fs.readFile(path.join(previousDirectory, "haunt-updates.json")),
+      ),
+      config,
+      "linux",
+      process.arch,
+    );
+    assert.equal(info.version, candidate.slice(1));
+    if (info.runtime === current.runtime) continue;
+    tag = candidate;
+    previous = info;
+    break;
+  }
+  assert(
+    previous,
+    "An earlier published Linux package with a different native runtime is required",
   );
-  assert.equal(previous.version, tag.slice(1));
   for (const descriptor of [previous.installer, previous.rpm]) {
     assert(descriptor, "The previous release must provide both Linux formats");
     await run(
@@ -170,14 +175,20 @@ if (process.argv[2] === "prepare") {
       "linux-capture.cjs",
       "swiftcapture.cjs",
     ]);
-    const { environment } = require(path.join(module, "linux-capture.cjs"));
-    const binary = path.join(native, "HauntCaptureWorker");
-    const libraries = await run("ldd", [binary], { env: environment(binary) });
-    assert(!libraries.stdout.includes("not found"), libraries.stdout);
-    assert(
-      libraries.stdout.includes(path.join(native, "lib/libgstreamer-1.0.so.0")),
-      libraries.stdout,
-    );
+    for (const name of ["lib", "plugins", "pipewire", "spa", "pipewire-config"])
+      assert.equal(
+        await fs.access(path.join(native, name)).then(
+          () => true,
+          () => false,
+        ),
+        false,
+        `Loose capture runtime: ${name}`,
+      );
+    const standalone = path.join(scratch, `standalone-${name}`);
+    await fs.mkdir(standalone);
+    const binary = path.join(standalone, "HauntCaptureWorker");
+    await fs.copyFile(path.join(native, "HauntCaptureWorker"), binary);
+    await fs.chmod(binary, 0o755);
     const result = await run(
       process.execPath,
       ["scripts/check-linux-capture-worker.mjs"],

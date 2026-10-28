@@ -1,0 +1,114 @@
+{
+  "project": "Selkies-GStreamer",
+  "version": "1.24.12",
+  "nvrtc": "11.8.89",
+  "architecture": "x64",
+  "recipe": "https://github.com/selkies-project/selkies/blob/17a3d5a1213257dc3285be5c194b16580dc19fee/addons/gstreamer/Dockerfile",
+  "files": {
+    "bin/gst-inspect-1.0": {
+      "sha256": "065c69f9f28a5190ed86f4143e8f327b65c59c649e7a6f100b64b67b86d9a8ce",
+      "bytes": 79488
+    },
+    "lib/x86_64-linux-gnu/gstreamer-1.0/libgstapp.so": {
+      "sha256": "48fc623bffa123f48ab24609c9668e159ee2178ea67f7f23a73759d0ddf35918",
+      "bytes": 15936
+    },
+    "lib/x86_64-linux-gnu/gstreamer-1.0/libgstaudiotestsrc.so": {
+      "sha256": "1fab87d7b89ad9814d5cc884eceff1adf76364b397121a3b57458570904fe5cd",
+      "bytes": 87096
+    },
+    "lib/x86_64-linux-gnu/gstreamer-1.0/libgstcoreelements.so": {
+      "sha256": "eb5a4f7052ba5f53d959aa146bc35a6ef68e374debd10370b2f66b57e7f02898",
+      "bytes": 552264
+    },
+    "lib/x86_64-linux-gnu/gstreamer-1.0/libgstnvcodec.so": {
+      "sha256": "f48f2e41394ca7d53c8ab24218b17ae5401b92c222f858cc37b46d8d5aecc77a",
+      "bytes": 891736
+    },
+    "lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideoconvertscale.so": {
+      "sha256": "50d0520a63dd706496f2c62d6183ebced607b4f1ec5b07249a87ecd76af9ef6e",
+      "bytes": 67496
+    },
+    "lib/x86_64-linux-gnu/gstreamer-1.0/libgstvideorate.so": {
+      "sha256": "f9de1dc783e610f5a02e13fd9a08f199090ba695329c0acacf7f57dc7aac0160",
+      "bytes": 74128
+    },
+    "lib/x86_64-linux-gnu/gstreamer-1.0/libgstx264.so": {
+      "sha256": "5bf0ab4701b2e2332e5bde3291cca9cc0236d3566e7076d73b51912b82a35f68",
+      "bytes": 98688
+    },
+    "lib/x86_64-linux-gnu/gstreamer-1.0/libgstximagesrc.so": {
+      "sha256": "737ea2b128c7cb3ee78e2ba8cc1276c108304d49b326d8fb4f6f81a27ec8fadf",
+      "bytes": 62840
+    },
+    "lib/x86_64-linux-gnu/libgstallocators-1.0.so.0.2412.0": {
+      "sha256": "2e7d013f0114e01e64c6f84c4b01752c04e61e7786152bdb9af828634cd280a4",
+      "bytes": 39488
+    },
+    "lib/x86_64-linux-gnu/libgstapp-1.0.so.0.2412.0": {
+      "sha256": "902164469eaf693cacd96fd217d3f6ffbb55373204d8f0223ec30f41f13bf89b",
+      "bytes": 106280
+    },
+    "lib/x86_64-linux-gnu/libgstaudio-1.0.so.0.2412.0": {
+      "sha256": "cd0398b18fc14480c7f21a8ec80bd76ae52de099afd4cab5f63bab33a03cc8ef",
+      "bytes": 687040
+    },
+    "lib/x86_64-linux-gnu/libgstbase-1.0.so.0.2412.0": {
+      "sha256": "1b53a997c182091719724622b5f403cd08f5928424e71510a9e545c3b7b84452",
+      "bytes": 660720
+    },
+    "lib/x86_64-linux-gnu/libgstcodecparsers-1.0.so.0.2412.0": {
+      "sha256": "2004d0f6e691762111aee0f28e19559e0d53794682abc5e30d96373f7241aa50",
+      "bytes": 819272
+    },
+    "lib/x86_64-linux-gnu/libgstcodecs-1.0.so.0.2412.0": {
+      "sha256": "dbaad95f28d8bf371be8669e97d7f051a59a1e074ee01a24eae0fa76bc8aa9b3",
+      "bytes": 256488
+    },
+    "lib/x86_64-linux-gnu/libgstcuda-1.0.so.0.2412.0": {
+      "sha256": "2bcda9f6e4059f6f759f7414645a49e111c84224e9df0900ebf4c9c59f3c42c4",
+      "bytes": 165064
+    },
+    "lib/x86_64-linux-gnu/libgstgl-1.0.so.0.2412.0": {
+      "sha256": "032a1250863eaac151fcbb7866dc69e4819cfeda1c13543863f9ab44b6d1166d",
+      "bytes": 713608
+    },
+    "lib/x86_64-linux-gnu/libgstpbutils-1.0.so.0.2412.0": {
+      "sha256": "6b65fb5f7ea9f699c0d96da61d1c2e707e3acfe77fbfc7c324332210688f74db",
+      "bytes": 347392
+    },
+    "lib/x86_64-linux-gnu/libgstreamer-1.0.so.0.2412.0": {
+      "sha256": "ed52f075bfd5e3d05a0d574350406c158011a4fc79f45c7f1afc0549236b03e1",
+      "bytes": 1708408
+    },
+    "lib/x86_64-linux-gnu/libgsttag-1.0.so.0.2412.0": {
+      "sha256": "52ea3cc26d5a0296e7e99464eb1a912233e47154efee046c593bf24e04992dfa",
+      "bytes": 320680
+    },
+    "lib/x86_64-linux-gnu/libgstvideo-1.0.so.0.2412.0": {
+      "sha256": "cc4ed71635129d2e229e815335ca2779e68f8afccf1bddafcad39d75ea3452a6",
+      "bytes": 1330912
+    },
+    "lib/x86_64-linux-gnu/libnvrtc-builtins.so.11.8.89": {
+      "sha256": "2dc4bf687034e89e117ef82fb300291e4833319a2d47722005d40eeafbafdaaf",
+      "bytes": 7718792
+    },
+    "lib/x86_64-linux-gnu/libnvrtc.so.11.8.89": {
+      "sha256": "672ee68399b0aa98cf52d056302487da8cce72571034bb470c4cdabb406ca3e2",
+      "bytes": 54409816
+    },
+    "lib/x86_64-linux-gnu/liborc-0.4.so.0.38.0": {
+      "sha256": "303dfe73149a14d3a3820a666207206301dbfa5d8bae27765d2df33b2755b98e",
+      "bytes": 1044232
+    },
+    "libexec/gstreamer-1.0/gst-plugin-scanner": {
+      "sha256": "7e2465dfd1dc4f86abd1b4971e8e7cb92ea36804740eb7ae35c89745b135fc20",
+      "bytes": 16312
+    }
+  },
+  "archive": {
+    "file": "linux-x64.tar.xz",
+    "sha256": "5e9c068732cb79a3c5683f3611e7b41a79aeded16639e02d4f887d8a263ad639",
+    "bytes": 19624324
+  }
+}
