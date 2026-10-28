@@ -117,7 +117,7 @@ function packet(type: number, data: Buffer) {
   data.copy(b, 24);
   return b;
 }
-function nativeShell(cadence = 59.94) {
+function nativeShell(cadence = 59.94, runtime = {}) {
   const handlers = new Map<string, Function>();
   const children: any[] = [];
   const captures: any[] = [];
@@ -148,15 +148,20 @@ function nativeShell(cadence = 59.94) {
       require: (name: string) =>
         name === "node:child_process"
           ? { ...require(name), spawn }
-          : require(name),
+          : name.startsWith("./")
+            ? require(`../apps/desktop/${name.slice(2)}`)
+            : require(name),
       Buffer,
       setTimeout,
       clearTimeout,
+      setInterval,
+      clearInterval,
+      Date,
     },
   );
   class ObservedCapture extends wrapper.exports.Capture {
     constructor(...args: any[]) {
-      super(...args);
+      super(args[0], args[1], runtime);
       captures.push(this);
     }
   }
@@ -222,6 +227,14 @@ function nativeShell(cadence = 59.94) {
     spawn,
     children,
     captures,
+    captureOnly: () =>
+      new ObservedCapture("fixture", {
+        purpose: "screen",
+        source: "screen:0:0",
+        width: 1920,
+        height: 1080,
+        fps: 60,
+      }),
     contents,
     catalog,
     listSources,
@@ -455,4 +468,166 @@ it("uses the actual SPS codec and maps native screen/window/device IDs without s
   expect(() =>
     argumentsFor({ purpose: "screen", source: "some shell command" }),
   ).toThrow("source");
+});
+
+it.each([
+  [0, null, "code 0"],
+  [1, null, "code 1"],
+  [null, "SIGSEGV", "signal SIGSEGV"],
+  [null, "SIGKILL", "signal SIGKILL"],
+])(
+  "reports unexpected worker termination (%s, %s) through native IPC",
+  async (code, signal, expected) => {
+    const shell = nativeShell();
+    const started = shell.start();
+    await vi.waitFor(() => expect(shell.children).toHaveLength(1));
+    shell.ready();
+    await started;
+    const child = shell.children[0];
+    child.stderr.write(
+      "NVIDIA probe: unavailable driver\nCapture encoder: x264enc\n",
+    );
+    child.exitCode = code;
+    child.signalCode = signal;
+    child.emit("exit", code, signal);
+    child.emit("close", code, signal);
+    const errors = shell.contents.send.mock.calls
+      .map((call: any[]) => call[1])
+      .filter((event: any) => event.kind === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain(expected);
+    expect(errors[0].message).toContain("Capture encoder: x264enc");
+    const {
+      captureDiagnostics,
+    } = require("../apps/desktop/capture-diagnostics.cjs");
+    expect((await captureDiagnostics.snapshot()).log).toContain(
+      "unavailable driver",
+    );
+    shell.dispose();
+  },
+);
+
+it.each(["control", "video"])(
+  "reports an unexpectedly closed %s pipe",
+  async (kind) => {
+    const shell = nativeShell();
+    const started = shell.start();
+    await vi.waitFor(() => expect(shell.children).toHaveLength(1));
+    shell.ready();
+    await started;
+    if (kind === "control")
+      shell.children[0].stdin.emit("error", new Error("EPIPE"));
+    else shell.children[0].stdio[3].end();
+    await vi.waitFor(() =>
+      expect(shell.contents.send).toHaveBeenCalledWith(
+        "native:event",
+        expect.objectContaining({
+          kind: "error",
+          message: expect.stringContaining(`Capture ${kind} pipe`),
+        }),
+      ),
+    );
+    shell.dispose();
+  },
+);
+
+it.each(["video", "audio"])(
+  "detects a worker that stops delivering %s",
+  async (kind) => {
+    vi.useFakeTimers();
+    const shell = nativeShell(60, { stallTimeout: 30000 });
+    const started = shell.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shell.children).toHaveLength(1);
+    shell.ready();
+    await started;
+    if (kind === "audio") shell.captures[0].options.audio = true;
+    await vi.advanceTimersByTimeAsync(16000);
+    if (kind === "audio")
+      shell.children[0].stdio[3].write(
+        packet(2, Buffer.from([0, 0, 1, 0x65, 7])),
+      );
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(shell.contents.send).toHaveBeenCalledWith(
+      "native:event",
+      expect.objectContaining({
+        kind: "error",
+        message: expect.stringContaining(
+          `stopped delivering ${kind} for 30 seconds`,
+        ),
+      }),
+    );
+    shell.dispose();
+  },
+);
+
+it("retains bounded capture diagnostics across restart and reports storage failures", async () => {
+  const {
+    CaptureDiagnostics,
+  } = require("../apps/desktop/capture-diagnostics.cjs");
+  const os = require("node:os"),
+    path = require("node:path");
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "haunt-capture-diagnostics-"),
+  );
+  try {
+    const log = new CaptureDiagnostics();
+    log.configure(directory);
+    for (let i = 0; i < 100; i++)
+      log.record("share", "worker", "x".repeat(5000));
+    log.record("share", "failure", "NVENC failed; x264 selected");
+    const saved = await log.snapshot();
+    expect(saved.writeError).toBeUndefined();
+    expect(saved.log.length).toBeLessThanOrEqual(256 * 1024);
+    const reopened = new CaptureDiagnostics();
+    reopened.configure(directory);
+    expect((await reopened.snapshot()).log).toContain(
+      "NVENC failed; x264 selected",
+    );
+    const broken = new CaptureDiagnostics();
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    broken.configure(saved.file);
+    broken.record("share", "failure", "still retained in memory");
+    const result = await broken.snapshot();
+    expect(result.writeError).toBeTruthy();
+    expect(result.log).toContain("still retained in memory");
+    expect(errorLog).toHaveBeenCalled();
+    errorLog.mockRestore();
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it("retains the fatal worker cause when cleanup emits later messages", async () => {
+  const shell = nativeShell();
+  const started = shell.start();
+  const rejected = expect(started).rejects.toThrow("NVENC rejected the frame");
+  await vi.waitFor(() => expect(shell.children).toHaveLength(1));
+  const child = shell.children[0];
+  child.stderr.write(
+    "Capture failure: NVENC rejected the frame\nUnrelated teardown warning\n",
+  );
+  child.exitCode = 1;
+  child.emit("close", 1, null);
+  await rejected;
+  shell.dispose();
+});
+
+it("times out an encoder stuck before its first configuration while allowing portal selection to wait", async () => {
+  vi.useFakeTimers();
+  const shell = nativeShell(60, { stallTimeout: 30000 });
+  const capture = shell.captureOnly();
+  const child = shell.children[0];
+  let failure: Error | undefined;
+  capture.on("failure", (error: Error) => {
+    failure = error;
+  });
+  child.stderr.write("Screen capture portal: Start\n");
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(capture.closed).toBe(false);
+  expect(failure).toBeUndefined();
+  child.stderr.write("Checking encoder nvcudah264enc with cudaconvert\n");
+  await vi.advanceTimersByTimeAsync(31000);
+  expect(failure?.message).toContain("first video frame");
+  shell.dispose();
 });

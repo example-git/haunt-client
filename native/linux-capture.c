@@ -39,6 +39,7 @@ static GHashTable *taps, *seen_apps;
 static GString *outputs, *apps;
 static char *default_sink, *audio_id;
 static guint pulse_timer;
+static gint64 pulse_started;
 static GThread *pulse_thread;
 static gint pulse_stopping;
 static int listing, pulse_done, pulse_ready, source_width, source_height;
@@ -62,10 +63,16 @@ static guint window_timer;
 static int xerror(Display *display, XErrorEvent *event);
 
 static void fail(const char *message) {
-  fprintf(stderr, "%s\n", message);
-  g_atomic_int_set(&status, 1);
+  if (g_atomic_int_compare_and_exchange(&status, 0, 1)) fprintf(stderr, "Capture failure: %s\n", message);
   if (request_loop) g_main_loop_quit(request_loop);
   if (loop) g_main_loop_quit(loop);
+}
+
+static void pulse_failure(pa_context *context, const char *message) {
+  char *reason = g_strdup_printf("%s: %s", message, pa_strerror(pa_context_errno(context)));
+  if (listing) { fprintf(stderr, "%s\n", reason); pulse_done = 1; pulse_ready = 0; }
+  else fail(reason);
+  g_free(reason);
 }
 
 static gboolean stop(gpointer unused) {
@@ -177,7 +184,7 @@ static GstFlowReturn sample(GstAppSink *sink, gpointer userdata) {
   if (!s) return GST_FLOW_EOS;
   GstBuffer *buffer = gst_sample_get_buffer(s);
   GstMapInfo map;
-  if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) { gst_sample_unref(s); return GST_FLOW_ERROR; }
+  if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) { fail("Cannot read captured media buffer"); gst_sample_unref(s); return GST_FLOW_ERROR; }
   if (fd == 3 && !video_configured) {
     const guint8 *sps = NULL; size_t size = 0;
     for (size_t i = 0; i + 4 < map.size; i++) {
@@ -213,6 +220,7 @@ static GstFlowReturn sample(GstAppSink *sink, gpointer userdata) {
 static void gst_failure(GstMessage *message, const char *context) {
   GError *error = NULL; char *debug = NULL;
   gst_message_parse_error(message, &error, &debug);
+  fprintf(stderr, "GStreamer error: domain=%s code=%d\n", g_quark_to_string(error->domain), error->code);
   if (debug && *debug) fprintf(stderr, "%s\n", debug);
   char *reason = g_strdup_printf("%s (%s): %s", context, GST_OBJECT_NAME(message->src), error->message);
   fail(reason); g_free(reason); g_error_free(error); g_free(debug);
@@ -222,6 +230,11 @@ static gboolean gst_message(GstBus *gst_bus, GstMessage *message, gpointer unuse
   (void)gst_bus; (void)unused;
   if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
     gst_failure(message, "Capture pipeline failed");
+  } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_WARNING) {
+    GError *warning = NULL; char *debug = NULL;
+    gst_message_parse_warning(message, &warning, &debug);
+    fprintf(stderr, "Capture warning (%s): %s%s%s\n", GST_OBJECT_NAME(message->src), warning->message, debug ? "\n" : "", debug ? debug : "");
+    g_clear_error(&warning); g_free(debug);
   } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_EOS) fail("Capture source ended");
   return G_SOURCE_CONTINUE;
 }
@@ -310,7 +323,7 @@ static gboolean configure_encoder(GstElement *pipeline, const char *name, int w,
 
 static gboolean supports_caps(const char *name, GstPadDirection direction, const char *description) {
   GstElementFactory *factory = gst_element_factory_find(name);
-  if (!factory) return FALSE;
+  if (!factory) { fprintf(stderr, "Encoder candidate unavailable: missing element %s\n", name); return FALSE; }
   GstCaps *caps = gst_caps_from_string(description);
   gboolean supported = FALSE;
   for (const GList *pad = gst_element_factory_get_static_pad_templates(factory); pad; pad = pad->next) {
@@ -323,6 +336,7 @@ static gboolean supports_caps(const char *name, GstPadDirection direction, const
     }
   }
   gst_caps_unref(caps); gst_object_unref(factory);
+  if (!supported) fprintf(stderr, "Encoder candidate unavailable: %s %s does not support %s\n", name, direction == GST_PAD_SINK ? "input" : "output", description);
   return supported;
 }
 
@@ -360,6 +374,7 @@ static char *encoder_chain(const EncoderPlan *plan, int w, int h) {
 }
 
 static gboolean probe_encoder(const EncoderPlan *plan, int w, int h) {
+  fprintf(stderr, "Checking encoder %s with %s (%dx%d at %d fps)\n", plan->encoder, plan->converter, w, h, fps);
   if (!plan_available(plan)) return FALSE;
   char *chain = encoder_chain(plan, w, h);
   char *description = g_strdup_printf("appsrc name=probe format=time caps=\"video/x-raw,format=BGRx,width=%d,height=%d,framerate=%d/1,pixel-aspect-ratio=1/1\" ! %s", w, h, fps, chain);
@@ -385,7 +400,12 @@ static gboolean probe_encoder(const EncoderPlan *plan, int w, int h) {
     if (!valid) {
       GstBus *messages = gst_element_get_bus(pipeline);
       GstMessage *message = gst_bus_pop_filtered(messages, GST_MESSAGE_ERROR);
-      if (message) { gst_message_parse_error(message, &error, NULL); gst_message_unref(message); }
+      if (message) {
+        char *debug = NULL;
+        gst_message_parse_error(message, &error, &debug);
+        fprintf(stderr, "Encoder probe failed (%s): %s%s%s\n", GST_OBJECT_NAME(message->src), error->message, debug ? "\n" : "", debug ? debug : "");
+        g_free(debug); gst_message_unref(message);
+      }
       gst_object_unref(messages);
     }
   }
@@ -400,7 +420,15 @@ static void load_nvidia_plugins(void) {
   if (nvcodec) {
     fprintf(stderr, "NVIDIA codec plugin: %s\n", gst_plugin_get_filename(nvcodec));
     gst_object_unref(nvcodec);
-  } else fprintf(stderr, "NVIDIA codec plugin could not be loaded\n");
+  } else {
+    const char *directory = g_getenv("GST_PLUGIN_SYSTEM_PATH_1_0");
+    char *path = directory ? g_build_filename(directory, "libgstnvcodec.so", NULL) : NULL;
+    GError *error = NULL;
+    if (path) nvcodec = gst_plugin_load_file(path, &error);
+    if (nvcodec) gst_object_unref(nvcodec);
+    fprintf(stderr, "NVIDIA codec plugin load: %s: %s\n", path ? path : "no private plugin directory", error ? error->message : nvcodec ? "loaded" : "unavailable");
+    g_clear_error(&error); g_free(path);
+  }
   const char *directories[] = {
     "/opt/nvidia/deepstream/deepstream/lib/gst-plugins",
     "/usr/lib/x86_64-linux-gnu/gstreamer-1.0/deepstream",
@@ -531,6 +559,7 @@ static gboolean make_video(void) {
   for (guint i = 0; i < G_N_ELEMENTS(candidates); i++)
     if (probe_encoder(&candidates[i], w, h)) { selected = &candidates[i]; break; }
   if (!selected) { fail("No capture encoder produced a video frame"); return FALSE; }
+  if (selected->conversion == CONVERT_CPU) fprintf(stderr, "Using x264 software fallback; NVIDIA candidates above were unavailable or failed their frame probe\n");
   video_encoder = selected->encoder;
   fprintf(stderr, "Capture encoder: %s (%dx%d at %d fps)\n", video_encoder, w, h, fps);
   char *chain = encoder_chain(selected, w, h);
@@ -581,7 +610,7 @@ static void tap_free(gpointer data) {
 static void read_audio(pa_stream *stream, size_t available, void *userdata) {
   (void)available;
   Tap *tap = userdata; const void *data; size_t bytes;
-  if (pa_stream_peek(stream, &data, &bytes) < 0) { fail("Audio read failed"); return; }
+  if (pa_stream_peek(stream, &data, &bytes) < 0) { pulse_failure(pulse, "Audio read failed"); return; }
   if (bytes) {
     if (bytes > 48000 * 8 / 2) { fail("Audio capture block exceeds limit"); return; }
     GstBuffer *buffer = gst_buffer_new_allocate(NULL, bytes, NULL);
@@ -589,7 +618,7 @@ static void read_audio(pa_stream *stream, size_t available, void *userdata) {
     GST_BUFFER_DURATION(buffer) = gst_util_uint64_scale(bytes / 8, GST_SECOND, 48000);
     GstFlowReturn result = gst_app_src_push_buffer(GST_APP_SRC(tap->source), buffer);
     if (result != GST_FLOW_OK && !g_atomic_int_get(&stopping)) fail("Audio mixer stopped");
-    pa_stream_drop(stream);
+    if (pa_stream_drop(stream) < 0) pulse_failure(pulse, "Cannot release audio capture buffer");
   }
 }
 
@@ -632,12 +661,13 @@ static void add_tap(uint32_t index, uint32_t sink, const char *monitor) {
   pa_channel_map channels; pa_channel_map_init_stereo(&channels);
   tap->stream = pa_stream_new(pulse, "Haunt shared audio", &spec, &channels);
   g_hash_table_insert(taps, GUINT_TO_POINTER(index), tap);
+  if (!tap->stream) { pulse_failure(pulse, "Cannot create selected audio stream"); return; }
   pa_stream_set_read_callback(tap->stream, read_audio, tap);
   pa_stream_set_state_callback(tap->stream, tap_state, tap);
-  if (app_pid && pa_stream_set_monitor_stream(tap->stream, index) < 0) { fail("Cannot isolate selected application audio"); return; }
+  if (app_pid && pa_stream_set_monitor_stream(tap->stream, index) < 0) { pulse_failure(pulse, "Cannot isolate selected application audio"); return; }
   pa_buffer_attr buffer = {.maxlength=48000*8/4, .tlength=(uint32_t)-1, .prebuf=(uint32_t)-1, .minreq=(uint32_t)-1, .fragsize=480*8};
   if (pa_stream_connect_record(tap->stream, monitor, &buffer, PA_STREAM_ADJUST_LATENCY | PA_STREAM_DONT_MOVE) < 0)
-    fail("Cannot capture selected audio source");
+    pulse_failure(pulse, "Cannot capture selected audio source");
 }
 
 static void app_sink(pa_context *context, const pa_sink_info *info, int end, void *userdata) {
@@ -649,7 +679,11 @@ static void app_sink(pa_context *context, const pa_sink_info *info, int end, voi
 
 static void input_info(pa_context *context, const pa_sink_input_info *info, int end, void *unused) {
   (void)unused;
-  if (end) { if (listing) pulse_done = 1; return; }
+  if (end) {
+    if (end < 0 && pa_context_errno(context) != PA_ERR_NOENTITY) pulse_failure(context, "Cannot inspect application audio streams");
+    if (listing) pulse_done = 1;
+    return;
+  }
   const char *pid_text = pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_PROCESS_ID);
   long pid = pid_text ? strtol(pid_text, NULL, 10) : 0;
   if (listing) {
@@ -658,6 +692,7 @@ static void input_info(pa_context *context, const pa_sink_input_info *info, int 
   } else if (app_pid && belongs(pid)) {
     pa_operation *operation = pa_context_get_sink_info_by_index(context, info->sink, app_sink, GUINT_TO_POINTER(info->index));
     if (operation) pa_operation_unref(operation);
+    else pulse_failure(context, "Cannot inspect application audio output");
   }
 }
 
@@ -687,21 +722,30 @@ static void subscribed(pa_context *context, pa_subscription_event_type_t type, u
   else {
     pa_operation *operation = pa_context_get_sink_input_info(context, index, input_info, NULL);
     if (operation) pa_operation_unref(operation);
+    else pulse_failure(context, "Cannot refresh application audio stream");
   }
+}
+
+static void subscription_ready(pa_context *context, int success, void *unused) {
+  (void)unused;
+  if (!success) pulse_failure(context, "Cannot monitor application audio changes");
 }
 
 static void server_info(pa_context *context, const pa_server_info *info, void *unused) {
   (void)unused;
-  if (!info) { pulse_done = 1; if (!listing) fail("Audio server unavailable"); return; }
+  if (!info) { pulse_done = 1; pulse_failure(context, "Audio server unavailable"); return; }
   default_sink = g_strdup(info->default_sink_name);
   pa_operation *operation = pa_context_get_sink_info_list(context, sink_info, NULL);
   if (operation) pa_operation_unref(operation);
+  else { pulse_done = 1; pulse_failure(context, "Cannot list audio outputs"); }
   if (!listing && app_pid) {
     pa_context_set_subscribe_callback(context, subscribed, NULL);
-    operation = pa_context_subscribe(context, PA_SUBSCRIPTION_MASK_SINK_INPUT, NULL, NULL);
+    operation = pa_context_subscribe(context, PA_SUBSCRIPTION_MASK_SINK_INPUT, subscription_ready, NULL);
     if (operation) pa_operation_unref(operation);
+    else pulse_failure(context, "Cannot subscribe to application audio changes");
     operation = pa_context_get_sink_input_info_list(context, input_info, NULL);
     if (operation) pa_operation_unref(operation);
+    else pulse_failure(context, "Cannot list application audio streams");
   }
 }
 
@@ -711,28 +755,36 @@ static void pulse_state(pa_context *context, void *unused) {
     pulse_ready = 1;
     pa_operation *operation = pa_context_get_server_info(context, server_info, NULL);
     if (operation) pa_operation_unref(operation);
+    else { pulse_done = 1; pulse_failure(context, "Cannot inspect audio server"); }
   } else if (pa_context_get_state(context) == PA_CONTEXT_FAILED || pa_context_get_state(context) == PA_CONTEXT_TERMINATED) {
     pulse_done = 1;
-    if (!listing && !g_atomic_int_get(&stopping)) fail("Connect to PulseAudio or PipeWire PulseAudio service");
+    fprintf(stderr, "Audio server connection: %s\n", pa_strerror(pa_context_errno(context)));
+    if (!listing && !g_atomic_int_get(&stopping)) pulse_failure(context, "Connect to PulseAudio or PipeWire PulseAudio service");
   }
 }
 
 static gboolean pulse_iterate(gpointer unused) {
   (void)unused;
+  if (!listing && !pulse_ready && g_get_monotonic_time() - pulse_started > 10000000) {
+    fail("Audio server connection timed out"); return G_SOURCE_REMOVE;
+  }
   if (app_pid && process_start(app_pid, NULL) != app_start) { fail("Selected application ended"); return G_SOURCE_REMOVE; }
   for (int i = 0; i < 32; i++) {
     int result = pa_mainloop_iterate(pulse_loop, 0, NULL);
+    if (result < 0) { pulse_failure(pulse, "Audio server event loop failed"); return G_SOURCE_REMOVE; }
     if (result <= 0) break;
   }
   return G_SOURCE_CONTINUE;
 }
 
 static void connect_pulse(void) {
+  pulse_started = g_get_monotonic_time();
   pulse_loop = pa_mainloop_new();
   pulse = pa_context_new(pa_mainloop_get_api(pulse_loop), "Haunt screen audio");
   pa_context_set_state_callback(pulse, pulse_state, NULL);
   if (pa_context_connect(pulse, NULL, PA_CONTEXT_NOAUTOSPAWN, NULL) < 0) {
-    pulse_done = 1; if (!listing) fail("Audio server unavailable");
+    fprintf(stderr, "Audio server connection: %s\n", pa_strerror(pa_context_errno(pulse)));
+    pulse_done = 1; if (!listing) pulse_failure(pulse, "Audio server unavailable");
   }
 }
 
@@ -775,6 +827,7 @@ static void portal_response(GDBusConnection *connection, const char *sender, con
 static gboolean request_timeout(gpointer unused) { (void)unused; fail("Screen capture portal timed out"); return G_SOURCE_REMOVE; }
 
 static GVariant *portal_request(const char *method, GVariant *parameters, const char *token) {
+  fprintf(stderr, "Screen capture portal: %s\n", method);
   const char *unique = g_dbus_connection_get_unique_name(bus);
   char *sender = g_strdup(unique + 1);
   for (char *p = sender; *p; p++) if (*p == '.') *p = '_';
@@ -791,6 +844,7 @@ static GVariant *portal_request(const char *method, GVariant *parameters, const 
     if (g_main_context_find_source_by_id(NULL, timeout)) g_source_remove(timeout);
   } else { fail(error->message); g_error_free(error); }
   g_dbus_connection_signal_unsubscribe(bus, subscription);
+  fprintf(stderr, "Screen capture portal: %s response=%u\n", method, response_code);
   g_main_loop_unref(request_loop); request_loop = NULL;
   if (response_code || !response || g_atomic_int_get(&stopping)) {
     g_dbus_connection_call(bus, "org.freedesktop.portal.Desktop", path, "org.freedesktop.portal.Request", "Close", NULL, NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL, NULL);
@@ -849,7 +903,11 @@ static gboolean open_portal(guint kind) {
   return TRUE;
 }
 
-static int xerror(Display *display, XErrorEvent *event) { (void)display; (void)event; return 0; }
+static int xerror(Display *display, XErrorEvent *event) {
+  char message[256]; XGetErrorText(display, event->error_code, message, sizeof(message));
+  fprintf(stderr, "X11 capture error: %s (request=%u minor=%u resource=%lu)\n", message, event->request_code, event->minor_code, event->resourceid);
+  return 0;
+}
 
 static char *window_property(Display *display, Window window, const char *name, Atom requested, unsigned long *count) {
   Atom actual; int format; unsigned long remaining; unsigned char *data = NULL;
@@ -905,11 +963,13 @@ static gboolean x11_sources(const char *selected, GString *screens) {
 static gboolean is_wayland(void) { const char *name = g_getenv("WAYLAND_DISPLAY"); return g_strcmp0(g_getenv("XDG_SESSION_TYPE"), "wayland") == 0 || (name && *name); }
 
 static guint portal_types(void) {
-  GDBusConnection *connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
-  if (!connection) return 0;
-  GVariant *reply = g_dbus_connection_call_sync(connection, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.DBus.Properties", "Get", g_variant_new("(ss)", "org.freedesktop.portal.ScreenCast", "AvailableSourceTypes"), G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL);
+  GError *error = NULL;
+  GDBusConnection *connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
+  if (!connection) { fprintf(stderr, "Screen capture portal bus: %s\n", error->message); g_clear_error(&error); return 0; }
+  GVariant *reply = g_dbus_connection_call_sync(connection, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.DBus.Properties", "Get", g_variant_new("(ss)", "org.freedesktop.portal.ScreenCast", "AvailableSourceTypes"), G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
   guint types = 0;
   if (reply) { GVariant *value; g_variant_get(reply, "(v)", &value); types = g_variant_get_uint32(value); g_variant_unref(value); g_variant_unref(reply); }
+  else { fprintf(stderr, "Screen capture portal discovery: %s\n", error->message); g_clear_error(&error); }
   g_object_unref(connection); return types;
 }
 
@@ -937,6 +997,7 @@ static gboolean control(GIOChannel *channel, GIOCondition condition, gpointer un
   if (!strcmp(line, "stop\n")) { g_free(line); return stop(NULL); }
   if (sscanf(line, "configure %d %d %d %c", &w, &h, &rate, &extra) != 3 || w < 2 || h < 2 || w > 8192 || h > 8192 || (rate != 15 && rate != 30 && rate != 60)) fail("Invalid capture mode");
   else if (video) {
+    fprintf(stderr, "Reconfiguring capture to %dx%d at %d fps\n", w, h, rate);
     set_portal_target(NULL);
     if (window_timer) { g_source_remove(window_timer); window_timer = 0; }
     GstBus *messages = gst_element_get_bus(video);
@@ -951,7 +1012,12 @@ static gboolean control(GIOChannel *channel, GIOCondition condition, gpointer un
 
 int main(int argc, char **argv) {
   XInitThreads(); signal(SIGPIPE, SIG_IGN);
+  if (!g_getenv("GST_DEBUG")) g_setenv("GST_DEBUG", "2", FALSE);
+  if (!g_getenv("GST_DEBUG_NO_COLOR")) g_setenv("GST_DEBUG_NO_COLOR", "1", FALSE);
   gst_init(NULL, NULL);
+  char *gst_version = gst_version_string();
+  fprintf(stderr, "Capture runtime: %s; plugins=%s; session=%s\n", gst_version, g_getenv("GST_PLUGIN_SYSTEM_PATH_1_0") ? g_getenv("GST_PLUGIN_SYSTEM_PATH_1_0") : "system", is_wayland() ? "wayland" : "x11");
+  g_free(gst_version);
   loop = g_main_loop_new(NULL, FALSE);
   taps = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, tap_free);
   seen_apps = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
@@ -960,10 +1026,10 @@ int main(int argc, char **argv) {
   else if (argc == 6 || argc == 7) {
     load_nvidia_plugins();
     char *end;
-    output_width = (int)strtol(argv[3], &end, 10); if (*end) return 2;
-    output_height = (int)strtol(argv[4], &end, 10); if (*end) return 2;
-    fps = (int)strtol(argv[5], &end, 10); if (*end) return 2;
-    if (strcmp(argv[1], "--capture") || output_width < 2 || output_height < 2 || output_width > 8192 || output_height > 8192 || (fps != 15 && fps != 30 && fps != 60)) return 2;
+    output_width = (int)strtol(argv[3], &end, 10); if (*end) { fail("Invalid capture width"); return 2; }
+    output_height = (int)strtol(argv[4], &end, 10); if (*end) { fail("Invalid capture height"); return 2; }
+    fps = (int)strtol(argv[5], &end, 10); if (*end) { fail("Invalid capture frame rate"); return 2; }
+    if (strcmp(argv[1], "--capture") || output_width < 2 || output_height < 2 || output_width > 8192 || output_height > 8192 || (fps != 15 && fps != 30 && fps != 60)) { fail("Invalid capture mode"); return 2; }
     if (argc == 7) audio_id = argv[6];
     g_unix_signal_add(SIGTERM, stop, NULL); g_unix_signal_add(SIGINT, stop, NULL);
     GIOChannel *input = g_io_channel_unix_new(0);
@@ -980,7 +1046,7 @@ int main(int argc, char **argv) {
     video_origin = timestamp_origin;
     if (selected && !g_atomic_int_get(&status) && make_video() && make_audio()) g_main_loop_run(loop);
     g_io_channel_unref(input);
-  } else g_atomic_int_set(&status, 2);
+  } else { fail("Usage: --list-sources or --capture SOURCE WIDTH HEIGHT FPS [AUDIO_SOURCE]"); g_atomic_int_set(&status, 2); }
   g_atomic_int_set(&stopping, TRUE);
   if (window_timer) g_source_remove(window_timer);
   if (pulse_timer && g_main_context_find_source_by_id(NULL, pulse_timer)) g_source_remove(pulse_timer);

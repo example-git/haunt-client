@@ -1207,7 +1207,11 @@ export class Call {
           });
         };
         track.onended = ended;
-        if (native) native.onended = () => ended();
+        if (native)
+          native.onended = (error) => {
+            this.change({ error: error.message });
+            ended();
+          };
         const linux = linuxShares.get(track);
         if (linux)
           linux.onended = (error) => {

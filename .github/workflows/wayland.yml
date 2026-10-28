@@ -32,6 +32,8 @@ jobs:
             packages: xvfb xauth xfwm4 xdotool pulseaudio
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    env:
+      HAUNT_CAPTURE_CHECK_FAILURES: "1"
     defaults:
       run:
         working-directory: server/client

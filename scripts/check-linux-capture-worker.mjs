@@ -349,6 +349,24 @@ try {
   const entire = await measure([701, 1601], []);
   capture.stop();
   await capture.finished;
+  let stalledFailure;
+  if (process.env.HAUNT_CAPTURE_CHECK_FAILURES === "1") {
+    assert.equal(process.env.GITHUB_ACTIONS, "true");
+    start(undefined);
+    await until(() => video.length >= 5);
+    capture.child.kill("SIGSTOP");
+    await until(() => failure !== undefined, 35000);
+    stalledFailure = failure.message;
+    assert.match(stalledFailure, /stopped delivering video for 30 seconds/);
+    await capture.finished;
+    assert.equal(capture.child.signalCode, "SIGKILL");
+    start(undefined);
+    await until(() => video.length >= 5);
+    capture.child.stdin.write("configure invalid\n");
+    await until(() => failure !== undefined);
+    assert.match(failure.message, /Invalid capture mode/);
+    await capture.finished;
+  }
   await until(
     async () =>
       !JSON.parse(
@@ -361,6 +379,7 @@ try {
   const evidence = {
     session: process.env.XDG_SESSION_TYPE,
     startupFailure,
+    stalledFailure,
     runtime: runtimeInfo,
     bundledGStreamerLoaded: true,
     isolated,

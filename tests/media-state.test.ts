@@ -744,3 +744,36 @@ it("keeps moderation received before the join acknowledgement", async () => {
   expect(call.snapshot.restriction).toEqual({ muted: true, deafened: true });
   expect(call.snapshot.state).toMatchObject({ muted: true, deafened: true });
 });
+
+it("keeps the native capture failure visible after removing the failed share", async () => {
+  const { NativeCapture, nativeCaptures } =
+    await import("../packages/browser/src/media/native-capture");
+  const { call } = await connected();
+  const track = new Track("video");
+  const capture: any = {
+    stream: new Stream([track]),
+    track,
+    config: { width: 1920, height: 1080, fps: 60 },
+    close: () => {
+      track.stop();
+      nativeCaptures.delete(track as unknown as MediaStreamTrack);
+    },
+  };
+  const open = vi.spyOn(NativeCapture, "open").mockResolvedValue(capture);
+  window.hauntDesktop = { nativeScreenCaptureAvailable: true } as any;
+  nativeCaptures.set(track as unknown as MediaStreamTrack, capture);
+  try {
+    await call.toggleVideo("screen");
+    capture.onended(
+      new Error("Capture worker exited unexpectedly (signal SIGSEGV)."),
+    );
+    expect(call.snapshot.error).toContain("SIGSEGV");
+    expect(
+      call.snapshot.local.some((source) => source.purpose === "screen"),
+    ).toBe(false);
+    expect(track.readyState).toBe("ended");
+  } finally {
+    open.mockRestore();
+    nativeCaptures.delete(track as unknown as MediaStreamTrack);
+  }
+});

@@ -471,6 +471,62 @@ export async function checkLinuxShareAudio(
             window.focus();
           });
         }
+        const report = await sender.evaluate(() =>
+          window.hauntDesktop.mediaDiagnostics(),
+        );
+        const events = report.capture.log.split("\n").flatMap((line) => {
+          try {
+            return [JSON.parse(line)];
+          } catch {
+            return [];
+          }
+        });
+        const active = events.findLast((event) => event.event === "spawn");
+        assert(Number.isInteger(active?.detail.pid));
+        await desktop.evaluate((_, pid) => {
+          if (process.env.GITHUB_ACTIONS !== "true")
+            throw Error("Worker failure check requires CI");
+          process.kill(pid, "SIGKILL");
+        }, active.detail.pid);
+        await expect(
+          sender
+            .locator('[role="alert"]')
+            .filter({ hasText: "signal SIGKILL" }),
+        ).toBeVisible();
+        await expect(control("Share screen")).toBeEnabled();
+        await expect.poll(outputCaptures).toBe(0);
+        await sender
+          .getByRole("button", { name: "Account settings", exact: true })
+          .click();
+        await sender
+          .getByRole("button", { name: "Devices", exact: true })
+          .click();
+        await sender
+          .getByRole("button", {
+            name: "Copy capture diagnostics",
+            exact: true,
+          })
+          .click();
+        await expect(
+          sender.getByText("Capture diagnostics copied.", { exact: true }),
+        ).toBeVisible();
+        const copied = JSON.parse(
+          await desktop.evaluate(({ clipboard }) => clipboard.readText()),
+        );
+        assert.match(copied.capture.log, /signal SIGKILL/);
+        assert.match(copied.capture.log, /Using x264 software fallback/);
+        assert.match(copied.capture.log, /missing element nvcudah264enc/);
+        assert.equal(copied.capture.writeError, undefined);
+        await fs.mkdir("test-results", { recursive: true });
+        await fs.writeFile(
+          `test-results/capture-diagnostics-${wayland ? "wayland" : "x11"}.json`,
+          JSON.stringify(copied, null, 2),
+        );
+        await sender
+          .getByRole("button", { name: "Close", exact: true })
+          .click();
+        await share(true);
+        await decodedVideo(receiver, "screen");
         await control("Stop sharing screen").click();
         await expect(
           receiver.locator('.call-panel audio[aria-label$="screen_audio"]'),

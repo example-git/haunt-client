@@ -4,6 +4,7 @@ const { Capture, listSources } = require("./swiftcapture.cjs");
 const { NativePublisher, purposes } = require("./native-publisher.cjs");
 const { chooseCapture } = require("./capture-picker.cjs");
 const linux = require("./linux-capture.cjs");
+const { captureDiagnostics } = require("./capture-diagnostics.cjs");
 
 function installNativeMedia(parent, validateSender) {
   const linuxNative = process.platform === "linux";
@@ -79,6 +80,10 @@ function installNativeMedia(parent, validateSender) {
               devices: { cameras: catalog.cameras, audio: catalog.audio },
             });
           return catalog;
+        })
+        .catch((error) => {
+          captureDiagnostics.record("sources", "failure", error.message);
+          throw error;
         })
         .finally(() => {
           catalogPending = undefined;
@@ -163,6 +168,7 @@ function installNativeMedia(parent, validateSender) {
       await stopping.get(request.purpose);
       if (!active()) return null;
       const options = {
+        diagnosticID: request.id,
         purpose: request.purpose,
         width: request.width,
         height: request.height,
@@ -253,6 +259,15 @@ function installNativeMedia(parent, validateSender) {
       capture.on("failure", (error) => {
         captures.delete(request.id);
         stopCapture(entry);
+        if (
+          linuxNative &&
+          error.message === "Capture cancelled" &&
+          !capture.video
+        )
+          return;
+        if (linuxNative)
+          error.message +=
+            " Copy capture diagnostics from Settings → Devices for details.";
         send({ id: request.id, kind: "error", message: error.message });
       });
       for (const kind of ["video-config", "audio-config"])
@@ -290,7 +305,7 @@ function installNativeMedia(parent, validateSender) {
         await new Promise((resolve, reject) => {
           const timer = setTimeout(
             () =>
-              done(
+              capture.fail(
                 Error(
                   linuxNative
                     ? "Linux capture did not produce video. Check the screen sharing portal."

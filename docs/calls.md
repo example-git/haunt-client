@@ -11,6 +11,13 @@ portal. The encoder probes available converter/encoder pairs and compatible memo
 formats before selecting NVIDIA nvcodec or V4L2/NVMM. Linux x64 includes its own
 nvcodec runtime. Software H.264 remains available when hardware encoding is unusable.
 
+Capture failures appear in the call. Desktop Settings → Devices → Copy capture
+diagnostics includes recent encoder selection, fallback reasons, pipeline errors,
+worker exits and timeouts. The bounded log is kept in the desktop profile's
+`logs/capture.log` across restarts; reports also show the app version, architecture
+and graphics status. Linux reports stalled video or audio after 30 seconds without
+packets. Silent audio and an unchanged screen still produce packets.
+
 Screen shares default to the entire audio output. X11 window shares default to
 the window's application; Wayland window shares require selecting the audio app
 separately. The picker also offers entire-output audio or video without audio.
