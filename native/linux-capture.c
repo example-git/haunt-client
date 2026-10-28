@@ -210,26 +210,40 @@ static GstFlowReturn sample(GstAppSink *sink, gpointer userdata) {
   return g_atomic_int_get(&status) ? GST_FLOW_ERROR : GST_FLOW_OK;
 }
 
+static void gst_failure(GstMessage *message, const char *context) {
+  GError *error = NULL; char *debug = NULL;
+  gst_message_parse_error(message, &error, &debug);
+  if (debug && *debug) fprintf(stderr, "%s\n", debug);
+  char *reason = g_strdup_printf("%s (%s): %s", context, GST_OBJECT_NAME(message->src), error->message);
+  fail(reason); g_free(reason); g_error_free(error); g_free(debug);
+}
+
 static gboolean gst_message(GstBus *gst_bus, GstMessage *message, gpointer unused) {
   (void)gst_bus; (void)unused;
   if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
-    GError *error = NULL; char *debug = NULL;
-    gst_message_parse_error(message, &error, &debug);
-    fail(error->message); g_error_free(error); g_free(debug);
+    gst_failure(message, "Capture pipeline failed");
   } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_EOS) fail("Capture source ended");
   return G_SOURCE_CONTINUE;
+}
+
+static gboolean start_pipeline(GstElement *pipeline, const char *context) {
+  GstBus *messages = gst_element_get_bus(pipeline);
+  gst_bus_add_watch(messages, gst_message, NULL);
+  gboolean started = gst_element_set_state(pipeline, GST_STATE_PLAYING) != GST_STATE_CHANGE_FAILURE;
+  if (!started) {
+    GstMessage *message = gst_bus_pop_filtered(messages, GST_MESSAGE_ERROR);
+    if (message) { gst_failure(message, context); gst_message_unref(message); }
+    else fail(context);
+  }
+  gst_object_unref(messages);
+  return started;
 }
 
 static gboolean play(GstElement *pipeline, int fd) {
   GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), "capture");
   g_signal_connect(sink, "new-sample", G_CALLBACK(sample), GINT_TO_POINTER(fd));
   gst_object_unref(sink);
-  GstBus *gst_bus = gst_element_get_bus(pipeline);
-  gst_bus_add_watch(gst_bus, gst_message, NULL); gst_object_unref(gst_bus);
-  if (gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
-    fail("Cannot start GStreamer capture"); return FALSE;
-  }
-  return TRUE;
+  return start_pipeline(pipeline, "Cannot start GStreamer capture");
 }
 
 static gboolean encoder_option(GstElement *encoder, const char *property, const char *value) {
@@ -447,12 +461,7 @@ static gboolean start_portal_video(void) {
   GstElement *sink = gst_bin_get_by_name(GST_BIN(portal_video), "frames");
   g_signal_connect(sink, "new-sample", G_CALLBACK(portal_frame), NULL);
   gst_object_unref(sink);
-  GstBus *messages = gst_element_get_bus(portal_video);
-  gst_bus_add_watch(messages, gst_message, NULL); gst_object_unref(messages);
-  if (gst_element_set_state(portal_video, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
-    fail("Cannot start PipeWire screen capture"); return FALSE;
-  }
-  return TRUE;
+  return start_pipeline(portal_video, "Cannot start PipeWire screen capture");
 }
 
 static void set_portal_target(GstElement *source) {

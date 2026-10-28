@@ -155,6 +155,36 @@ try {
       catalog.audioSources.some((a) => a.pid === other.pid)
     );
   });
+  let startupFailure;
+  if (process.env.XDG_SESSION_TYPE === "wayland") {
+    const runtime = path.join(scratch, "broken-runtime");
+    await fs.mkdir(path.join(runtime, "pipewire-config"), { recursive: true });
+    for (const name of await fs.readdir(path.dirname(binary)))
+      if (name !== "pipewire-config")
+        await fs.symlink(
+          path.join(path.dirname(binary), name),
+          path.join(runtime, name),
+        );
+    await fs.writeFile(
+      path.join(runtime, "pipewire-config/client.conf"),
+      "context.properties = { log.level = 2 }\ncontext.spa-libs = { support.* = support/libspa-support }\ncontext.modules = []\n",
+    );
+    capture = new LinuxCapture(path.join(runtime, path.basename(binary)), {
+      source: catalog.screens[0].id,
+      width: 640,
+      height: 480,
+      fps: 30,
+    });
+    capture.on("failure", (error) => {
+      startupFailure = error.message;
+    });
+    await until(() => startupFailure !== undefined);
+    await capture.finished;
+    assert.match(
+      startupFailure,
+      /Cannot start PipeWire screen capture \(source\): can't connect/,
+    );
+  }
   const snapshot = async () =>
     JSON.parse(
       (await exec("pactl", ["-f", "json", "list", "sink-inputs"])).stdout,
@@ -169,7 +199,9 @@ try {
   let before;
   await until(async () => {
     before = await snapshot();
-    return before.length === 2 && before.every((input) => input.sink !== 0xffffffff);
+    return (
+      before.length === 2 && before.every((input) => input.sink !== 0xffffffff)
+    );
   });
   const defaults = async () =>
     (await exec("pactl", ["info"])).stdout
@@ -304,6 +336,7 @@ try {
   await fs.mkdir("test-results", { recursive: true });
   const evidence = {
     session: process.env.XDG_SESSION_TYPE,
+    startupFailure,
     isolated,
     multiple,
     removed,

@@ -133,7 +133,7 @@ export async function buildLinuxCapture() {
     );
   await fs.writeFile(
     path.join(target, "pipewire-config/client.conf"),
-    `context.properties = { log.level = 0 }\ncontext.spa-libs = { support.* = support/libspa-support }\ncontext.modules = [ { name = libpipewire-module-protocol-native } { name = libpipewire-module-client-node } { name = libpipewire-module-metadata } ]\n`,
+    `context.properties = { log.level = 2 }\ncontext.spa-libs = { support.* = support/libspa-support }\ncontext.modules = [ { name = libpipewire-module-protocol-native } { name = libpipewire-module-client-node } { name = libpipewire-module-metadata } ]\n`,
   );
   let notices =
     "Haunt Linux capture runtime\n\nGStreamer, PipeWire and PulseAudio runtime libraries and plugins.\n\n";
