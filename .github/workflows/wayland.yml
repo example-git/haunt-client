@@ -56,8 +56,8 @@ jobs:
       - uses: actions/checkout@v5
         if: matrix.desktop == 'wayland'
         with:
-          repository: emersion/xdg-desktop-portal-wlr
-          ref: v0.8.1
+          repository: wegel/xdg-desktop-portal-wlr
+          ref: 521b8be97dd93328d88d5ae9d094dc7f3297a5d3
           path: portal-wlr
       - name: Install Linux capture test environment
         run: |
@@ -98,6 +98,7 @@ jobs:
           meson install -C "$RUNNER_TEMP/sway/build"
           CFLAGS="-include unistd.h" meson setup ../../portal-wlr/build ../../portal-wlr -Dman-pages=disabled -Dsystemd=disabled
           meson compile -C ../../portal-wlr/build
+          meson test -C ../../portal-wlr/build --print-errorlogs
       - name: Verify capture runtime launcher
         run: cd native/linux-capture-launcher && go test ./...
       - run: npm ci

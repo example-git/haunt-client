@@ -88,6 +88,7 @@ gdbus wait --session --timeout 30 org.freedesktop.portal.Desktop
 wayland-info > test-results/wayland/protocols.txt
 dpkg-query -W pipewire wireplumber xdg-desktop-portal xdg-desktop-portal-wlr > test-results/wayland/packages.txt
 sway --version > test-results/wayland/compositor.txt
+git -C ../../portal-wlr rev-parse HEAD > test-results/wayland/portal-sha.txt
 git rev-parse HEAD > test-results/wayland/client-sha.txt
 GST_DEBUG="3,pipewiresrc:6,videorate:6,x264enc:5" GST_DEBUG_FILE="$PWD/test-results/wayland/gstreamer-%p.log" HAUNT_CAPTURE_EXISTING_SESSION=1 node scripts/check-linux-capture-worker.mjs
 npm run test:integration 2>&1 | tee test-results/wayland/runtime.log

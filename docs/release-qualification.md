@@ -29,6 +29,15 @@ conflicting inherited plugin paths. Linux x64 also verifies Selkies runtime hash
 and compiles a kernel with bundled NVRTC; this does not verify GPU encoding. `linux-runtime-install-*` records the runtime hashes,
 installer selection and capture results on x64 and ARM64.
 
+The Wayland capture workflow uses a software-rendered Sway session and a pinned
+portal backend with the pending upstream [capture-lifetime fix](https://github.com/emersion/xdg-desktop-portal-wlr/pull/407).
+It runs the backend's regression tests and verifies decoded video and share audio
+through the server relay. Artifacts record the backend revision. Unpatched
+xdg-desktop-portal-wlr can terminate with `session already has a frame object`
+during buffer replacement. The CI backend is not shipped with Haunt; installed
+clients use their desktop's portal, so these checks do not establish compatibility
+with affected backend versions.
+
 Notification checks drive the packaged app with protocol messages and real UI
 actions. They inspect actual desktop popups and badges, click OS notifications,
 and observe sound output, including PipeWire recordings on Linux. Playwright's
