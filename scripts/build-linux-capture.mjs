@@ -216,7 +216,7 @@ export async function buildLinuxCapture() {
         path.join(libdir, "pipewire-0.3", `libpipewire-module-${name}.so`),
         path.join(target, "pipewire", `libpipewire-module-${name}.so`),
       );
-    for (const name of ["libspa-support.so"])
+    for (const name of ["libspa-support.so", "libspa-dbus.so"])
       await copy(
         path.join(libdir, "spa-0.2/support", name),
         path.join(target, "spa/support", name),
