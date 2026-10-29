@@ -552,7 +552,10 @@ static gboolean watch_portal_node(int fd) {
   if (node_loop) node_context = pw_context_new(pw_thread_loop_get_loop(node_loop), NULL, 0);
   if (!node_context) { close(fd); fail("Cannot create PipeWire source monitor"); return FALSE; }
   node_core = pw_context_connect_fd(node_context, fd, NULL, 0);
-  if (!node_core) { fail("Cannot connect PipeWire source monitor"); return FALSE; }
+  if (!node_core) {
+    char *reason = g_strdup_printf("Cannot connect PipeWire source monitor: %s", g_strerror(errno));
+    fail(reason); g_free(reason); return FALSE;
+  }
   static const struct pw_core_events core_events = {.version = PW_VERSION_CORE_EVENTS, .done = node_ready, .error = node_error};
   static const struct pw_registry_events registry_events = {.version = PW_VERSION_REGISTRY_EVENTS, .global = node_added, .global_remove = node_removed};
   pw_core_add_listener(node_core, &node_core_listener, &core_events, NULL);
