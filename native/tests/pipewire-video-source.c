@@ -51,7 +51,10 @@ static void frame(void *userdata) {
 static void tick(void *userdata, uint64_t expirations) {
   (void)expirations;
   struct source *source = userdata;
-  if (!source->silent) pw_stream_trigger_process(source->stream);
+  if (!source->silent) {
+    int result = pw_stream_trigger_process(source->stream);
+    if (result < 0) fprintf(stderr, "Source trigger failed: %s\n", spa_strerror(result));
+  }
 }
 
 static void state(void *userdata, enum pw_stream_state old, enum pw_stream_state current, const char *error) {

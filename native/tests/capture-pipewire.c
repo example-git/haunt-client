@@ -23,7 +23,10 @@ int main(int argc, char **argv) {
     g_assert_cmpint(source_height, ==, atoi(argv[6]));
     timestamp_origin = (guint64)g_get_monotonic_time() * 1000;
     video_origin = timestamp_origin;
-    if (make_video()) g_main_loop_run(loop);
+    if (make_video()) {
+      fprintf(stderr, "Encoder pipeline started; entering main loop\n");
+      g_main_loop_run(loop);
+    }
   }
   g_atomic_int_set(&stopping, TRUE);
   set_portal_target(NULL);
