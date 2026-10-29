@@ -21,12 +21,15 @@ permissions:
   contents: read
 jobs:
   capture:
-    name: Capture (${{ matrix.desktop }})
+    name: Capture (${{ matrix.desktop }}${{ matrix.omit_size && ' without portal size' || '' }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - desktop: wayland
+            packages: swaybg wayland-utils pipewire pipewire-pulse wireplumber xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
+          - desktop: wayland
+            omit_size: true
             packages: swaybg wayland-utils pipewire pipewire-pulse wireplumber xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
           - desktop: x11
             packages: xvfb xauth xfwm4 xdotool pulseaudio
@@ -34,6 +37,7 @@ jobs:
     timeout-minutes: 25
     env:
       HAUNT_CAPTURE_CHECK_FAILURES: "1"
+      HAUNT_PORTAL_OMIT_SIZE: ${{ matrix.omit_size && '1' || '0' }}
     defaults:
       run:
         working-directory: server/client
@@ -98,6 +102,16 @@ jobs:
           meson setup "$RUNNER_TEMP/sway/build" "$RUNNER_TEMP/sway" --prefix="$RUNNER_TEMP/wayland-sdk" --libdir=lib -Dman-pages=disabled -Ddefault-wallpaper=false -Dswaybar=false -Dswaynag=false -Dtray=disabled -Dgdk-pixbuf=disabled
           meson compile -C "$RUNNER_TEMP/sway/build"
           meson install -C "$RUNNER_TEMP/sway/build"
+          if test "$HAUNT_PORTAL_OMIT_SIZE" = 1; then
+            python3 - <<'PY'
+          from pathlib import Path
+          source = Path("../../portal-wlr/src/screencast/screencast.c")
+          content = source.read_text()
+          size = '\t\tret = sd_bus_message_append(reply, "{sv}",\n\t\t\t"size", "(ii)", cast->target->output->width, cast->target->output->height);\n\t\tif (ret < 0) {\n\t\t\treturn ret;\n\t\t}\n'
+          assert content.count(size) == 1
+          source.write_text(content.replace(size, ""))
+          PY
+          fi
           CFLAGS="-include unistd.h" meson setup ../../portal-wlr/build ../../portal-wlr -Dman-pages=disabled -Dsystemd=disabled
           meson compile -C ../../portal-wlr/build
           meson test -C ../../portal-wlr/build --print-errorlogs
@@ -119,6 +133,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: linux-capture-${{ matrix.desktop }}
+          name: linux-capture-${{ matrix.desktop }}${{ matrix.omit_size && '-without-size' || '' }}
           path: server/client/test-results
           retention-days: 14

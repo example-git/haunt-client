@@ -319,6 +319,22 @@ try {
   assert(probe.streams[0].width > 0);
   assert.equal(probe.streams[0].has_b_frames, 0);
   const initialMode = configs[0];
+  let portalSize;
+  if (process.env.XDG_SESSION_TYPE === "wayland") {
+    portalSize =
+      process.env.HAUNT_PORTAL_OMIT_SIZE === "1" ? "omitted" : "present";
+    assert.match(
+      diagnostics,
+      portalSize === "omitted"
+        ? /Screen capture portal: size omitted/
+        : /Screen capture portal: size=1600x1000/,
+    );
+    assert.match(diagnostics, /PipeWire video negotiated: 1600x1000 pixels/);
+    assert.equal(initialMode.width, 640);
+    assert.equal(initialMode.height, 400);
+    assert.equal(probe.streams[0].width, 640);
+    assert.equal(probe.streams[0].height, 400);
+  }
   if (process.env.HAUNT_EXPECT_ENCODER)
     assert.match(
       initialMode.encoder,
@@ -379,6 +395,7 @@ try {
   const evidence = {
     session: process.env.XDG_SESSION_TYPE,
     startupFailure,
+    portalSize,
     stalledFailure,
     runtime: runtimeInfo,
     bundledGStreamerLoaded: true,
