@@ -235,17 +235,19 @@ context.modules = [
                                     check(capture.process.wait(timeout=5) == 1, "Closed output did not fail")
                                     expected_error = "Capture pipe closed"
                                 else:
-                                    capture.command("configure 320 240 15")
-                                    capture.until(lambda: len(capture.segments) == 2 and len(capture.segments[1]["frames"]) >= 19)
+                                    second = {"two-buffers-padded": (320, 180, 15), "portrait-rgb": (134, 240, 15), "wide-padded": (320, 90, 15)}[case["name"]]
+                                    expected_segments = [case["expected"], second, (*case["expected"][:2], 30), second]
+                                    for index, command in enumerate(["configure 320 240 15", "configure 640 480 30", "configure 320 240 15"], 1):
+                                        capture.command(command)
+                                        capture.until(lambda: len(capture.segments) == index + 1 and len(capture.segments[index]["frames"]) >= expected_segments[index][2] + 4)
                                     capture.command("stop")
                                     check(capture.process.wait(timeout=5) == 0, "Normal stop failed")
                                     source.terminate()
                                     check(source.wait(timeout=5) == 0, "Source exceeded its negotiated buffer limit")
                                     expected_error = None
-                                    second = {"two-buffers-padded": (320, 180, 15), "portrait-rgb": (134, 240, 15), "wide-padded": (320, 90, 15)}[case["name"]]
                                     reports.append({"case": case["name"], "segments": [decode(segment,
                                         RESULTS / f"{case['name']}-{index}.h264", expected)
-                                        for index, (segment, expected) in enumerate(zip(capture.segments, [case["expected"], second]))]})
+                                        for index, (segment, expected) in enumerate(zip(capture.segments, expected_segments))]})
                             if expected_error:
                                 check(expected_error in (RESULTS / (case["name"] + ".log")).read_text(), "Missing failure diagnostic")
                                 reports.append({"case": case["name"], "diagnostic": expected_error})

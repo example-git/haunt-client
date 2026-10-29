@@ -673,10 +673,11 @@ static gboolean make_video(void) {
   GstElement *source = gst_bin_get_by_name(GST_BIN(video), "source");
   if (remote_fd >= 0 || xid) g_object_set(source, "is-live", TRUE, "do-timestamp", TRUE, "format", GST_FORMAT_TIME, "max-buffers", (guint64)2, "leaky-type", 2, NULL);
   else g_object_set(source, "startx", screen_x, "starty", screen_y, "endx", screen_x + screen_width - 1, "endy", screen_y + screen_height - 1, "use-damage", FALSE, NULL);
-  if (remote_fd >= 0) set_portal_target(source);
-  gst_object_unref(source); video_configured = FALSE;
+  video_configured = FALSE;
   video_origin = (guint64)g_get_monotonic_time() * 1000;
-  if (!play(video, 3)) return FALSE;
+  if (!play(video, 3)) { gst_object_unref(source); return FALSE; }
+  if (remote_fd >= 0) set_portal_target(source);
+  gst_object_unref(source);
   if (remote_fd >= 0) {
     if (!start_portal_video()) return FALSE;
     GstElement *portal_source = gst_bin_get_by_name(GST_BIN(portal_video), "source");
