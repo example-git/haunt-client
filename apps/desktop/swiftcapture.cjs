@@ -1,6 +1,8 @@
 const { spawn, execFile } = require("node:child_process");
 const { EventEmitter } = require("node:events");
 const { promisify } = require("node:util");
+const { randomUUID } = require("node:crypto");
+const { captureDiagnostics } = require("./capture-diagnostics.cjs");
 
 const LIMIT = 4 * 1024 * 1024;
 // The watch client uses this same SCAP v1 framing. In FD mode stream_id is
@@ -273,20 +275,49 @@ class Capture extends EventEmitter {
     super();
     this.options = options;
     this.closed = false;
+    this.diagnosticID = options.diagnosticID ?? randomUUID();
+    this.stderr = "";
+    this.startupStderr = "";
+    this.lastPacket = {};
+    this.report("start", {
+      binary,
+      args: runtime.args ?? argumentsFor(options),
+    });
     this.child = spawn(binary, runtime.args ?? argumentsFor(options), {
       stdio: ["pipe", "ignore", "pipe", "pipe", "pipe"],
       ...(runtime.env ? { env: runtime.env } : {}),
     });
     this.finished = new Promise((resolve) => this.child.once("close", resolve));
-    let stderr = "";
+    this.child.once("spawn", () =>
+      this.report("spawn", { pid: this.child.pid }),
+    );
     this.child.stderr.on("data", (data) => {
-      stderr = (stderr + data.toString()).slice(-4096);
+      const text = data.toString();
+      this.stderr = (this.stderr + text).slice(-16384);
+      if (this.stderr.includes("Checking encoder "))
+        this.videoStartedAt ??= Date.now();
+      if (!this.video)
+        this.startupStderr = (this.startupStderr + text).slice(-16384);
+      this.report("worker", text);
     });
     this.child.once("error", (error) => this.fail(error));
-    this.child.once("close", () => {
+    this.child.once("exit", (code, signal) => {
+      this.report("exit", { code, signal, requested: this.closed });
+    });
+    this.child.once("close", (code, signal) => {
+      this.exited = true;
       clearTimeout(this.killTimer);
-      if (!this.closed)
-        this.fail(Error(stderr.trim() || "SwiftCapture stopped"));
+      if (!this.closed) {
+        const cancelled =
+          code === 1 && this.workerFailure() === "Capture cancelled";
+        this.fail(
+          Error(
+            cancelled
+              ? "Capture cancelled"
+              : `Capture worker exited unexpectedly (${signal ? `signal ${signal}` : `code ${code ?? "unknown"}`}).`,
+          ),
+        );
+      }
     });
     // Both pipes are private to this process; no local listening socket.
     for (const [fd, kind] of [
@@ -302,8 +333,73 @@ class Capture extends EventEmitter {
         }
       });
       this.child.stdio[fd].on("error", (error) => this.fail(error));
+      this.child.stdio[fd].on("end", () => {
+        this.report("pipe-ended", kind);
+        if (
+          kind === "video" ||
+          options.audio ||
+          options.audioSource ||
+          options.audioDevice
+        ) {
+          const timer = setTimeout(() => {
+            if (!this.closed)
+              this.fail(
+                Error(
+                  `Capture ${kind} pipe closed while the worker was running.`,
+                ),
+              );
+          }, 250);
+          timer.unref();
+        }
+      });
     }
-    this.child.stdin.on("error", () => {});
+    this.child.stdin.on("error", (error) => {
+      if (!this.closed)
+        this.fail(Error(`Capture control pipe failed: ${error.message}`));
+    });
+    if (runtime.stallTimeout) {
+      this.watchdog = setInterval(() => {
+        if (this.closed) return;
+        if (!this.video) {
+          if (
+            this.videoStartedAt !== undefined &&
+            Date.now() - this.videoStartedAt > runtime.stallTimeout
+          )
+            this.fail(
+              Error(
+                `Capture did not produce its first video frame within ${runtime.stallTimeout / 1000} seconds of encoder selection.`,
+              ),
+            );
+          return;
+        }
+        for (const kind of [
+          "video",
+          ...(options.audio || options.audioSource ? ["audio"] : []),
+        ]) {
+          if (
+            Date.now() - (this.lastPacket[kind] ?? this.configuredAt) >
+            runtime.stallTimeout
+          ) {
+            this.fail(
+              Error(
+                `Capture stopped delivering ${kind} for ${runtime.stallTimeout / 1000} seconds (${this.video.encoder ?? this.video.codec}).`,
+              ),
+            );
+            break;
+          }
+        }
+      }, 1000);
+      this.watchdog.unref();
+    }
+  }
+  report(event, detail) {
+    captureDiagnostics.record(this.diagnosticID, event, detail);
+  }
+  workerFailure() {
+    return (
+      this.stderr.match(/^Capture failure: (.+)$/m)?.[1] ??
+      this.stderr.trim().split("\n").at(-1)
+    );
   }
   packet(kind, packet) {
     if (this.closed) return;
@@ -311,12 +407,17 @@ class Capture extends EventEmitter {
       const raw = JSON.parse(packet.data.toString());
       if (kind === "video") {
         this.video = videoConfig(raw);
+        this.configuredAt = Date.now();
+        this.lastPacket.video = this.configuredAt;
+        this.report("video-config", this.video);
         this.emit("video-config", this.video);
       } else {
         this.audio = audioConfig(raw);
+        this.report("audio-config", this.audio);
         this.emit("audio-config", { sampleRate: raw.sampleRate });
       }
     } else if (packet.type === 2) {
+      this.lastPacket[kind] = Date.now();
       if (kind === "video" && this.video) this.emit("video", packet);
       if (kind === "audio" && this.audio)
         this.emit("audio", {
@@ -328,19 +429,40 @@ class Capture extends EventEmitter {
       this.fail(Error(packet.data.toString().slice(0, 4096)));
   }
   fail(error) {
-    if (this.closed) return;
+    if (this.closed || this.failing) return;
+    this.failing = true;
+    if (error.message !== "Capture cancelled") {
+      const detail = this.workerFailure();
+      if (detail && !error.message.includes(detail))
+        error.message += ` ${detail}`;
+    }
+    this.report("failure", {
+      message: error.message,
+      video: this.video,
+      lastPacket: this.lastPacket,
+      startup: this.startupStderr,
+      stderr: this.stderr,
+    });
     this.emit("failure", error);
     this.stop();
   }
   stop() {
     if (this.closed) return;
     this.closed = true;
+    clearInterval(this.watchdog);
+    this.report("stop", { failed: !!this.failing });
     this.emit("stopped");
+    if (this.exited) return;
     this.child.stdin.end("stop\n");
     this.child.kill("SIGTERM");
     this.killTimer = setTimeout(() => {
-      if (this.child.exitCode === null && this.child.signalCode === null)
+      if (this.child.exitCode === null && this.child.signalCode === null) {
+        this.report(
+          "forced-stop",
+          "Worker did not exit after SIGTERM; sending SIGKILL",
+        );
         this.child.kill("SIGKILL");
+      }
     }, 2000);
     this.killTimer.unref();
     // Never enumerate processes or kill workers owned by another app.

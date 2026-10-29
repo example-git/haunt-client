@@ -1,4 +1,5 @@
 import { DesktopUpdates } from "./DesktopUpdates";
+import { copyText } from "./clipboard";
 import { DesktopStorage } from "./DesktopStorage";
 import { DesktopCallControls } from "./DesktopCalls";
 import { UserName } from "./UserName";
@@ -391,6 +392,7 @@ export function ClientSettingsContent({
     [busy, setBusy] = useState(false),
     [voice, setVoice] = useState(soundsEnabled);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [captureAccess, setCaptureAccess] = useState({
     audio: false,
     video: false,
@@ -845,6 +847,27 @@ export function ClientSettingsContent({
         <div className="form">
           <VideoSettings purpose="camera" call={call} />
           <VideoSettings purpose="screen" call={call} />
+          {window.hauntDesktop?.mediaDiagnostics && (
+            <div>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    setDiagnosticsCopied(false);
+                    const report =
+                      await window.hauntDesktop!.mediaDiagnostics();
+                    await copyText(JSON.stringify(report, null, 2));
+                    setDiagnosticsCopied(true);
+                  })
+                }
+              >
+                Copy capture diagnostics
+              </button>
+              {diagnosticsCopied && (
+                <p role="status">Capture diagnostics copied.</p>
+              )}
+            </div>
+          )}
           {(
             [
               ["audioOutput", "audiooutput", "Output device"],

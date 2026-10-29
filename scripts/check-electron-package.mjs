@@ -1,4 +1,5 @@
 import { desktopFiles } from "./desktop-files.mjs";
+import { checkLinuxCaptureRuntime } from "./check-linux-capture-runtime.mjs";
 import { nativeRuntimeHash } from "./update-runtime.mjs";
 import fs from "node:fs/promises";
 import assert from "node:assert/strict";
@@ -64,6 +65,7 @@ if (process.platform === "darwin") {
 if (process.platform === "linux") {
   const directory = path.join(path.dirname(filename), "native/linux");
   const runtime = JSON.parse(asar.extractFile(filename, "update-runtime.json"));
+  await checkLinuxCaptureRuntime(path.join(directory, "HauntCaptureWorker"));
   assert.equal(
     await nativeRuntimeHash(directory),
     runtime.nativeRuntime,

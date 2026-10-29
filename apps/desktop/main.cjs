@@ -43,6 +43,7 @@ const {
 } = require("./notifications.cjs");
 const { chooseCapture } = require("./capture-picker.cjs");
 const { installNativeMedia } = require("./native-media.cjs");
+const { captureDiagnostics } = require("./capture-diagnostics.cjs");
 const { installLinuxAudio } = require("./linux-audio.cjs");
 const { DiskMediaCache } = require("./media-cache.cjs");
 const { installDesktopTools } = require("./desktop-tools.cjs");
@@ -214,11 +215,15 @@ async function startMain() {
   ipcMain.handle("window:state", (event, target) =>
     windowState(target, controlledWindow(event, target)),
   );
-  ipcMain.handle("media:diagnostics", (event) => {
+  ipcMain.handle("media:diagnostics", async (event) => {
     validateSender(event);
     return {
       hardwareAcceleration: app.isHardwareAccelerationEnabled(),
       gpu: app.getGPUFeatureStatus(),
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+      capture: await captureDiagnostics.snapshot(),
     };
   });
   ipcMain.handle("window:control", (event, action, target) => {
@@ -812,7 +817,15 @@ async function startMain() {
 }
 app
   .whenReady()
-  .then(startMain)
+  .then(() => {
+    captureDiagnostics.configure(path.join(app.getPath("userData"), "logs"));
+    captureDiagnostics.record("desktop", "start", {
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+    });
+    return startMain();
+  })
   .catch((error) => {
     console.error("Haunt startup:", error.message);
     dialog.showErrorBox("Haunt startup", error.message);

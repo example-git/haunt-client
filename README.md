@@ -96,8 +96,8 @@ signatures, preserve user profiles, and support failed-startup rollback. See the
 
 Linux desktop builds also require Go, a C compiler, `pkg-config`, and the
 GStreamer, PulseAudio, GLib and X11 development packages listed in the release
-guide. Desktop staging builds native helpers and bundles the capture runtime
-for the host architecture.
+guide. Desktop staging builds native helpers and packages the capture runtime
+inside one worker executable for the host architecture.
 
 ## Repository layout
 

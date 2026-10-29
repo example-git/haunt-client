@@ -88,6 +88,9 @@ export async function runtimeConfig(
     names.push(
       "native/linux-audio.c",
       "native/linux-capture.c",
+      "native/linux-capture-launcher/main.go",
+      "native/linux-capture-launcher/go.mod",
+      "vendor/selkies-gstreamer/manifest.json",
       "native/media-worker/main.go",
       "native/media-worker/go.mod",
       "native/media-worker/go.sum",

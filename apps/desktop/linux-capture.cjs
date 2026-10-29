@@ -1,45 +1,34 @@
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
-const path = require("node:path");
-const os = require("node:os");
 const { Capture } = require("./swiftcapture.cjs");
+const { captureDiagnostics } = require("./capture-diagnostics.cjs");
 
-function environment(binary) {
-  const root = path.dirname(binary);
-  return {
-    ...process.env,
-    LD_LIBRARY_PATH: [
-      path.join(root, "lib"),
-      "/opt/nvidia/deepstream/deepstream/lib",
-      "/usr/lib/aarch64-linux-gnu/tegra",
-      process.env.LD_LIBRARY_PATH,
-    ]
-      .filter(Boolean)
-      .join(path.delimiter),
-    GST_PLUGIN_SYSTEM_PATH_1_0: path.join(root, "plugins"),
-    GST_PLUGIN_PATH_1_0: "",
-    GST_REGISTRY_FORK: "no",
-    GST_REGISTRY_1_0: path.join(
-      process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"),
-      "haunt",
-      "gstreamer-registry.bin",
-    ),
-    PIPEWIRE_MODULE_DIR: path.join(root, "pipewire"),
-    PIPEWIRE_CONFIG_DIR: path.join(root, "pipewire-config"),
-    SPA_PLUGIN_DIR: path.join(root, "spa"),
-  };
+function environment() {
+  return { ...process.env };
 }
 
 async function listSources(binary) {
-  const { stdout } = await promisify(execFile)(binary, ["--list-sources"], {
-    timeout: 15000,
-    maxBuffer: 2 * 1024 * 1024,
-    env: environment(binary),
-  });
-  const result = JSON.parse(stdout);
-  if (!Array.isArray(result.screens) || !Array.isArray(result.audioSources))
-    throw Error("Invalid Linux capture source catalog");
-  return result;
+  try {
+    const { stdout, stderr } = await promisify(execFile)(
+      binary,
+      ["--list-sources"],
+      {
+        timeout: 15000,
+        maxBuffer: 2 * 1024 * 1024,
+        env: environment(binary),
+      },
+    );
+    if (stderr) captureDiagnostics.record("sources", "worker", stderr);
+    const result = JSON.parse(stdout);
+    if (!Array.isArray(result.screens) || !Array.isArray(result.audioSources))
+      throw Error("Invalid Linux capture source catalog");
+    if (result.audioError)
+      captureDiagnostics.record("sources", "audio-error", result.audioError);
+    return result;
+  } catch (error) {
+    captureDiagnostics.record("sources", "failure", error.message);
+    throw error;
+  }
 }
 
 class LinuxCapture extends Capture {
@@ -60,11 +49,13 @@ class LinuxCapture extends Capture {
         ...(options.audioSource ? [options.audioSource] : []),
       ],
       env: environment(binary),
+      stallTimeout: 30000,
     });
   }
 
   configure(mode) {
     if (this.closed) return Promise.reject(Error("Capture source ended"));
+    this.report("configure", mode);
     return new Promise((resolve, reject) => {
       const done = (error, config) => {
         clearTimeout(timer);
@@ -78,7 +69,6 @@ class LinuxCapture extends Capture {
       const stopped = () => done(Error("Capture source ended"));
       const timer = setTimeout(() => {
         const error = Error("Capture mode change timed out");
-        done(error);
         this.fail(error);
       }, 15000);
       this.once("video-config", configured);

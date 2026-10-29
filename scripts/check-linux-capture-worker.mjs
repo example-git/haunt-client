@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { checkLinuxCaptureRuntime } from "./check-linux-capture-runtime.mjs";
 
 const require = createRequire(import.meta.url);
 const { LinuxCapture, listSources } = require(
@@ -147,6 +148,20 @@ try {
     process.env.HAUNT_CAPTURE_WORKER ||
       "release/native/linux/HauntCaptureWorker",
   );
+  process.env.XDG_CACHE_HOME = path.join(scratch, "cache");
+  for (const key of [
+    "GST_PLUGIN_PATH",
+    "GST_PLUGIN_PATH_1_0",
+    "GST_PLUGIN_SYSTEM_PATH",
+    "GST_PLUGIN_SYSTEM_PATH_1_0",
+    "GST_REGISTRY",
+    "GST_REGISTRY_1_0",
+    "PIPEWIRE_MODULE_DIR",
+    "PIPEWIRE_CONFIG_DIR",
+    "SPA_PLUGIN_DIR",
+  ])
+    process.env[key] = path.join(scratch, "foreign-runtime");
+  const runtimeInfo = await checkLinuxCaptureRuntime(binary);
   let catalog;
   await until(async () => {
     catalog = await listSources(binary);
@@ -155,6 +170,36 @@ try {
       catalog.audioSources.some((a) => a.pid === other.pid)
     );
   });
+  let startupFailure;
+  if (process.env.XDG_SESSION_TYPE === "wayland") {
+    const config = path.join(runtimeInfo.root, "pipewire-config/client.conf");
+    const original = await fs.readFile(config);
+    await fs.writeFile(
+      config,
+      "context.properties = { log.level = 2 }\ncontext.spa-libs = { support.* = support/libspa-support }\ncontext.modules = []\n",
+    );
+    try {
+      capture = new LinuxCapture(binary, {
+        source: catalog.screens[0].id,
+        width: 640,
+        height: 480,
+        fps: 30,
+      });
+      capture.on("failure", (error) => {
+        startupFailure = error.message;
+      });
+      await until(() => startupFailure !== undefined);
+      await capture.finished;
+      assert.match(
+        startupFailure,
+        /Cannot start PipeWire screen capture \(source\): can't connect/,
+      );
+    } finally {
+      capture?.stop();
+      await capture?.finished;
+      await fs.writeFile(config, original);
+    }
+  }
   const snapshot = async () =>
     JSON.parse(
       (await exec("pactl", ["-f", "json", "list", "sink-inputs"])).stdout,
@@ -169,7 +214,9 @@ try {
   let before;
   await until(async () => {
     before = await snapshot();
-    return before.length === 2 && before.every((input) => input.sink !== 0xffffffff);
+    return (
+      before.length === 2 && before.every((input) => input.sink !== 0xffffffff)
+    );
   });
   const defaults = async () =>
     (await exec("pactl", ["info"])).stdout
@@ -245,6 +292,15 @@ try {
       );
     },
   );
+  const maps = await fs.readFile(`/proc/${capture.child.pid}/maps`, "utf8");
+  const gstMappings = maps
+    .split("\n")
+    .filter((line) => /\/libgst[^/ ]*\.so/.test(line));
+  assert(gstMappings.length > 0);
+  assert(
+    gstMappings.every((line) => line.includes(runtimeInfo.root + "/")),
+    gstMappings.join("\n"),
+  );
   const encoded = path.join(scratch, "video.h264");
   await fs.writeFile(encoded, Buffer.concat(video));
   const probe = JSON.parse(
@@ -293,6 +349,24 @@ try {
   const entire = await measure([701, 1601], []);
   capture.stop();
   await capture.finished;
+  let stalledFailure;
+  if (process.env.HAUNT_CAPTURE_CHECK_FAILURES === "1") {
+    assert.equal(process.env.GITHUB_ACTIONS, "true");
+    start(undefined);
+    await until(() => video.length >= 5);
+    capture.child.kill("SIGSTOP");
+    await until(() => failure !== undefined, 35000);
+    stalledFailure = failure.message;
+    assert.match(stalledFailure, /stopped delivering video for 30 seconds/);
+    await capture.finished;
+    assert.equal(capture.child.signalCode, "SIGKILL");
+    start(undefined);
+    await until(() => video.length >= 5);
+    capture.child.stdin.write("configure invalid\n");
+    await until(() => failure !== undefined);
+    assert.match(failure.message, /Invalid capture mode/);
+    await capture.finished;
+  }
   await until(
     async () =>
       !JSON.parse(
@@ -304,6 +378,10 @@ try {
   await fs.mkdir("test-results", { recursive: true });
   const evidence = {
     session: process.env.XDG_SESSION_TYPE,
+    startupFailure,
+    stalledFailure,
+    runtime: runtimeInfo,
+    bundledGStreamerLoaded: true,
     isolated,
     multiple,
     removed,

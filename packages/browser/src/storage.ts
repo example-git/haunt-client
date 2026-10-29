@@ -837,6 +837,10 @@ export interface DesktopBridge extends NativeBridge {
   mediaDiagnostics(): Promise<{
     hardwareAcceleration: boolean;
     gpu: Record<string, string>;
+    version: string;
+    platform: string;
+    arch: string;
+    capture: { file?: string; writeError?: string; log: string };
   }>;
   onCallWindowClosed(callback: () => void): () => void;
   windowState(target: "main" | "call"): Promise<{

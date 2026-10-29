@@ -19,6 +19,7 @@ export const desktopFiles = [
   "deep-links.cjs",
   "desktop-calls.cjs",
   "capture-picker.cjs",
+  "capture-diagnostics.cjs",
   "capture-preload.cjs",
   "capture-picker.html",
   "capture-picker.js",

@@ -202,49 +202,56 @@ export async function checkWaylandVideo(receiver) {
 
 export async function checkWaylandAudio(receiver) {
   let measured;
-  await expect
-    .poll(async () => {
-      measured = await receiver
-        .locator('.call-panel audio[aria-label$="screen_audio"]')
-        .evaluate(async (element) => {
-          const context = new AudioContext({ sampleRate: 48000 });
-          await context.resume();
-          const source = context.createMediaStreamSource(element.srcObject);
-          const analyser = context.createAnalyser();
-          analyser.fftSize = 8192;
-          source.connect(analyser);
-          try {
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            const spectrum = new Float32Array(analyser.frequencyBinCount);
-            analyser.getFloatFrequencyData(spectrum);
-            let bin = 1;
-            for (let i = 2; i < spectrum.length; i++)
-              if (spectrum[i] > spectrum[bin]) bin = i;
-            return {
-              frequency: (bin * context.sampleRate) / analyser.fftSize,
-              decibels: spectrum[bin],
-            };
-          } finally {
-            source.disconnect();
-            analyser.disconnect();
-            await context.close();
-          }
-        });
-      return Math.abs(measured.frequency - 997);
-    })
-    .toBeLessThan(12);
-  assert(measured.decibels > -45);
-  await fs.writeFile(
-    path.join(results, "audio.json"),
-    JSON.stringify(
-      {
-        expectedFrequency: 997,
-        microphoneMuted: true,
-        senderDeafened: true,
-        ...measured,
-      },
-      null,
-      2,
-    ),
-  );
+  const measurements = [];
+  try {
+    await expect
+      .poll(async () => {
+        measured = await receiver
+          .locator('.call-panel audio[aria-label$="screen_audio"]')
+          .evaluate(async (element) => {
+            const context = new AudioContext({ sampleRate: 48000 });
+            await context.resume();
+            const source = context.createMediaStreamSource(element.srcObject);
+            const analyser = context.createAnalyser();
+            analyser.fftSize = 8192;
+            source.connect(analyser);
+            try {
+              await new Promise((resolve) => setTimeout(resolve, 500));
+              const spectrum = new Float32Array(analyser.frequencyBinCount);
+              analyser.getFloatFrequencyData(spectrum);
+              let bin = 1;
+              for (let i = 2; i < spectrum.length; i++)
+                if (spectrum[i] > spectrum[bin]) bin = i;
+              return {
+                frequency: (bin * context.sampleRate) / analyser.fftSize,
+                decibels: spectrum[bin],
+              };
+            } finally {
+              source.disconnect();
+              analyser.disconnect();
+              await context.close();
+            }
+          });
+        measurements.push(measured);
+        return (
+          Math.abs(measured.frequency - 997) < 12 && measured.decibels > -45
+        );
+      })
+      .toBe(true);
+  } finally {
+    await fs.writeFile(
+      path.join(results, "audio.json"),
+      JSON.stringify(
+        {
+          expectedFrequency: 997,
+          microphoneMuted: true,
+          senderDeafened: true,
+          ...measured,
+          measurements,
+        },
+        null,
+        2,
+      ),
+    );
+  }
 }
