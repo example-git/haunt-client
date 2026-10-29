@@ -16,6 +16,10 @@ int main(int argc, char **argv) {
   remote_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
   g_assert_cmpint(remote_fd, >=, 0);
   g_assert_cmpint(connect(remote_fd, (struct sockaddr *)&address, sizeof(address)), ==, 0);
+  int monitor_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  g_assert_cmpint(monitor_fd, >=, 0);
+  g_assert_cmpint(connect(monitor_fd, (struct sockaddr *)&address, sizeof(address)), ==, 0);
+  g_assert_true(watch_portal_node(monitor_fd));
   GIOChannel *input = g_io_channel_unix_new(STDIN_FILENO);
   guint input_watch = g_io_add_watch(input, G_IO_IN | G_IO_HUP | G_IO_ERR, control, NULL);
   if (negotiate_portal_video()) {
@@ -29,6 +33,7 @@ int main(int argc, char **argv) {
     }
   }
   g_atomic_int_set(&stopping, TRUE);
+  close_portal_monitor();
   set_portal_target(NULL);
   GstElement *pipelines[] = {portal_video, video};
   for (guint i = 0; i < G_N_ELEMENTS(pipelines); i++) {

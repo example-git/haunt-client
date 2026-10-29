@@ -29,7 +29,7 @@ def run(*args, **kwargs):
 def build():
     BINARIES.mkdir(parents=True, exist_ok=True)
     for source, packages in [
-        ("capture-pipewire", ["gstreamer-1.0", "gstreamer-app-1.0", "gstreamer-video-1.0", "gio-unix-2.0", "libpulse", "x11", "xrandr", "xcomposite"]),
+        ("capture-pipewire", ["gstreamer-1.0", "gstreamer-app-1.0", "gstreamer-video-1.0", "gio-unix-2.0", "libpulse", "libpipewire-0.3", "x11", "xrandr", "xcomposite"]),
         ("pipewire-video-source", ["libpipewire-0.3"]),
     ]:
         flags = shlex.split(run("pkg-config", "--cflags", "--libs", *packages).decode())
@@ -108,7 +108,7 @@ class Capture:
         self.process.stdin.close()
 
 
-def decode(segment, filename, expected):
+def decode(segment, filename, expected, moving=True):
     config = segment["config"]
     width, height, rate = expected
     check((config["width"], config["height"], config["fps"]) == expected, config)
@@ -132,7 +132,7 @@ def decode(segment, filename, expected):
                 actual = tuple(pixels[offset:offset + 3])
                 check(all(abs(a - b) < 24 for a, b in zip(actual, expected_rgb)),
                     f"Decoded pixel mismatch at frame {frame}, ({x},{y}): {actual}, expected {expected_rgb}")
-    check(len(orientations) == 2, "Decoded video never displayed the source's changing image")
+    check(len(orientations) == (2 if moving else 1), "Decoded image changes did not match the source")
     return {"width": width, "height": height, "fps": rate, "decodedFrames": len(segment["frames"])}
 
 
@@ -149,6 +149,7 @@ def execute(minimum_version):
         {"name": "two-buffers-padded", "size": (641, 361), "buffers": (2, 2), "format": "BGRx", "padding": 60, "expected": (640, 360, 60)},
         {"name": "portrait-rgb", "size": (360, 640), "buffers": (2, 4), "format": "RGBx", "padding": 0, "expected": (270, 480, 30)},
         {"name": "wide-padded", "size": (1280, 360), "buffers": (2, 16), "format": "BGRx", "padding": 64, "expected": (640, 180, 15)},
+        {"name": "static-screen", "size": (320, 240), "buffers": (2, 4), "format": "BGRx", "padding": 0, "expected": (320, 240, 30), "static": True},
         {"name": "source-stops", "size": (320, 240), "buffers": (2, 4), "format": "BGRx", "padding": 0, "failure": "source"},
         {"name": "invalid-reconfigure", "size": (320, 240), "buffers": (2, 4), "format": "BGRx", "padding": 0, "failure": "configure"},
         {"name": "closed-output", "size": (320, 240), "buffers": (2, 4), "format": "BGRx", "padding": 0, "failure": "output"},
@@ -194,7 +195,7 @@ context.modules = [
                         try:
                             source = subprocess.Popen([str(BINARIES / "pipewire-video-source"),
                                 *map(str, case["size"]), *map(str, case["buffers"]), case["format"], str(case["padding"]),
-                                "silent" if case.get("failure") == "timeout" else "frames"],
+                                "silent" if case.get("failure") == "timeout" else "static" if case.get("static") else "frames"],
                                 env=env, stdout=subprocess.PIPE, stderr=source_log, text=True)
                             check(select.select([source.stdout], [], [], 10)[0], "Video source did not publish a node")
                             node = int(source.stdout.readline())
@@ -214,10 +215,17 @@ context.modules = [
                                 expected_error = "PipeWire screen capture produced no video frame within 15 seconds"
                             else:
                                 capture.until(lambda: capture.segments and len(capture.segments[0]["frames"]) >= rate + 4)
-                                if case.get("failure") == "source":
+                                if case.get("static"):
+                                    capture.until(lambda: len(capture.segments[0]["frames"]) >= 3 * rate)
+                                    capture.command("stop")
+                                    check(capture.process.wait(timeout=5) == 0, "Static screen capture failed")
+                                    expected_error = None
+                                    reports.append({"case": case["name"], "segments": [decode(capture.segments[0],
+                                        RESULTS / "static-screen.h264", case["expected"], moving=False)]})
+                                elif case.get("failure") == "source":
                                     source.terminate(); source.wait(timeout=5)
                                     check(capture.process.wait(timeout=10) == 1, "Lost source did not fail")
-                                    expected_error = "Capture failure:"
+                                    expected_error = "PipeWire screen capture source disappeared"
                                 elif case.get("failure") == "configure":
                                     capture.command("configure 640 480 17")
                                     check(capture.process.wait(timeout=5) == 1, "Invalid mode did not fail")

@@ -12,7 +12,7 @@ struct source {
   struct spa_source *timer;
   int width, height, stride, min_buffers, max_buffers, format, frames, result;
   unsigned allocated;
-  bool silent;
+  bool silent, static_image;
 };
 
 static void frame(void *userdata) {
@@ -52,7 +52,7 @@ static void frame(void *userdata) {
 static void tick(void *userdata, uint64_t expirations) {
   (void)expirations;
   struct source *source = userdata;
-  if (!source->silent) {
+  if (!source->silent && !(source->static_image && source->frames >= 5)) {
     int result = pw_stream_trigger_process(source->stream);
     if (result < 0) fprintf(stderr, "Source trigger failed: %s\n", spa_strerror(result));
   }
@@ -114,7 +114,7 @@ int main(int argc, char **argv) {
   struct source source = {.width = atoi(argv[1]), .height = atoi(argv[2]),
     .min_buffers = atoi(argv[3]), .max_buffers = atoi(argv[4]),
     .format = !strcmp(argv[5], "RGBx") ? SPA_VIDEO_FORMAT_RGBx : SPA_VIDEO_FORMAT_BGRx,
-    .silent = !strcmp(argv[7], "silent")};
+    .silent = !strcmp(argv[7], "silent"), .static_image = !strcmp(argv[7], "static")};
   source.stride = source.width * 4 + atoi(argv[6]);
   pw_init(NULL, NULL);
   source.loop = pw_main_loop_new(NULL);
