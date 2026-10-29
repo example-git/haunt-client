@@ -33,6 +33,8 @@ static int remote_fd = -1, status;
 static GstElement *video, *audio, *mixer;
 static GstElement *portal_video, *portal_target;
 static GMutex portal_lock;
+static gint portal_sample_received;
+static gboolean portal_negotiated;
 static pa_mainloop *pulse_loop;
 static pa_context *pulse;
 static GHashTable *taps, *seen_apps;
@@ -236,6 +238,18 @@ static gboolean gst_message(GstBus *gst_bus, GstMessage *message, gpointer unuse
     fprintf(stderr, "Capture warning (%s): %s%s%s\n", GST_OBJECT_NAME(message->src), warning->message, debug ? "\n" : "", debug ? debug : "");
     g_clear_error(&warning); g_free(debug);
   } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_EOS) fail("Capture source ended");
+  else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_APPLICATION && message->src == GST_OBJECT(portal_video)) {
+    const GstStructure *format = gst_message_get_structure(message);
+    if (gst_structure_has_name(format, "haunt-portal-format")) {
+      gst_structure_get_int(format, "width", &source_width);
+      gst_structure_get_int(format, "height", &source_height);
+      if (source_width < 2 || source_height < 2) fail("PipeWire screen capture negotiated invalid video dimensions");
+      else {
+        portal_negotiated = TRUE;
+        fprintf(stderr, "PipeWire video negotiated: %dx%d pixels\n", source_width, source_height);
+      }
+    }
+  }
   return G_SOURCE_CONTINUE;
 }
 
@@ -505,6 +519,15 @@ static GstFlowReturn portal_frame(GstAppSink *sink, gpointer unused) {
   (void)unused;
   GstSample *frame = gst_app_sink_pull_sample(sink);
   if (!frame) return GST_FLOW_EOS;
+  if (g_atomic_int_compare_and_exchange(&portal_sample_received, 0, 1)) {
+    GstVideoInfo info;
+    gst_video_info_init(&info);
+    GstCaps *caps = gst_sample_get_caps(frame);
+    gboolean valid = caps && gst_video_info_from_caps(&info, caps);
+    gst_element_post_message(portal_video, gst_message_new_application(GST_OBJECT(portal_video),
+      gst_structure_new("haunt-portal-format", "width", G_TYPE_INT, valid ? GST_VIDEO_INFO_WIDTH(&info) : 0,
+        "height", G_TYPE_INT, valid ? GST_VIDEO_INFO_HEIGHT(&info) : 0, NULL)));
+  }
   g_mutex_lock(&portal_lock);
   GstElement *target = portal_target ? gst_object_ref(portal_target) : NULL;
   g_mutex_unlock(&portal_lock);
@@ -542,6 +565,22 @@ static void set_portal_target(GstElement *source) {
   g_mutex_lock(&portal_lock);
   gst_object_replace((GstObject **)&portal_target, source ? GST_OBJECT(source) : NULL);
   g_mutex_unlock(&portal_lock);
+}
+
+static gboolean portal_video_timeout(gpointer unused) {
+  (void)unused;
+  fail("PipeWire screen capture produced no video frame within 15 seconds");
+  return G_SOURCE_REMOVE;
+}
+
+static gboolean negotiate_portal_video(void) {
+  fprintf(stderr, "PipeWire screen capture: waiting for negotiated video dimensions\n");
+  if (!start_portal_video()) return FALSE;
+  guint timeout = g_timeout_add_seconds(15, portal_video_timeout, NULL);
+  while (!portal_negotiated && !g_atomic_int_get(&status) && !g_atomic_int_get(&stopping))
+    g_main_context_iteration(NULL, TRUE);
+  if (g_main_context_find_source_by_id(NULL, timeout)) g_source_remove(timeout);
+  return portal_negotiated && !g_atomic_int_get(&status) && !g_atomic_int_get(&stopping);
 }
 
 static gboolean make_video(void) {
@@ -888,7 +927,10 @@ static gboolean open_portal(guint kind) {
   if (!streams || g_variant_n_children(streams) != 1) { fail("Screen capture portal did not provide one source"); g_variant_unref(result); if (streams) g_variant_unref(streams); return FALSE; }
   GVariant *entry = g_variant_get_child_value(streams, 0), *properties;
   g_variant_get(entry, "(u@a{sv})", &node_id, &properties);
-  g_variant_lookup(properties, "size", "(ii)", &source_width, &source_height);
+  int portal_width = 0, portal_height = 0;
+  if (g_variant_lookup(properties, "size", "(ii)", &portal_width, &portal_height))
+    fprintf(stderr, "Screen capture portal: size=%dx%d (compositor coordinates)\n", portal_width, portal_height);
+  else fprintf(stderr, "Screen capture portal: size omitted\n");
   guint actual = 0;
   if (g_variant_lookup(properties, "source_type", "u", &actual) && actual != kind) fail("Portal returned a different capture type");
   g_variant_unref(properties); g_variant_unref(entry); g_variant_unref(streams); g_variant_unref(result);
@@ -1041,6 +1083,7 @@ int main(int argc, char **argv) {
       else fail("Invalid Wayland capture source");
     } else selected = x11_sources(argv[2], NULL);
     if (selected && xid) selected = open_window();
+    if (selected && remote_fd >= 0) selected = negotiate_portal_video();
     if (selected && (source_width < 2 || source_height < 2)) fail("Capture source did not report its size");
     timestamp_origin = (guint64)g_get_monotonic_time() * 1000;
     video_origin = timestamp_origin;
