@@ -553,7 +553,7 @@ static gboolean start_portal_video(void) {
   GstElement *source = gst_bin_get_by_name(GST_BIN(portal_video), "source");
   char *node = g_strdup_printf("%u", node_id);
   g_object_set(source, "fd", remote_fd, "path", node, "do-timestamp", TRUE,
-    "always-copy", TRUE, "keepalive-time", MAX(1, 1000 / fps), NULL);
+    "always-copy", TRUE, "min-buffers", 1, "keepalive-time", MAX(1, 1000 / fps), NULL);
   g_free(node); gst_object_unref(source);
   GstElement *sink = gst_bin_get_by_name(GST_BIN(portal_video), "frames");
   g_signal_connect(sink, "new-sample", G_CALLBACK(portal_frame), NULL);
