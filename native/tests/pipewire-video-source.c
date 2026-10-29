@@ -1,5 +1,6 @@
 #include <pipewire/pipewire.h>
 #include <spa/param/video/format-utils.h>
+#include <spa/utils/result.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>

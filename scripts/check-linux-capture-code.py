@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import select
 import shlex
-import signal
+import shutil
 import socket
 import struct
 import subprocess
@@ -33,7 +33,7 @@ def build():
         ("pipewire-video-source", ["libpipewire-0.3"]),
     ]:
         flags = shlex.split(run("pkg-config", "--cflags", "--libs", *packages).decode())
-        subprocess.check_call(["cc", "-std=gnu11", "-O2", "-Wall", "-Wextra", "-Werror",
+        subprocess.check_call(["cc", "-std=gnu11", "-g", "-O2", "-Wall", "-Wextra", "-Werror",
             str(ROOT / f"native/tests/{source}.c"), "-o", str(BINARIES / source), *flags])
 
 
@@ -41,6 +41,7 @@ class Capture:
     def __init__(self, arguments, env, log):
         reader, writer = socket.socketpair()
         self.reader = reader
+        self.log = log
         self.bytes = bytearray()
         self.segments = []
         self.timestamps = []
@@ -87,6 +88,11 @@ class Capture:
     def until(self, predicate, timeout=12):
         deadline = time.monotonic() + timeout
         while not predicate():
+            if time.monotonic() >= deadline and shutil.which("gdb"):
+                command = ["gdb", "-batch", "-ex", "thread apply all bt", "-p", str(self.process.pid)]
+                if os.geteuid() != 0:
+                    command = ["sudo", "-n", *command]
+                subprocess.run(command, stdout=self.log, stderr=self.log, timeout=15, check=False)
             check(time.monotonic() < deadline, f"Timed out waiting for encoded video; packets={len(self.timestamps)}, segments={len(self.segments)}, bytes={len(self.bytes)}")
             self.receive()
 
