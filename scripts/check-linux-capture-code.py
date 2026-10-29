@@ -185,7 +185,7 @@ context.modules = [
                     "GST_REGISTRY": str(runtime / "registry.bin"), "GST_REGISTRY_1_0": str(runtime / "registry.bin"),
                     "PIPEWIRE_MODULE_DIR": str(runtime / "pipewire"), "PIPEWIRE_CONFIG_DIR": str(runtime / "pipewire-config"),
                     "PIPEWIRE_CONFIG_PREFIX": "", "PIPEWIRE_CONFIG_NAME": "client.conf", "SPA_PLUGIN_DIR": str(runtime / "spa"),
-                    "GST_CUDA_NVRTC_LIBNAME": str(runtime / "lib/libnvrtc.so"), "GST_DEBUG": "2,pipewiresrc:6,appsrc:6,videorate:6,x264enc:5", "GST_DEBUG_NO_COLOR": "1"}
+                    "GST_CUDA_NVRTC_LIBNAME": str(runtime / "lib/libnvrtc.so"), "GST_DEBUG": "2,pipewiresrc:6,appsrc:6,appsink:6,videorate:6,x264enc:5", "GST_DEBUG_NO_COLOR": "1"}
                 reports = []
                 for case in cases:
                     print("Testing", case["name"], flush=True)

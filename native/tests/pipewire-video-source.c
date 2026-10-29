@@ -40,7 +40,7 @@ static void frame(void *userdata) {
   }
   struct spa_meta_header *header = spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header, sizeof(*header));
   if (header) {
-    header->pts = -1; header->seq = source->frames; header->flags = 0; header->dts_offset = 0;
+    header->pts = pw_stream_get_nsec(source->stream); header->seq = source->frames; header->flags = 0; header->dts_offset = 0;
   }
   data->chunk->offset = 0;
   data->chunk->size = source->stride * source->height;
