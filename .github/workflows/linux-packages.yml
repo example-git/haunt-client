@@ -54,7 +54,7 @@ jobs:
           python3 scripts/check-linux-capture-code.py --build
           mv test-results/capture-code test-results/capture-code-ubuntu
       - name: Exercise bundled capture against newer PipeWire
-        run: docker run --rm -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash -c 'dnf install -y pipewire python3 ffmpeg-free && python3 scripts/check-linux-capture-code.py --minimum-pipewire 1.5.81'
+        run: docker run --rm -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash -c 'dnf install -y pipewire pipewire-utils python3 ffmpeg-free && python3 scripts/check-linux-capture-code.py --minimum-pipewire 1.5.81'
       - run: npx electron-builder --linux --publish never
       - run: npm run electron:check
       - run: npm run updates:pack

@@ -113,12 +113,20 @@ def decode(segment, filename, expected):
     frame_size = width * height * 3
     check(len(pixels) == len(segment["frames"]) * frame_size,
         f"Not every encoded frame decoded: {len(pixels)} bytes, {len(segment['frames'])} packets")
+    orientations = set()
     for frame in range(len(segment["frames"])):
-        for x, expected_rgb in [(width // 4, (224, 32, 64)), (3 * width // 4, (32, 224, 64))]:
-            offset = frame * frame_size + (height // 2 * width + x) * 3
-            actual = tuple(pixels[offset:offset + 3])
-            check(all(abs(a - b) < 24 for a, b in zip(actual, expected_rgb)),
-                f"Decoded pixel mismatch at frame {frame}: {actual}, expected {expected_rgb}")
+        origin = frame * frame_size
+        marker = origin + (height // 2 * width + width // 4) * 3
+        reversed_colors = pixels[marker] < pixels[marker + 1]
+        orientations.add(reversed_colors)
+        for y in [height // 8, height // 2, 7 * height // 8]:
+            for x in [width // 8, 3 * width // 8, 5 * width // 8, 7 * width // 8]:
+                expected_rgb = (224, 32, 64) if (x < width // 2) != reversed_colors else (32, 224, 64)
+                offset = origin + (y * width + x) * 3
+                actual = tuple(pixels[offset:offset + 3])
+                check(all(abs(a - b) < 24 for a, b in zip(actual, expected_rgb)),
+                    f"Decoded pixel mismatch at frame {frame}, ({x},{y}): {actual}, expected {expected_rgb}")
+    check(len(orientations) == 2, "Decoded video never displayed the source's changing image")
     return {"width": width, "height": height, "fps": rate, "decodedFrames": len(segment["frames"])}
 
 
@@ -186,11 +194,20 @@ context.modules = [
                             node = int(source.stdout.readline())
                             rate = case.get("expected", (0, 0, 30))[2]
                             capture = Capture([node, 640, 480, rate, *case["size"]], capture_env, capture_log)
+                            deadline = time.monotonic() + 10
+                            while True:
+                                inputs = run("pw-link", "-i", env=env).decode().strip().splitlines()
+                                outputs = run("pw-link", "-o", env=env).decode().strip().splitlines()
+                                if len(inputs) == 1 and len(outputs) == 1:
+                                    run("pw-link", outputs[0], inputs[0], env=env)
+                                    break
+                                check(time.monotonic() < deadline, f"Missing private video ports: {inputs}, {outputs}")
+                                time.sleep(0.05)
                             if case.get("failure") == "timeout":
                                 check(capture.process.wait(timeout=22) == 1, "Frame timeout did not fail")
                                 expected_error = "PipeWire screen capture produced no video frame within 15 seconds"
                             else:
-                                capture.until(lambda: capture.segments and len(capture.segments[0]["frames"]) >= 12)
+                                capture.until(lambda: capture.segments and len(capture.segments[0]["frames"]) >= rate + 4)
                                 if case.get("failure") == "source":
                                     source.terminate(); source.wait(timeout=5)
                                     check(capture.process.wait(timeout=10) == 1, "Lost source did not fail")
@@ -205,7 +222,7 @@ context.modules = [
                                     expected_error = "Capture pipe closed"
                                 else:
                                     capture.command("configure 320 240 15")
-                                    capture.until(lambda: len(capture.segments) == 2 and len(capture.segments[1]["frames"]) >= 12)
+                                    capture.until(lambda: len(capture.segments) == 2 and len(capture.segments[1]["frames"]) >= 19)
                                     capture.command("stop")
                                     check(capture.process.wait(timeout=5) == 0, "Normal stop failed")
                                     source.terminate()

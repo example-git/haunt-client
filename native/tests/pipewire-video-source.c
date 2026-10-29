@@ -30,7 +30,7 @@ static void frame(void *userdata) {
   for (int y = 0; y < source->height; y++) {
     for (int x = 0; x < source->width; x++) {
       unsigned char *pixel = pixels + y * source->stride + x * 4;
-      bool red = x < source->width / 2;
+      bool red = (x < source->width / 2) != (source->frames % 60 >= 30);
       pixel[0] = source->format == SPA_VIDEO_FORMAT_RGBx ? (red ? 224 : 32) : 64;
       pixel[1] = red ? 32 : 224;
       pixel[2] = source->format == SPA_VIDEO_FORMAT_RGBx ? 64 : (red ? 224 : 32);
