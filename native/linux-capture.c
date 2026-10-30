@@ -6,6 +6,7 @@
 #include <gio/gunixfdlist.h>
 #include <glib-unix.h>
 #include <pulse/pulseaudio.h>
+#include <pipewire/pipewire.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
@@ -35,6 +36,13 @@ static GstElement *portal_video, *portal_target;
 static GMutex portal_lock;
 static gint portal_sample_received;
 static gboolean portal_negotiated;
+static struct pw_thread_loop *node_loop;
+static struct pw_context *node_context;
+static struct pw_core *node_core;
+static struct pw_registry *node_registry;
+static struct spa_hook node_listener, node_core_listener;
+static gboolean node_seen, node_loop_started;
+static int node_sync;
 static pa_mainloop *pulse_loop;
 static pa_context *pulse;
 static GHashTable *taps, *seen_apps;
@@ -515,6 +523,59 @@ static gboolean open_window(void) {
   return TRUE;
 }
 
+static void node_added(void *unused, uint32_t id, uint32_t permissions, const char *type, uint32_t version, const struct spa_dict *properties) {
+  (void)unused; (void)permissions; (void)version; (void)properties;
+  if (id == node_id && !strcmp(type, PW_TYPE_INTERFACE_Node)) node_seen = TRUE;
+}
+
+static void node_removed(void *unused, uint32_t id) {
+  (void)unused;
+  if (id == node_id && !g_atomic_int_get(&stopping)) fail("PipeWire screen capture source disappeared");
+}
+
+static void node_error(void *unused, uint32_t id, int seq, int result, const char *message) {
+  (void)unused; (void)id; (void)seq;
+  if (g_atomic_int_get(&stopping)) return;
+  char *reason = g_strdup_printf("PipeWire source monitor failed (%d): %s", result, message);
+  fail(reason); g_free(reason);
+}
+
+static void node_ready(void *unused, uint32_t id, int seq) {
+  (void)unused;
+  if (id == PW_ID_CORE && seq == node_sync && !node_seen && !g_atomic_int_get(&stopping))
+    fail("PipeWire screen capture source is unavailable");
+}
+
+static gboolean watch_portal_node(int fd) {
+  pw_init(NULL, NULL);
+  node_loop = pw_thread_loop_new("haunt-source-monitor", NULL);
+  if (node_loop) node_context = pw_context_new(pw_thread_loop_get_loop(node_loop), NULL, 0);
+  if (!node_context) { close(fd); fail("Cannot create PipeWire source monitor"); return FALSE; }
+  node_core = pw_context_connect_fd(node_context, fd, NULL, 0);
+  if (!node_core) {
+    char *reason = g_strdup_printf("Cannot connect PipeWire source monitor: %s", g_strerror(errno));
+    fail(reason); g_free(reason); return FALSE;
+  }
+  static const struct pw_core_events core_events = {.version = PW_VERSION_CORE_EVENTS, .done = node_ready, .error = node_error};
+  static const struct pw_registry_events registry_events = {.version = PW_VERSION_REGISTRY_EVENTS, .global = node_added, .global_remove = node_removed};
+  pw_core_add_listener(node_core, &node_core_listener, &core_events, NULL);
+  node_registry = pw_core_get_registry(node_core, PW_VERSION_REGISTRY, 0);
+  if (!node_registry) { fail("Cannot inspect PipeWire capture source"); return FALSE; }
+  pw_registry_add_listener(node_registry, &node_listener, &registry_events, NULL);
+  node_sync = pw_core_sync(node_core, PW_ID_CORE, 0);
+  if (pw_thread_loop_start(node_loop) < 0) { fail("Cannot start PipeWire source monitor"); return FALSE; }
+  node_loop_started = TRUE;
+  return TRUE;
+}
+
+static void close_portal_monitor(void) {
+  if (node_loop_started) pw_thread_loop_stop(node_loop);
+  if (node_registry) pw_proxy_destroy((struct pw_proxy *)node_registry);
+  if (node_core) pw_core_disconnect(node_core);
+  if (node_context) pw_context_destroy(node_context);
+  if (node_loop) pw_thread_loop_destroy(node_loop);
+}
+
 static GstFlowReturn portal_frame(GstAppSink *sink, gpointer unused) {
   (void)unused;
   GstSample *frame = gst_app_sink_pull_sample(sink);
@@ -553,7 +614,7 @@ static gboolean start_portal_video(void) {
   GstElement *source = gst_bin_get_by_name(GST_BIN(portal_video), "source");
   char *node = g_strdup_printf("%u", node_id);
   g_object_set(source, "fd", remote_fd, "path", node, "do-timestamp", TRUE,
-    "always-copy", TRUE, "keepalive-time", MAX(1, 1000 / fps), NULL);
+    "always-copy", TRUE, "min-buffers", 1, "keepalive-time", MAX(1, 1000 / fps), NULL);
   g_free(node); gst_object_unref(source);
   GstElement *sink = gst_bin_get_by_name(GST_BIN(portal_video), "frames");
   g_signal_connect(sink, "new-sample", G_CALLBACK(portal_frame), NULL);
@@ -615,10 +676,11 @@ static gboolean make_video(void) {
   GstElement *source = gst_bin_get_by_name(GST_BIN(video), "source");
   if (remote_fd >= 0 || xid) g_object_set(source, "is-live", TRUE, "do-timestamp", TRUE, "format", GST_FORMAT_TIME, "max-buffers", (guint64)2, "leaky-type", 2, NULL);
   else g_object_set(source, "startx", screen_x, "starty", screen_y, "endx", screen_x + screen_width - 1, "endy", screen_y + screen_height - 1, "use-damage", FALSE, NULL);
-  if (remote_fd >= 0) set_portal_target(source);
-  gst_object_unref(source); video_configured = FALSE;
+  video_configured = FALSE;
   video_origin = (guint64)g_get_monotonic_time() * 1000;
-  if (!play(video, 3)) return FALSE;
+  if (!play(video, 3)) { gst_object_unref(source); return FALSE; }
+  if (remote_fd >= 0) set_portal_target(source);
+  gst_object_unref(source);
   if (remote_fd >= 0) {
     if (!start_portal_video()) return FALSE;
     GstElement *portal_source = gst_bin_get_by_name(GST_BIN(portal_video), "source");
@@ -898,6 +960,19 @@ static void portal_closed(GDBusConnection *connection, const char *sender, const
   fail("Screen sharing permission ended");
 }
 
+static int portal_remote(void) {
+  GError *error = NULL;
+  GUnixFDList *fds = NULL;
+  GVariantBuilder options;
+  g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
+  GVariant *result = g_dbus_connection_call_with_unix_fd_list_sync(bus, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.ScreenCast", "OpenPipeWireRemote", g_variant_new("(oa{sv})", session, &options), G_VARIANT_TYPE("(h)"), G_DBUS_CALL_FLAGS_NONE, 15000, NULL, &fds, NULL, &error);
+  if (!result) { fail(error->message); g_error_free(error); return -1; }
+  int handle; g_variant_get(result, "(h)", &handle); g_variant_unref(result);
+  int fd = g_unix_fd_list_get(fds, handle, &error); g_object_unref(fds);
+  if (fd < 0) { fail(error->message); g_error_free(error); }
+  return fd;
+}
+
 static gboolean open_portal(guint kind) {
   GError *error = NULL;
   bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
@@ -935,14 +1010,10 @@ static gboolean open_portal(guint kind) {
   if (g_variant_lookup(properties, "source_type", "u", &actual) && actual != kind) fail("Portal returned a different capture type");
   g_variant_unref(properties); g_variant_unref(entry); g_variant_unref(streams); g_variant_unref(result);
   if (g_atomic_int_get(&status)) return FALSE;
-  GUnixFDList *fds = NULL;
-  g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
-  result = g_dbus_connection_call_with_unix_fd_list_sync(bus, "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.ScreenCast", "OpenPipeWireRemote", g_variant_new("(oa{sv})", session, &options), G_VARIANT_TYPE("(h)"), G_DBUS_CALL_FLAGS_NONE, 15000, NULL, &fds, NULL, &error);
-  if (!result) { fail(error->message); g_error_free(error); return FALSE; }
-  int handle; g_variant_get(result, "(h)", &handle); g_variant_unref(result);
-  remote_fd = g_unix_fd_list_get(fds, handle, &error); g_object_unref(fds);
-  if (remote_fd < 0) { fail(error->message); g_error_free(error); return FALSE; }
-  return TRUE;
+  remote_fd = portal_remote();
+  if (remote_fd < 0) return FALSE;
+  int monitor_fd = portal_remote();
+  return monitor_fd >= 0 && watch_portal_node(monitor_fd);
 }
 
 static int xerror(Display *display, XErrorEvent *event) {
@@ -1091,6 +1162,7 @@ int main(int argc, char **argv) {
     g_io_channel_unref(input);
   } else { fail("Usage: --list-sources or --capture SOURCE WIDTH HEIGHT FPS [AUDIO_SOURCE]"); g_atomic_int_set(&status, 2); }
   g_atomic_int_set(&stopping, TRUE);
+  close_portal_monitor();
   if (window_timer) g_source_remove(window_timer);
   if (pulse_timer && g_main_context_find_source_by_id(NULL, pulse_timer)) g_source_remove(pulse_timer);
   g_atomic_int_set(&pulse_stopping, TRUE);

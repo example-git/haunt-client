@@ -29,6 +29,15 @@ conflicting inherited plugin paths. Linux x64 also verifies Selkies runtime hash
 and compiles a kernel with bundled NVRTC; this does not verify GPU encoding. `linux-runtime-install-*` records the runtime hashes,
 installer selection and capture results on x64 and ARM64.
 
+Native capture code checks compile the production worker into a test executable
+and connect it to real video streams on a private PipeWire server. They check
+small buffer pools, padded rows, RGB formats, portrait and wide frames, live
+reconfiguration, and failure diagnostics. H.264 packets must decode to the
+source's changing pixels with the expected dimensions and advancing timestamps.
+The bundled runtime runs against Ubuntu's PipeWire and a newer Fedora server;
+`capture-code*` artifacts retain source/worker logs, encoded streams and results.
+These software checks do not verify physical NVIDIA encoding or DMA-BUF capture.
+
 The Wayland capture workflow uses a software-rendered Sway session and a pinned
 portal backend with the pending upstream [capture-lifetime fix](https://github.com/emersion/xdg-desktop-portal-wlr/pull/407).
 It runs the backend's regression tests and verifies decoded video and share audio

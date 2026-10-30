@@ -45,7 +45,7 @@ jobs:
       - run: npm run build
       - name: Install RPM build tools
         if: matrix.platform == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxcomposite-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxcomposite-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libpipewire-0.3-dev gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire
       - run: npm run electron:stage
       - run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never
       - run: npm run electron:check

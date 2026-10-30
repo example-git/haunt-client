@@ -78,6 +78,7 @@ export async function buildLinuxCapture() {
             "gstreamer-video-1.0",
             "gio-unix-2.0",
             "libpulse",
+            "libpipewire-0.3",
             "x11",
             "xrandr",
             "xcomposite",

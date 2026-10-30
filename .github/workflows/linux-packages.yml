@@ -10,6 +10,8 @@ on:
       - scripts/check-linux-runtime-install.mjs
       - scripts/ci/check-linux-runtime-install.sh
       - native/linux-*.c
+      - native/tests/**
+      - scripts/check-linux-capture-code.py
       - native/linux-capture-launcher/**
       - vendor/selkies-gstreamer/**
       - scripts/check-linux-capture-runtime.mjs
@@ -40,13 +42,19 @@ jobs:
         run: |
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends rpm libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxcomposite-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire
+          sudo apt-get install -y --no-install-recommends rpm libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxcomposite-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire libpipewire-0.3-dev pipewire ffmpeg gdb
       - name: Verify capture runtime launcher
         run: cd native/linux-capture-launcher && go test ./...
       - run: npm ci
       - run: npm test -- --run tests/desktop-updates.test.ts tests/desktop-installer.test.ts tests/native-runtime.test.ts
       - run: npm run build
       - run: npm run electron:stage
+      - name: Exercise production capture code with real PipeWire buffers
+        run: |
+          python3 scripts/check-linux-capture-code.py --build
+          mv test-results/capture-code test-results/capture-code-ubuntu
+      - name: Exercise bundled capture against newer PipeWire
+        run: docker run --rm -e CI=true -v "$PWD:/workspace" -w /workspace fedora:44 bash -c 'dnf install -y pipewire pipewire-utils python3 ffmpeg-free && python3 scripts/check-linux-capture-code.py --minimum-pipewire 1.5.81'
       - run: npx electron-builder --linux --publish never
       - run: npm run electron:check
       - run: npm run updates:pack
@@ -60,5 +68,7 @@ jobs:
         if: always()
         with:
           name: linux-runtime-install-${{ matrix.os }}
-          path: test-results/linux-runtime-install-*.json
+          path: |
+            test-results/linux-runtime-install-*.json
+            test-results/capture-code*/**
           retention-days: 14

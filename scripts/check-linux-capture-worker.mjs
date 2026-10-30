@@ -192,7 +192,7 @@ try {
       await capture.finished;
       assert.match(
         startupFailure,
-        /Cannot start PipeWire screen capture \(source\): can't connect/,
+        /Cannot connect PipeWire source monitor: .+/,
       );
     } finally {
       capture?.stop();
