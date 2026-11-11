@@ -1,0 +1,64 @@
+name: Desktop first DM diagnostics
+on:
+  push:
+    branches: [diagnostics/dm-first-message]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: example-git/haunt-server
+          ref: 52826438ee75168436c6489250aa1e9aab6961fa
+          path: fixture-server
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: fixture-server/go.mod
+          cache-dependency-path: fixture-server/go.sum
+      - run: npm ci
+      - run: npm run build && npm run electron:stage
+      - run: npx electron-builder --win --x64 --dir --publish never
+      - run: npm run electron:check
+      - name: Build the pinned server for WSL
+        working-directory: fixture-server
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: go build -trimpath -o ../.runner-state/haunt-dm-server ./cmd/haunt
+      - uses: Vampire/setup-wsl@4c48163d9f981914dd8caa0fc335fe19cca5bff4
+        with:
+          distribution: Ubuntu-24.04
+          wsl-version: 1
+          use-cache: "false"
+          additional-packages: postgresql-16 ffmpeg
+      - name: Start isolated server and database
+        shell: wsl-bash {0}
+        run: |
+          pg_ctlcluster 16 main start
+          runuser -u postgres -- psql -v ON_ERROR_STOP=1 -c "CREATE USER haunt_dm_ci PASSWORD 'isolated-dm-fixture';"
+          runuser -u postgres -- createdb -O haunt_dm_ci haunt_dm_ci
+          mkdir -p test-results/dm-first-message .runner-state/server
+          chmod +x .runner-state/haunt-dm-server
+          nohup env HAUNT_INSTANCE_ID=dm-desktop-ci HAUNT_NAME='DM desktop CI' HAUNT_LISTEN_ADDR=127.0.0.1:18080 HAUNT_PUBLIC_URL=http://127.0.0.1:18080 HAUNT_DATABASE_URL=postgres://haunt_dm_ci:isolated-dm-fixture@127.0.0.1:5432/haunt_dm_ci?sslmode=disable HAUNT_BOOTSTRAP_USERNAME=owner HAUNT_BOOTSTRAP_PASSWORD='isolated DM test password' HAUNT_DATA_DIR="$PWD/.runner-state/server" .runner-state/haunt-dm-server > test-results/dm-first-message/server.log 2>&1 < /dev/null &
+          echo $! > .runner-state/server.pid
+      - name: Exercise native desktop first messages
+        run: node scripts/check-dm-first-message.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dm-first-message-windows
+          path: test-results/dm-first-message/
+          retention-days: 7

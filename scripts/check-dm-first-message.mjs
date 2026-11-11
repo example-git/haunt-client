@@ -1,0 +1,190 @@
+import { _electron as electron, expect as baseExpect } from "@playwright/test";
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { fillSignin } from "./signin-fields.mjs";
+
+assert.equal(process.env.CI, "true");
+assert.equal(process.platform, "win32");
+const expect = baseExpect.configure({ timeout: 30_000 });
+const origin = "http://127.0.0.1:18080";
+const password = "isolated DM test password";
+const results = path.resolve("test-results/dm-first-message");
+await fs.mkdir(results, { recursive: true });
+const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "haunt-dm-ci-"));
+const clients = [];
+const checks = [];
+const requests = [];
+const diagnostics = [];
+const accounts = new Map();
+const report = {
+  platform: process.platform,
+  revision: process.env.GITHUB_SHA,
+  passed: false,
+  checks,
+  requests,
+  diagnostics,
+};
+const save = () =>
+  fs.writeFile(path.join(results, "report.json"), JSON.stringify(report, null, 2));
+
+async function api(route, token, body, method = body ? "POST" : "GET") {
+  const response = await fetch(origin + "/api/v1" + route, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(30_000),
+  });
+  assert(response.ok, `${method} ${route}: ${response.status} ${response.ok ? "" : await response.text()}`);
+  return response.status === 204 ? undefined : response.json();
+}
+
+async function launch(username, suffix = username) {
+  const app = await electron.launch({
+    executablePath: path.resolve("release/builder/win-unpacked/haunt.exe"),
+    args: [`--user-data-dir=${path.join(scratch, suffix)}`],
+    timeout: 60_000,
+  });
+  const entry = { username, app, page: undefined };
+  clients.push(entry);
+  app.process().stderr.on("data", (data) => {
+    diagnostics.push({ client: suffix, kind: "stderr", text: String(data).slice(0, 4000) });
+  });
+  const page = await app.firstWindow();
+  entry.page = page;
+  page.setDefaultTimeout(30_000);
+  page.on("pageerror", (error) => diagnostics.push({ client: suffix, kind: "pageerror", text: error.message }));
+  page.on("console", (message) => {
+    if (message.type() === "error") diagnostics.push({ client: suffix, kind: "console", text: message.text() });
+  });
+  page.on("requestfailed", (request) => diagnostics.push({ client: suffix, kind: "requestfailed", path: new URL(request.url()).pathname, error: request.failure() }));
+  page.on("response", async (response) => {
+    const url = new URL(response.url());
+    if (!url.pathname.startsWith("/api/v1/")) return;
+    const row = { client: suffix, method: response.request().method(), path: url.pathname, status: response.status() };
+    requests.push(row);
+    if (/\/encryption(?:\/events)?$|\/dm-devices(?:\/[^/]+\/packages)?$/.test(url.pathname)) {
+      try {
+        const value = await response.json();
+        row.encryption = {
+          error: value.error,
+          revision: value.revision,
+          devices: value.devices?.map((device) => typeof device === "string" ? device : { id: device.id, user: device.user_id, revoked: device.revoked }),
+          packages: value.packages?.map((item) => ({ id: item.id, device: item.device_id })),
+          events: value.events?.map((event) => ({ revision: event.revision, actor: event.actor, devices: event.devices })),
+        };
+      } catch {}
+    }
+  });
+  await expect(page.locator(".app-titlebar")).toBeVisible({ timeout: 60_000 });
+  await page.evaluate(() => window.hauntDesktop.updates.healthy());
+  await page.getByRole("button", { name: "Add server", exact: true }).click();
+  await fillSignin(page, origin, username);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.locator(".connection")).toHaveText("Connected");
+  return entry;
+}
+
+async function open(client, username) {
+  const page = client.page;
+  await page.getByRole("button", { name: /^Direct messages and notifications/ }).click();
+  await page.getByRole("button", { name: "New direct message", exact: true }).click();
+  await page.getByLabel("Find people").fill(username);
+  await page.locator(".people-list input[type=checkbox]").check();
+  await page.getByRole("button", { name: "Start conversation", exact: true }).click();
+  await expect(page.locator(".dm-workspace")).toBeVisible();
+}
+
+async function show(client, body) {
+  const message = client.page.locator(".message").filter({ has: client.page.locator(".message-body", { hasText: body }) });
+  await expect(message).toHaveCount(1);
+  await expect(message.getByRole("img", { name: "End-to-end encrypted", exact: true })).toBeVisible();
+}
+
+async function send(client, body) {
+  await client.page.getByRole("textbox", { name: "Message", exact: true }).fill(body);
+  await client.page.getByRole("button", { name: "Send message", exact: true }).click();
+  await show(client, body);
+  await expect(client.page.locator(".pending-message")).toHaveCount(0);
+}
+
+async function exchange(a, b, label, simultaneous = false) {
+  if (simultaneous) {
+    await Promise.all([open(a, b.username), open(b, a.username)]);
+    await Promise.all([send(a, label + " first"), send(b, label + " reply")]);
+  } else {
+    await open(a, b.username);
+    await send(a, label + " first");
+    await open(b, a.username);
+    await show(b, label + " first");
+    await send(b, label + " reply");
+  }
+  await show(a, label + " reply");
+  await show(b, label + " first");
+  const account = accounts.get(a.username);
+  const conversation = await api("/dms", account.token, { members: [accounts.get(b.username).user.id] });
+  const history = await api(`/conversations/${conversation.id}/messages`, account.token);
+  assert(history.messages.length >= 2);
+  for (const message of history.messages) {
+    assert(message.body.startsWith("!haunt-mls-v1!"));
+    assert(!message.body.includes(label));
+  }
+  checks.push({ name: label, passed: true, conversation: conversation.id });
+  console.log("PASS", label);
+  await save();
+}
+
+async function close(...entries) {
+  for (const entry of entries) {
+    await entry.app.close();
+    entry.closed = true;
+  }
+}
+
+try {
+  await expect.poll(async () => {
+    try { return (await fetch(origin + "/readyz", { signal: AbortSignal.timeout(2000) })).status; }
+    catch { return 0; }
+  }, { timeout: 60_000 }).toBe(200);
+  const owner = await api("/auth/login", undefined, { username: "owner", password, device_name: "dm-ci" });
+  accounts.set("owner", owner);
+  const invite = await api("/invites", owner.token, { uses: 8, expires_in_hours: 1 });
+  for (const username of ["alice", "bob", "carol", "dave", "eve", "frank", "gina", "hank"]) {
+    const account = await api("/auth/register", undefined, { username, password, device_name: "dm-ci", invitation: invite.token });
+    accounts.set(username, account);
+  }
+  const alice = await launch("alice"), bob = await launch("bob");
+  await exchange(alice, bob, "fresh first DM");
+  await Promise.all([alice.page.reload(), bob.page.reload()]);
+  await exchange(bob, alice, "reply after reload");
+  await close(alice, bob);
+  const carol = await launch("carol"), dave = await launch("dave");
+  await exchange(dave, carol, "opposite initiator");
+  await close(carol, dave);
+  const starter = await launch("owner"), eve = await launch("eve"), frank = await launch("frank");
+  await exchange(starter, eve, "previous DM one");
+  await exchange(starter, frank, "previous DM two");
+  await exchange(eve, frank, "first DM after replying elsewhere");
+  await close(starter, eve, frank);
+  const gina = await launch("gina"), hank = await launch("hank");
+  await exchange(gina, hank, "simultaneous first DM", true);
+  await close(gina, hank);
+  report.passed = true;
+} catch (error) {
+  report.error = error.stack;
+  for (const client of clients.filter((entry) => !entry.closed && entry.page)) {
+    diagnostics.push({ client: client.username, kind: "visible-errors", text: await client.page.locator(".error,.dm-info,.pending-message").allTextContents().catch(() => []) });
+    await client.page.screenshot({ path: path.join(results, client.username + ".png") }).catch(() => {});
+  }
+  console.error("DM diagnostics", JSON.stringify(diagnostics.filter((item) => item.kind === "visible-errors")));
+  throw error;
+} finally {
+  await save();
+  for (const client of clients.filter((entry) => !entry.closed)) await client.app.close().catch(() => {});
+  await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
+}
