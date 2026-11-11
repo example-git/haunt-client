@@ -19,6 +19,7 @@ const checks = [];
 const requests = [];
 const diagnostics = [];
 const accounts = new Map();
+const devices = new Map();
 let keyring;
 const report = {
   platform: process.platform,
@@ -45,7 +46,7 @@ async function api(route, token, body, method = body ? "POST" : "GET") {
   return response.status === 204 ? undefined : response.json();
 }
 
-async function launch(username, suffix = username) {
+async function launch(username, suffix = username, resume = false) {
   const app = await electron.launch({
     executablePath: path.resolve(process.platform === "win32" ? "release/builder/win-unpacked/haunt.exe" : "release/builder/linux-unpacked/haunt"),
     args: [`--user-data-dir=${path.join(scratch, suffix)}`, ...(process.platform === "linux" ? ["--no-sandbox", "--password-store=gnome-libsecret"] : [])],
@@ -84,11 +85,21 @@ async function launch(username, suffix = username) {
   });
   await expect(page.locator(".app-titlebar")).toBeVisible({ timeout: 60_000 });
   await page.evaluate(() => window.hauntDesktop.updates.healthy());
-  await page.getByRole("button", { name: "Add server", exact: true }).click();
-  await fillSignin(page, origin, username);
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.locator(".connection")).toHaveText("Connected");
+  if (!resume) {
+    await page.getByRole("button", { name: "Add server", exact: true }).click();
+    await fillSignin(page, origin, username);
+    await page.getByLabel("Password", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page.locator(".connection")).toHaveText("Connected");
+  }
+  await expect(page.getByRole("button", { name: /^Direct messages and notifications/ })).toBeVisible();
+  if (resume) {
+    const device = await deviceID(entry);
+    await expect.poll(async () => {
+      const available = await api(`/me/dm-devices/${device}/packages`, accounts.get(username).token);
+      return available.packages.length;
+    }).toBeGreaterThan(0);
+  }
   return entry;
 }
 
@@ -199,9 +210,14 @@ function expirePackages(devices) {
   const sql = `UPDATE chatxo.dm_key_packages SET created_at=now()-interval '29 days' WHERE used_by IS NULL AND device_id IN (${devices.map((id) => `'${id}'`).join(",")})`;
   const command = process.platform === "win32" ? "wsl.exe" : "psql";
   const args = process.platform === "win32"
-    ? ["--distribution", "Ubuntu-24.04", "--exec", "runuser", "-u", "postgres", "--", "psql", "-d", "haunt_dm_ci"]
+    ? ["--distribution", "Ubuntu-24.04", "--user", "root", "--exec", "runuser", "-u", "postgres", "--", "psql", "-d", "haunt_dm_ci"]
     : ["postgres://haunt_dm_ci:isolated-dm-fixture@127.0.0.1:55432/haunt_dm_ci?sslmode=disable"];
-  const output = execFileSync(command, [...args, "-v", "ON_ERROR_STOP=1", "-c", sql], { encoding: "utf8" });
+  let output;
+  try {
+    output = execFileSync(command, [...args, "-v", "ON_ERROR_STOP=1"], { input: sql + ";\n", encoding: "utf8" });
+  } catch (error) {
+    throw new Error(`Fixture package expiry failed: ${error.stdout ?? ""} ${error.stderr ?? ""}`, { cause: error });
+  }
   assert.match(output, /UPDATE [1-9][0-9]*/);
   console.log("Expired older device packages in isolated fixture", output.trim());
 }
@@ -235,6 +251,7 @@ try {
   await scenario("opposite initiator", async () => {
     const carol = await launch("carol"), dave = await launch("dave");
     await exchange(dave, carol, "opposite initiator");
+    devices.set("carol", await deviceID(carol));
   });
   await scenario("simultaneous first DM", async () => {
     const gina = await launch("gina"), hank = await launch("hank");
@@ -260,11 +277,41 @@ try {
       expirePackages(oldDevices);
       await attempt("first DM with expired older devices", () => exchange(ivy, jules, "first DM with expired older devices"));
       await attempt("reverse first DM with expired older devices", () => exchange(jules, ivy, "reverse first DM with expired older devices"));
-      await attempt("ivy replies to owner after failed first contact", () => exchange(starter, ivy, "ivy replies to owner after failed first contact"));
-      await attempt("jules replies to owner after failed first contact", () => exchange(starter, jules, "jules replies to owner after failed first contact"));
+      await attempt("ivy replies to owner with expired older devices", () => exchange(starter, ivy, "ivy replies to owner with expired older devices"));
+      await attempt("jules replies to owner with expired older devices", () => exchange(starter, jules, "jules replies to owner with expired older devices"));
+      await attempt("older devices rejoin", async () => {
+        const returningIvy = await launch("ivy", "ivy-old", true);
+        await exchange(jules, returningIvy, "returning ivy receives and replies");
+        const returningJules = await launch("jules", "jules-old", true);
+        await exchange(returningIvy, returningJules, "returning jules receives and replies");
+        const conversation = await api("/dms", accounts.get("ivy").token, { members: [accounts.get("jules").user.id] });
+        const controls = await api(`/conversations/${conversation.id}/encryption/events?after=0`, accounts.get("ivy").token);
+        const expected = [...oldDevices, await deviceID(ivy), await deviceID(jules)].sort();
+        assert.deepEqual([...controls.events.at(-1).devices].sort(), expected);
+      });
     });
   });
-  report.passed = checks.length >= 15 && checks.every((check) => check.passed);
+  await scenario("recipient without usable keys", async () => {
+    const alice = await launch("alice", "alice", true);
+    expirePackages([devices.get("carol")]);
+    await open(alice, "carol");
+    const body = "recipient without usable keys must stay pending";
+    await alice.page.getByRole("textbox", { name: "Message", exact: true }).fill(body);
+    await alice.page.getByRole("button", { name: "Send message", exact: true }).click();
+    const pending = alice.page.locator(".pending-message").filter({ hasText: body });
+    await expect(pending).toContainText("Waiting for the other participant");
+    const conversation = await api("/dms", accounts.get("alice").token, { members: [accounts.get("carol").user.id] });
+    const history = await api(`/conversations/${conversation.id}/messages`, accounts.get("alice").token);
+    assert.equal(history.messages.length, 0);
+    checks.push({ name: "recipient without usable keys stays pending", passed: true });
+    const carol = await launch("carol", "carol", true);
+    await pending.getByRole("button", { name: "Retry", exact: true }).click();
+    await show(alice, body);
+    await open(carol, "alice");
+    await show(carol, body);
+    await exchange(carol, alice, "recipient reconnect restores delivery");
+  });
+  report.passed = checks.length >= 19 && checks.every((check) => check.passed);
   assert(report.passed, "At least one first-DM case failed; see report.json");
 } catch (error) {
   report.error = error.stack;

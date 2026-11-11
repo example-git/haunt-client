@@ -258,7 +258,14 @@ export class MLSClient implements DMEncryption {
   private async ensureGroup(a: CryptoAccount, id: string) {
     for (let attempt = 0; attempt < 4; attempt++) {
       const bundle = await this.syncUnlocked(a, id);
-      const active = (bundle.devices ?? []).filter((d) => !d.revoked);
+      const current = a.groups[id];
+      const active = (bundle.devices ?? []).filter(
+        (d) =>
+          !d.revoked &&
+          (d.id === a.device ||
+            current?.members.includes(d.id) ||
+            bundle.packages?.some((k) => k.device_id === d.id)),
+      );
       const participants =
         this.instance.snapshot.conversations.find((c) => c.id === id)
           ?.members ?? [];
@@ -269,7 +276,6 @@ export class MLSClient implements DMEncryption {
         throw Error(
           "Waiting for the other participant’s client to set up DM encryption. No plaintext message was sent.",
         );
-      const current = a.groups[id];
       if (bundle.revision && !current)
         throw Error(
           "This device is waiting to join the encrypted DM. Open another participating client to connect it.",
