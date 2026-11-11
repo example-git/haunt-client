@@ -210,7 +210,7 @@ async function expirePackages(devices) {
   const sql = `UPDATE chatxo.dm_key_packages SET created_at=now()-interval '29 days' WHERE used_by IS NULL AND device_id IN (${devices.map((id) => `'${id}'`).join(",")})`;
   const command = process.platform === "win32" ? "wsl.exe" : "psql";
   const args = process.platform === "win32"
-    ? ["--distribution", "Ubuntu-24.04", "--user", "root", "--exec", "runuser", "-u", "postgres", "--", "psql", "-d", "haunt_dm_ci"]
+    ? ["--distribution", "Ubuntu-24.04", "--user", "postgres", "--exec", "/usr/bin/psql", "-d", "haunt_dm_ci"]
     : ["postgres://haunt_dm_ci:isolated-dm-fixture@127.0.0.1:55432/haunt_dm_ci?sslmode=disable"];
   let output;
   const sqlFile = path.join(scratch, "expire-packages.sql");
@@ -222,7 +222,7 @@ async function expirePackages(devices) {
       : sqlFile;
     output = execFileSync(command, [...args, "-v", "ON_ERROR_STOP=1", "-f", input], options);
   } catch (error) {
-    throw new Error(`Fixture package expiry failed: ${error.message} ${error.stdout ?? ""} ${error.stderr ?? ""}`, { cause: error });
+    throw new Error(`Fixture package expiry failed: status=${error.status} signal=${error.signal} ${error.message} ${error.stdout ?? ""} ${error.stderr ?? ""}`, { cause: error });
   } finally {
     await fs.rm(sqlFile, { force: true });
   }
