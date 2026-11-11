@@ -180,8 +180,7 @@ async function scenario(label, work) {
     await attempt(label, work);
   } finally {
     for (const client of clients.slice(first).filter((entry) => !entry.closed)) {
-      await client.app.close().catch(() => {});
-      client.closed = true;
+      await close(client);
     }
   }
 }
@@ -225,6 +224,25 @@ function fixtureCommand(command, args) {
       else reject(new Error(`Fixture command failed: code=${code} signal=${signal} ${command} ${args.join(" ")} ${output} ${errors}`));
     });
   });
+}
+
+async function close(client) {
+  const process = client.app.process();
+  let timer;
+  await Promise.race([
+    client.app.close().catch(() => {}),
+    new Promise((resolve) => { timer = setTimeout(resolve, 5000); }),
+  ]);
+  clearTimeout(timer);
+  if (process.exitCode === null) {
+    console.log("Terminating completed test client", client.username, process.pid);
+    if (os.platform() === "win32") {
+      await fixtureCommand("taskkill.exe", ["/PID", String(process.pid), "/T", "/F"]);
+    } else {
+      process.kill("SIGKILL");
+    }
+  }
+  client.closed = true;
 }
 
 async function expirePackages(devices) {
@@ -290,15 +308,15 @@ try {
     await attempt("owner starts first DM", () => exchange(starter, eve, "owner starts first DM"));
     await attempt("member starts first DM to owner", () => exchange(frank, starter, "member starts first DM to owner"));
     await attempt("first DM after replying elsewhere", () => exchange(eve, frank, "first DM after replying elsewhere"));
-    await eve.app.close(); eve.closed = true;
-    await frank.app.close(); frank.closed = true;
+    await close(eve);
+    await close(frank);
     await attempt("older device first-contact setup", async () => {
       const oldIvy = await launch("ivy", "ivy-old"), oldJules = await launch("jules", "jules-old");
       await exchange(starter, oldIvy, "owner to ivy before device change");
       await exchange(starter, oldJules, "owner to jules before device change");
       const oldDevices = await Promise.all([deviceID(oldIvy), deviceID(oldJules)]);
-      await oldIvy.app.close(); oldIvy.closed = true;
-      await oldJules.app.close(); oldJules.closed = true;
+      await close(oldIvy);
+      await close(oldJules);
       const ivy = await launch("ivy", "ivy-current"), jules = await launch("jules", "jules-current");
       await exchange(starter, ivy, "owner to current ivy device");
       await exchange(starter, jules, "owner to current jules device");
@@ -352,7 +370,7 @@ try {
 } finally {
   await save();
   console.log("DM first-message report", JSON.stringify(report));
-  for (const client of clients.filter((entry) => !entry.closed)) await client.app.close().catch(() => {});
+  for (const client of clients.filter((entry) => !entry.closed)) await close(client);
   keyring?.kill();
   await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
 }
