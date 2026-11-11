@@ -19,6 +19,7 @@ import assert from "node:assert/strict";
 
 if (process.env.CI !== "true")
   throw Error("Run this installer rehearsal on a disposable native CI runner");
+const skipNotifications = process.argv.includes("--skip-notifications");
 const run = promisify(execFile);
 const require = createRequire(import.meta.url);
 const { LEGACY_PROFILE_NAME } = require("../apps/desktop/profile.cjs");
@@ -107,6 +108,7 @@ const report = {
   from: previousTag.slice(1),
   to: current.version,
   kind: "full-installer",
+  notificationChecksEnabled: !skipNotifications,
   passed: false,
 };
 async function verifiedFile(directory, descriptor) {
@@ -389,11 +391,18 @@ try {
   const previousExecutable = await install(
     await verifiedFile(downloads, prior.installer),
   );
-  notificationFixture = await prepareNativeNotifications(
-    scratch,
-    previousExecutable,
-  );
+  if (!skipNotifications)
+    notificationFixture = await prepareNativeNotifications(
+      scratch,
+      previousExecutable,
+    );
   if (process.platform === "linux") {
+    if (skipNotifications) {
+      process.env.XDG_DATA_HOME = path.join(scratch, "xdg-data");
+      process.env.XDG_CONFIG_HOME = path.join(scratch, "xdg-config");
+      await fs.mkdir(process.env.XDG_DATA_HOME, { recursive: true });
+      await fs.mkdir(process.env.XDG_CONFIG_HOME, { recursive: true });
+    }
     keyring = spawn(
       "gnome-keyring-daemon",
       ["--foreground", "--unlock", "--components=secrets"],
@@ -460,7 +469,7 @@ try {
   const currentExecutable = await install(
     await verifiedFile(path.resolve("release/updates"), current.installer),
   );
-  await launch(currentExecutable, current.version, true, true);
+  await launch(currentExecutable, current.version, true, !skipNotifications);
   await launch(currentExecutable, current.version, true);
   report.secondLaunchPreserved = true;
   report.passed = true;
