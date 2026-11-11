@@ -6,6 +6,70 @@ on:
 permissions:
   contents: read
 jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: haunt_dm_ci
+          POSTGRES_PASSWORD: isolated-dm-fixture
+          POSTGRES_DB: haunt_dm_ci
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: example-git/haunt-server
+          ref: 52826438ee75168436c6489250aa1e9aab6961fa
+          path: fixture-server
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: fixture-server/go.mod
+          cache-dependency-path: fixture-server/go.sum
+      - name: Install desktop test dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 libsecret-1-0 ffmpeg
+      - run: npm ci
+      - run: npm run build && npm run electron:stage
+      - run: npx electron-builder --linux --x64 --dir --publish never
+      - run: npm run electron:check
+      - name: Build the pinned server
+        working-directory: fixture-server
+        run: go build -trimpath -o ../.runner-state/haunt-dm-server ./cmd/haunt
+      - name: Start isolated server
+        env:
+          HAUNT_INSTANCE_ID: dm-desktop-ci
+          HAUNT_NAME: DM desktop CI
+          HAUNT_LISTEN_ADDR: 127.0.0.1:18080
+          HAUNT_PUBLIC_URL: http://127.0.0.1:18080
+          HAUNT_DATABASE_URL: postgres://haunt_dm_ci:isolated-dm-fixture@127.0.0.1:55432/haunt_dm_ci?sslmode=disable
+          HAUNT_BOOTSTRAP_USERNAME: owner
+          HAUNT_BOOTSTRAP_PASSWORD: isolated DM test password
+          HAUNT_DATA_DIR: .runner-state/server
+        run: |
+          mkdir -p test-results/dm-first-message
+          nohup .runner-state/haunt-dm-server > test-results/dm-first-message/server.log 2>&1 < /dev/null &
+      - name: Exercise native desktop first messages
+        run: dbus-run-session -- xvfb-run -a -s "-screen 0 1920x1080x24" node scripts/check-dm-first-message.mjs
+      - name: Print server diagnostics
+        if: always()
+        run: tail -n 100 test-results/dm-first-message/server.log || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dm-first-message-linux
+          path: test-results/dm-first-message/
+          retention-days: 7
   windows:
     runs-on: windows-2022
     timeout-minutes: 35
