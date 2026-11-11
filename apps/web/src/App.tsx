@@ -83,6 +83,7 @@ const MessageText = lazy(() => import("./MessageText"));
 import { Smile } from "lucide-react";
 import { copyText } from "./clipboard";
 import { useContextMenu, MenuAction } from "./ContextMenu";
+import { useComposerMenu } from "./ComposerMenu";
 import { Attachment, MessageEmbeds } from "./RichContent";
 import { unreadSummary } from "@haunt/core";
 import { installBadges } from "@haunt/browser/badges";
@@ -2679,6 +2680,15 @@ function Composer({
   useEffect(() => () => uploads.dispose(), [uploads]);
   useAttachmentDrop(dropTarget, uploads, busy);
   const input = useRef<HTMLTextAreaElement>(null);
+  const composerMenu = useComposerMenu({
+    input,
+    file,
+    uploads,
+    uploadsAllowed,
+    busy,
+    cancelReply: replyTo ? onCancelReply : undefined,
+    onError: setError,
+  });
   useLayoutEffect(() => {
     const node = input.current;
     if (!node) return;
@@ -2989,6 +2999,7 @@ function Composer({
           value={body}
           rows={1}
           placeholder={uploading ? "Uploading attachment…" : `Message ${title}`}
+          onContextMenu={composerMenu?.onContextMenu}
           onChange={(e) => {
             draft(e.target.value);
             setCaret(e.target.selectionStart);
@@ -3021,6 +3032,8 @@ function Composer({
           onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
+            composerMenu?.onKeyDown(e);
+            if (e.defaultPrevented) return;
             if (!emojiOpen && emojiCandidates.length) {
               if (["ArrowDown", "ArrowUp"].includes(e.key)) {
                 e.preventDefault();

@@ -11,6 +11,7 @@ assert(["win32", "linux"].includes(process.platform));
 const expect = baseExpect.configure({ timeout: 30_000 });
 const origin = "http://127.0.0.1:18080";
 const password = "isolated DM test password";
+const composerMode = process.env.HAUNT_COMPOSER_MENU === "true";
 const results = path.resolve("test-results/dm-first-message");
 await fs.mkdir(results, { recursive: true });
 const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "haunt-dm-ci-"));
@@ -127,6 +128,117 @@ async function send(client, body) {
   await client.page.getByRole("button", { name: "Send message", exact: true }).click();
   await show(client, body);
   await expect(client.page.locator(".pending-message")).toHaveCount(0);
+}
+
+async function composerMenu(sender, recipient, label) {
+  const page = sender.page;
+  await page.bringToFront();
+  const input = page.getByRole("textbox", { name: "Message", exact: true });
+  const menu = page.getByRole("menu", { name: "Message", exact: true });
+  const choose = async (name, mouse = false) => {
+    if (mouse) await input.click({ button: "right" });
+    else await input.press("Shift+F10");
+    await expect(menu).toBeVisible();
+    await menu.getByRole("menuitem", { name, exact: true }).click();
+    await expect(input).toBeFocused();
+  };
+  await sender.app.evaluate(({ clipboard }) => clipboard.clear());
+  await input.fill("left middle right");
+  await input.evaluate((node) => node.setSelectionRange(5, 11));
+  await choose("Copy");
+  await expect
+    .poll(() => sender.app.evaluate(({ clipboard }) => clipboard.readText()))
+    .toBe("middle");
+  await input.evaluate((node) => node.setSelectionRange(5, 11));
+  await choose("Cut");
+  await expect(input).toHaveValue("left  right");
+  await input.evaluate((node) => node.setSelectionRange(5, 5));
+  await choose("Paste");
+  await expect(input).toHaveValue("left middle right");
+  await choose("Undo");
+  await expect(input).toHaveValue("left  right");
+  await choose("Redo");
+  await expect(input).toHaveValue("left middle right");
+  await input.press("Shift+F10");
+  await expect(menu).toBeVisible();
+  await expect(
+    menu.getByRole("menuitem", {
+      name: "Paste image as attachment",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await menu.getByRole("menuitem", { name: "Select all", exact: true }).click();
+  assert.deepEqual(
+    await input.evaluate((node) => [node.selectionStart, node.selectionEnd]),
+    [0, 17],
+  );
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 64;
+    canvas.getContext("2d").fillRect(0, 0, 64, 64);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  const writeImage = () =>
+    sender.app.evaluate(async ({ clipboard, ClipboardItem }, value) => {
+      await clipboard.write([
+        new ClipboardItem({
+          "image/png": new Blob(
+            [new Uint8Array(Buffer.from(value, "base64"))],
+            { type: "image/png" },
+          ),
+        }),
+      ]);
+    }, image);
+  await writeImage();
+  await input.fill(label + " image");
+  await choose("Paste image as attachment", true);
+  await expect(
+    page.getByRole("button", { name: "Remove pasted-image.png", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await show(sender, label + " image");
+  await show(recipient, label + " image");
+  const delivered = recipient.page
+    .locator(".message")
+    .filter({
+      has: recipient.page.locator(".message-body", {
+        hasText: label + " image",
+      }),
+    });
+  await expect(delivered.locator("img.attachment-image")).toBeVisible();
+  await expect
+    .poll(() =>
+      delivered
+        .locator("img.attachment-image")
+        .evaluate((node) => node.complete && node.naturalWidth > 0),
+    )
+    .toBe(true);
+  await page.bringToFront();
+  await writeImage();
+  await choose("Paste", true);
+  await expect(page.locator(".attachment-chips > span")).toHaveCount(1);
+  await expect(page.locator(".attachment-chips button")).toBeVisible();
+  await page.locator(".attachment-chips button").click();
+  await input.click({ button: "right" });
+  const picking = page.waitForEvent("filechooser");
+  await menu
+    .getByRole("menuitem", { name: "Attach file…", exact: true })
+    .click();
+  await (
+    await picking
+  ).setFiles({
+    name: "chosen.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(image, "base64"),
+  });
+  await expect(
+    page.getByRole("button", { name: "Remove chosen.png", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Remove chosen.png", exact: true })
+    .click();
+  checks.push({ name: label, passed: true });
+  await save();
 }
 
 async function exchange(a, b, label, simultaneous = false) {
@@ -282,10 +394,38 @@ try {
   accounts.set("owner", owner);
   await api("/channels", owner.token, { name: "general", kind: "text" });
   const invite = await api("/invites", owner.token, { uses: 10, expires_in_hours: 1 });
-  for (const username of ["alice", "bob", "carol", "dave", "eve", "frank", "gina", "hank", "ivy", "jules"]) {
+  for (const username of composerMode ? ["alice", "bob"] : ["alice", "bob", "carol", "dave", "eve", "frank", "gina", "hank", "ivy", "jules"]) {
     const account = await api("/auth/register", undefined, { username, password, device_name: "dm-ci", invitation: invite.token });
     accounts.set(username, account);
   }
+  if (composerMode) {
+    await scenario("composer context menus", async () => {
+      const alice = await launch("alice"),
+        bob = await launch("bob");
+      for (const client of [alice, bob])
+        await client.page
+          .locator("button.channel")
+          .filter({
+            has: client.page.locator(".channel-name", { hasText: /^general$/ }),
+          })
+          .click();
+      await composerMenu(alice, bob, "channel composer");
+      await exchange(alice, bob, "composer DM setup");
+      await composerMenu(alice, bob, "DM composer");
+      const conversation = await api("/dms", accounts.get("alice").token, {
+        members: [accounts.get("bob").user.id],
+      });
+      const history = await api(
+        `/conversations/${conversation.id}/messages`,
+        accounts.get("alice").token,
+      );
+      assert(
+        history.messages.every((message) =>
+          message.body.startsWith("!haunt-mls-v1!"),
+        ),
+      );
+    });
+  } else {
   await scenario("fresh first DM", async () => {
     const alice = await launch("alice"), bob = await launch("bob");
     await exchange(alice, bob, "fresh first DM");
@@ -357,7 +497,8 @@ try {
     await show(carol, body);
     await exchange(carol, alice, "recipient reconnect restores delivery");
   });
-  report.passed = checks.length >= 19 && checks.every((check) => check.passed);
+  }
+  report.passed = checks.length >= (composerMode ? 3 : 19) && checks.every((check) => check.passed);
   assert(report.passed, "At least one first-DM case failed; see report.json");
 } catch (error) {
   report.error = error.stack;

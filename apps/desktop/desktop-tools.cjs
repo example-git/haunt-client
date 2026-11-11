@@ -318,6 +318,34 @@ async function installDesktopTools({
     const error = await shell.openPath(directory);
     if (error) throw Error(error);
   });
+  const imageTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+  ipcMain.handle("clipboard:formats", async (event) => {
+    validateSender(event);
+    const formats = await Promise.all(
+      imageTypes.map((type) => clipboard.has(type)),
+    );
+    return { image: formats.some(Boolean) };
+  });
+  ipcMain.handle("clipboard:read-image", async (event) => {
+    validateSender(event);
+    for (const item of await clipboard.read()) {
+      const type = imageTypes.find((type) => item.types.includes(type));
+      if (!type) continue;
+      const blob = await item.getType(type);
+      if (!blob.size || blob.size > 20 * 1024 * 1024)
+        throw Error("Choose a clipboard image up to 20 MiB.");
+      return { type, bytes: new Uint8Array(await blob.arrayBuffer()) };
+    }
+    throw Error("There is no image on the clipboard.");
+  });
+  ipcMain.handle("edit:command", (event, command) => {
+    validateSender(event);
+    if (
+      !["undo", "redo", "cut", "copy", "paste", "selectAll"].includes(command)
+    )
+      throw Error("Unknown editing command.");
+    event.sender[command]();
+  });
   ipcMain.handle("media:copy-image", (event, bytes) => {
     validateSender(event);
     if (!(bytes instanceof Uint8Array) || bytes.byteLength > 20 * 1024 * 1024)

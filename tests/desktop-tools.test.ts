@@ -14,6 +14,114 @@ const { DiskMediaCache } = require("../apps/desktop/media-cache.cjs");
 const { installDesktopTools } = require("../apps/desktop/desktop-tools.cjs");
 const { writeRanges } = require("../apps/desktop/range-download.cjs");
 
+it("limits composer clipboard and editing IPC to trusted senders and supported payloads", async () => {
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), "haunt-clipboard-"),
+  );
+  const app = Object.assign(new EventEmitter(), { getPath: () => directory });
+  const sender = Object.fromEntries(
+    ["undo", "redo", "cut", "copy", "paste", "selectAll", "reload"].map(
+      (name) => [name, vi.fn()],
+    ),
+  );
+  const event = { sender };
+  const handlers = new Map();
+  const clipboard = {
+    has: vi.fn(async (type: string) => type === "image/png"),
+    read: vi.fn(),
+  };
+  try {
+    await installDesktopTools({
+      app,
+      parent: Object.assign(new EventEmitter(), {
+        isDestroyed: () => false,
+        webContents: { send: vi.fn() },
+      }),
+      session: new EventEmitter(),
+      ipcMain: {
+        handle: (name: string, handler: unknown) => handlers.set(name, handler),
+      },
+      dialog: {},
+      shell: {},
+      clipboard,
+      nativeImage: {},
+      validateSender: (value: unknown) => {
+        if (value !== event) throw Error("Untrusted");
+      },
+      mediaCache: new DiskMediaCache(path.join(directory, "media")),
+    });
+    for (const name of ["clipboard:formats", "clipboard:read-image"])
+      await expect(handlers.get(name)({})).rejects.toThrow("Untrusted");
+    expect(clipboard.has).not.toHaveBeenCalled();
+    expect(clipboard.read).not.toHaveBeenCalled();
+    expect(() => handlers.get("edit:command")({}, "paste")).toThrow(
+      "Untrusted",
+    );
+    expect(() => handlers.get("edit:command")(event, "reload")).toThrow(
+      "Unknown editing command",
+    );
+    expect(sender.reload).not.toHaveBeenCalled();
+    for (const command of [
+      "undo",
+      "redo",
+      "cut",
+      "copy",
+      "paste",
+      "selectAll",
+    ]) {
+      handlers.get("edit:command")(event, command);
+      expect(sender[command]).toHaveBeenCalledOnce();
+    }
+    await expect(handlers.get("clipboard:formats")(event)).resolves.toEqual({
+      image: true,
+    });
+    expect(clipboard.read).not.toHaveBeenCalled();
+    clipboard.has.mockResolvedValue(false);
+    await expect(handlers.get("clipboard:formats")(event)).resolves.toEqual({
+      image: false,
+    });
+    clipboard.read.mockResolvedValue([]);
+    await expect(handlers.get("clipboard:read-image")(event)).rejects.toThrow(
+      "no image",
+    );
+    const getType = vi.fn();
+    clipboard.read.mockResolvedValue([
+      { types: ["text/html", "image/svg+xml"], getType },
+    ]);
+    await expect(handlers.get("clipboard:read-image")(event)).rejects.toThrow(
+      "no image",
+    );
+    expect(getType).not.toHaveBeenCalled();
+    for (const size of [0, 20 * 1024 * 1024 + 1]) {
+      const arrayBuffer = vi.fn();
+      getType.mockResolvedValue({ size, arrayBuffer });
+      clipboard.read.mockResolvedValue([{ types: ["image/png"], getType }]);
+      await expect(handlers.get("clipboard:read-image")(event)).rejects.toThrow(
+        "20 MiB",
+      );
+      expect(arrayBuffer).not.toHaveBeenCalled();
+    }
+    getType.mockResolvedValue(
+      new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
+    );
+    clipboard.read.mockResolvedValue([
+      { types: ["image/jpeg", "image/png"], getType },
+    ]);
+    await expect(handlers.get("clipboard:read-image")(event)).resolves.toEqual({
+      type: "image/png",
+      bytes: new Uint8Array([1, 2, 3]),
+    });
+    expect(getType).toHaveBeenLastCalledWith("image/png");
+    getType.mockRejectedValue(Error("Clipboard changed"));
+    await expect(handlers.get("clipboard:read-image")(event)).rejects.toThrow(
+      "Clipboard changed",
+    );
+  } finally {
+    app.emit("before-quit");
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 it("saves every range of a video larger than the proxy chunk and removes incomplete files", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "haunt-ranges-"));
   const bytes = Buffer.alloc(9 * 1024 * 1024 + 7, 0x61),

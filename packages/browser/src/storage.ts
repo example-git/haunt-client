@@ -787,6 +787,13 @@ export interface DesktopBridge extends NativeBridge {
     chooseDownloads(): Promise<string>;
     reveal(kind: "media" | "application" | "downloads"): Promise<void>;
   };
+  clipboard?: {
+    formats(): Promise<{ image: boolean }>;
+    readImage(): Promise<{ type: string; bytes: Uint8Array }>;
+  };
+  edit?(
+    command: "undo" | "redo" | "cut" | "copy" | "paste" | "selectAll",
+  ): Promise<void>;
   copyImage?(bytes: Uint8Array): Promise<void>;
   linuxAudio?: {
     start(id: string): Promise<{ label: string } | null>;

@@ -82,6 +82,11 @@ contextBridge.exposeInMainWorld("hauntDesktop", {
     chooseDownloads: () => ipcRenderer.invoke("desktop:download-directory"),
     reveal: (kind) => ipcRenderer.invoke("desktop:reveal-storage", kind),
   },
+  clipboard: {
+    formats: () => ipcRenderer.invoke("clipboard:formats"),
+    readImage: () => ipcRenderer.invoke("clipboard:read-image"),
+  },
+  edit: (command) => ipcRenderer.invoke("edit:command", command),
   copyImage: (bytes) => ipcRenderer.invoke("media:copy-image", bytes),
   nativeCaptureAvailable: ipcRenderer.sendSync("native:available") === true,
   nativeScreenCaptureAvailable:
