@@ -205,7 +205,7 @@ async function deviceID(client) {
   });
 }
 
-function expirePackages(devices) {
+async function expirePackages(devices) {
   for (const id of devices) assert.match(id, /^[0-9a-f-]{36}$/);
   const sql = `UPDATE chatxo.dm_key_packages SET created_at=now()-interval '29 days' WHERE used_by IS NULL AND device_id IN (${devices.map((id) => `'${id}'`).join(",")})`;
   const command = process.platform === "win32" ? "wsl.exe" : "psql";
@@ -213,10 +213,18 @@ function expirePackages(devices) {
     ? ["--distribution", "Ubuntu-24.04", "--user", "root", "--exec", "runuser", "-u", "postgres", "--", "psql", "-d", "haunt_dm_ci"]
     : ["postgres://haunt_dm_ci:isolated-dm-fixture@127.0.0.1:55432/haunt_dm_ci?sslmode=disable"];
   let output;
+  const sqlFile = path.join(scratch, "expire-packages.sql");
+  await fs.writeFile(sqlFile, sql + ";\n");
+  const options = { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] };
   try {
-    output = execFileSync(command, [...args, "-v", "ON_ERROR_STOP=1"], { input: sql + ";\n", encoding: "utf8" });
+    const input = process.platform === "win32"
+      ? execFileSync("wsl.exe", ["--distribution", "Ubuntu-24.04", "--user", "root", "--exec", "wslpath", "-a", sqlFile], options).trim()
+      : sqlFile;
+    output = execFileSync(command, [...args, "-v", "ON_ERROR_STOP=1", "-f", input], options);
   } catch (error) {
-    throw new Error(`Fixture package expiry failed: ${error.stdout ?? ""} ${error.stderr ?? ""}`, { cause: error });
+    throw new Error(`Fixture package expiry failed: ${error.message} ${error.stdout ?? ""} ${error.stderr ?? ""}`, { cause: error });
+  } finally {
+    await fs.rm(sqlFile, { force: true });
   }
   assert.match(output, /UPDATE [1-9][0-9]*/);
   console.log("Expired older device packages in isolated fixture", output.trim());
@@ -274,7 +282,7 @@ try {
       const ivy = await launch("ivy", "ivy-current"), jules = await launch("jules", "jules-current");
       await exchange(starter, ivy, "owner to current ivy device");
       await exchange(starter, jules, "owner to current jules device");
-      expirePackages(oldDevices);
+      await expirePackages(oldDevices);
       await attempt("first DM with expired older devices", () => exchange(ivy, jules, "first DM with expired older devices"));
       await attempt("reverse first DM with expired older devices", () => exchange(jules, ivy, "reverse first DM with expired older devices"));
       await attempt("ivy replies to owner with expired older devices", () => exchange(starter, ivy, "ivy replies to owner with expired older devices"));
@@ -293,7 +301,7 @@ try {
   });
   await scenario("recipient without usable keys", async () => {
     const alice = await launch("alice", "alice", true);
-    expirePackages([devices.get("carol")]);
+    await expirePackages([devices.get("carol")]);
     await open(alice, "carol");
     const body = "recipient without usable keys must stay pending";
     await alice.page.getByRole("textbox", { name: "Message", exact: true }).fill(body);
