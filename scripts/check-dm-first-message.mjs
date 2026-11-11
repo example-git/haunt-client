@@ -402,13 +402,16 @@ try {
     await scenario("composer context menus", async () => {
       const alice = await launch("alice"),
         bob = await launch("bob");
-      for (const client of [alice, bob])
+      for (const client of [alice, bob]) {
+        const dismissMembers = client.page.getByRole("button", { name: "Dismiss member list", exact: true });
+        if (await dismissMembers.isVisible()) await dismissMembers.click();
         await client.page
           .locator("button.channel")
           .filter({
             has: client.page.locator(".channel-name", { hasText: /^general$/ }),
           })
           .click();
+      }
       await composerMenu(alice, bob, "channel composer");
       await exchange(alice, bob, "composer DM setup");
       await composerMenu(alice, bob, "DM composer");
