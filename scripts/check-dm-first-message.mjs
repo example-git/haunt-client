@@ -205,6 +205,28 @@ async function deviceID(client) {
   });
 }
 
+function fixtureCommand(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let output = "", errors = "";
+    child.stdout.on("data", (data) => { output += data; });
+    child.stderr.on("data", (data) => { errors += data; });
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      child.stdout.destroy();
+      child.stderr.destroy();
+      child.unref();
+      reject(new Error(`Fixture command timed out: ${command} ${args.join(" ")} ${output} ${errors}`));
+    }, 30_000);
+    child.on("error", (error) => { clearTimeout(timer); reject(error); });
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(output);
+      else reject(new Error(`Fixture command failed: code=${code} signal=${signal} ${command} ${args.join(" ")} ${output} ${errors}`));
+    });
+  });
+}
+
 async function expirePackages(devices) {
   for (const id of devices) assert.match(id, /^[0-9a-f-]{36}$/);
   const sql = `UPDATE chatxo.dm_key_packages SET created_at=now()-interval '29 days' WHERE used_by IS NULL AND device_id IN (${devices.map((id) => `'${id}'`).join(",")})`;
@@ -215,14 +237,12 @@ async function expirePackages(devices) {
   let output;
   const sqlFile = path.join(scratch, "expire-packages.sql");
   await fs.writeFile(sqlFile, sql + ";\n");
-  const options = { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] };
+  console.log("Expiring fixture device packages", devices.length);
   try {
     const input = process.platform === "win32"
-      ? execFileSync("wsl.exe", ["--distribution", "Ubuntu-24.04", "--user", "root", "--exec", "wslpath", "-a", sqlFile], options).trim()
+      ? (await fixtureCommand("wsl.exe", ["--distribution", "Ubuntu-24.04", "--user", "root", "--exec", "wslpath", "-a", sqlFile])).trim()
       : sqlFile;
-    output = execFileSync(command, [...args, "-v", "ON_ERROR_STOP=1", "-f", input], options);
-  } catch (error) {
-    throw new Error(`Fixture package expiry failed: status=${error.status} signal=${error.signal} ${error.message} ${error.stdout ?? ""} ${error.stderr ?? ""}`, { cause: error });
+    output = await fixtureCommand(command, [...args, "-v", "ON_ERROR_STOP=1", "-f", input]);
   } finally {
     await fs.rm(sqlFile, { force: true });
   }
