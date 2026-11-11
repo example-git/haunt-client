@@ -139,10 +139,34 @@ async function exchange(a, b, label, simultaneous = false) {
   await save();
 }
 
-async function close(...entries) {
-  for (const entry of entries) {
-    await entry.app.close();
-    entry.closed = true;
+async function captureFailure(label, error) {
+  checks.push({ name: label, passed: false, error: error.stack });
+  for (const client of clients.filter((entry) => !entry.closed && entry.page)) {
+    const text = await client.page.locator(".error,.dm-info,.pending-message").allTextContents().catch(() => []);
+    diagnostics.push({ client: client.username, case: label, kind: "visible-errors", text });
+    console.error(label, client.username, JSON.stringify(text));
+    await client.page.screenshot({ path: path.join(results, `${checks.length}-${client.username}.png`) }).catch(() => {});
+  }
+  await save();
+}
+
+async function attempt(label, work) {
+  try {
+    await work();
+  } catch (error) {
+    await captureFailure(label, error);
+  }
+}
+
+async function scenario(label, work) {
+  const first = clients.length;
+  try {
+    await attempt(label, work);
+  } finally {
+    for (const client of clients.slice(first).filter((entry) => !entry.closed)) {
+      await client.app.close().catch(() => {});
+      client.closed = true;
+    }
   }
 }
 
@@ -153,28 +177,34 @@ try {
   }, { timeout: 60_000 }).toBe(200);
   const owner = await api("/auth/login", undefined, { username: "owner", password, device_name: "dm-ci" });
   accounts.set("owner", owner);
+  await api("/channels", owner.token, { name: "general", kind: "text" });
   const invite = await api("/invites", owner.token, { uses: 8, expires_in_hours: 1 });
   for (const username of ["alice", "bob", "carol", "dave", "eve", "frank", "gina", "hank"]) {
     const account = await api("/auth/register", undefined, { username, password, device_name: "dm-ci", invitation: invite.token });
     accounts.set(username, account);
   }
-  const alice = await launch("alice"), bob = await launch("bob");
-  await exchange(alice, bob, "fresh first DM");
-  await Promise.all([alice.page.reload(), bob.page.reload()]);
-  await exchange(bob, alice, "reply after reload");
-  await close(alice, bob);
-  const carol = await launch("carol"), dave = await launch("dave");
-  await exchange(dave, carol, "opposite initiator");
-  await close(carol, dave);
-  const starter = await launch("owner"), eve = await launch("eve"), frank = await launch("frank");
-  await exchange(starter, eve, "previous DM one");
-  await exchange(starter, frank, "previous DM two");
-  await exchange(eve, frank, "first DM after replying elsewhere");
-  await close(starter, eve, frank);
-  const gina = await launch("gina"), hank = await launch("hank");
-  await exchange(gina, hank, "simultaneous first DM", true);
-  await close(gina, hank);
-  report.passed = true;
+  await scenario("fresh first DM", async () => {
+    const alice = await launch("alice"), bob = await launch("bob");
+    await exchange(alice, bob, "fresh first DM");
+    await Promise.all([alice.page.reload(), bob.page.reload()]);
+    await exchange(bob, alice, "reply after reload");
+  });
+  await scenario("opposite initiator", async () => {
+    const carol = await launch("carol"), dave = await launch("dave");
+    await exchange(dave, carol, "opposite initiator");
+  });
+  await scenario("simultaneous first DM", async () => {
+    const gina = await launch("gina"), hank = await launch("hank");
+    await exchange(gina, hank, "simultaneous first DM", true);
+  });
+  await scenario("owner comparison", async () => {
+    const starter = await launch("owner"), eve = await launch("eve"), frank = await launch("frank");
+    await attempt("owner starts first DM", () => exchange(starter, eve, "owner starts first DM"));
+    await attempt("member starts first DM to owner", () => exchange(frank, starter, "member starts first DM to owner"));
+    await attempt("first DM after replying elsewhere", () => exchange(eve, frank, "first DM after replying elsewhere"));
+  });
+  report.passed = checks.length >= 7 && checks.every((check) => check.passed);
+  assert(report.passed, "At least one first-DM case failed; see report.json");
 } catch (error) {
   report.error = error.stack;
   for (const client of clients.filter((entry) => !entry.closed && entry.page)) {
@@ -185,6 +215,7 @@ try {
   throw error;
 } finally {
   await save();
+  console.log("DM first-message report", JSON.stringify(report));
   for (const client of clients.filter((entry) => !entry.closed)) await client.app.close().catch(() => {});
   await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
 }

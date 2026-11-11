@@ -43,7 +43,7 @@ jobs:
           distribution: Ubuntu-24.04
           wsl-version: 1
           use-cache: "false"
-          additional-packages: postgresql-16 ffmpeg
+          additional-packages: postgresql-16 ffmpeg python3
       - name: Start isolated server and database
         shell: wsl-bash {0}
         run: |
@@ -54,8 +54,30 @@ jobs:
           chmod +x .runner-state/haunt-dm-server
           nohup env HAUNT_INSTANCE_ID=dm-desktop-ci HAUNT_NAME='DM desktop CI' HAUNT_LISTEN_ADDR=127.0.0.1:18080 HAUNT_PUBLIC_URL=http://127.0.0.1:18080 HAUNT_DATABASE_URL=postgres://haunt_dm_ci:isolated-dm-fixture@127.0.0.1:5432/haunt_dm_ci?sslmode=disable HAUNT_BOOTSTRAP_USERNAME=owner HAUNT_BOOTSTRAP_PASSWORD='isolated DM test password' HAUNT_DATA_DIR="$PWD/.runner-state/server" .runner-state/haunt-dm-server > test-results/dm-first-message/server.log 2>&1 < /dev/null &
           echo $! > .runner-state/server.pid
+          trap 'cat test-results/dm-first-message/server.log' EXIT
+          python3 - <<'PY'
+          import time
+          import urllib.request
+          deadline = time.monotonic() + 60
+          while True:
+              try:
+                  with urllib.request.urlopen('http://127.0.0.1:18080/readyz', timeout=2) as response:
+                      assert response.status == 200
+                  break
+              except Exception:
+                  if time.monotonic() >= deadline:
+                      raise
+                  time.sleep(1)
+          PY
       - name: Exercise native desktop first messages
         run: node scripts/check-dm-first-message.mjs
+      - name: Print server diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path test-results/dm-first-message/server.log) {
+            Get-Content test-results/dm-first-message/server.log -Tail 100
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
