@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync, spawn } from "node:child_process";
 import { fillSignin } from "./signin-fields.mjs";
 
 assert.equal(process.env.CI, "true");
@@ -18,6 +19,7 @@ const checks = [];
 const requests = [];
 const diagnostics = [];
 const accounts = new Map();
+let keyring;
 const report = {
   platform: process.platform,
   revision: process.env.GITHUB_SHA,
@@ -46,7 +48,7 @@ async function api(route, token, body, method = body ? "POST" : "GET") {
 async function launch(username, suffix = username) {
   const app = await electron.launch({
     executablePath: path.resolve(process.platform === "win32" ? "release/builder/win-unpacked/haunt.exe" : "release/builder/linux-unpacked/haunt"),
-    args: [`--user-data-dir=${path.join(scratch, suffix)}`, ...(process.platform === "linux" ? ["--no-sandbox"] : [])],
+    args: [`--user-data-dir=${path.join(scratch, suffix)}`, ...(process.platform === "linux" ? ["--no-sandbox", "--password-store=gnome-libsecret"] : [])],
     timeout: 60_000,
   });
   const entry = { username, app, page: undefined };
@@ -92,7 +94,7 @@ async function launch(username, suffix = username) {
 
 async function open(client, username) {
   const page = client.page;
-  await expect(page.locator(".connection")).toHaveText("Connected");
+  await expect(page.getByRole("button", { name: /^Direct messages and notifications/ })).toBeVisible();
   const dismissMembers = page.getByRole("button", { name: "Dismiss member list", exact: true });
   if (await dismissMembers.isVisible()) await dismissMembers.click();
   await page.getByRole("button", { name: /^Direct messages and notifications/ }).click();
@@ -173,7 +175,43 @@ async function scenario(label, work) {
   }
 }
 
+async function deviceID(client) {
+  return client.page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("haunt-dm-crypto-v1");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise((resolve, reject) => {
+        const request = db.transaction("accounts").objectStore("accounts").getAll();
+        request.onsuccess = () => resolve(request.result[0]?.device);
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      db.close();
+    }
+  });
+}
+
+function expirePackages(devices) {
+  for (const id of devices) assert.match(id, /^[0-9a-f-]{36}$/);
+  const sql = `UPDATE chatxo.dm_key_packages SET created_at=now()-interval '29 days' WHERE used_by IS NULL AND device_id IN (${devices.map((id) => `'${id}'`).join(",")})`;
+  const command = process.platform === "win32" ? "wsl.exe" : "psql";
+  const args = process.platform === "win32"
+    ? ["--distribution", "Ubuntu-24.04", "--exec", "runuser", "-u", "postgres", "--", "psql", "-d", "haunt_dm_ci"]
+    : ["postgres://haunt_dm_ci:isolated-dm-fixture@127.0.0.1:55432/haunt_dm_ci?sslmode=disable"];
+  const output = execFileSync(command, [...args, "-v", "ON_ERROR_STOP=1", "-c", sql], { encoding: "utf8" });
+  assert.match(output, /UPDATE [1-9][0-9]*/);
+  console.log("Expired older device packages in isolated fixture", output.trim());
+}
+
 try {
+  if (process.platform === "linux") {
+    keyring = spawn("gnome-keyring-daemon", ["--foreground", "--unlock", "--components=secrets"], { stdio: ["pipe", "ignore", "inherit"] });
+    keyring.stdin.end("\n");
+    await expect.poll(() => execFileSync("dbus-send", ["--session", "--print-reply", "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.NameHasOwner", "string:org.freedesktop.secrets"], { encoding: "utf8" }).includes("boolean true")).toBe(true);
+  }
   await expect.poll(async () => {
     try { return (await fetch(origin + "/readyz", { signal: AbortSignal.timeout(2000) })).status; }
     catch { return 0; }
@@ -181,8 +219,8 @@ try {
   const owner = await api("/auth/login", undefined, { username: "owner", password, device_name: "dm-ci" });
   accounts.set("owner", owner);
   await api("/channels", owner.token, { name: "general", kind: "text" });
-  const invite = await api("/invites", owner.token, { uses: 8, expires_in_hours: 1 });
-  for (const username of ["alice", "bob", "carol", "dave", "eve", "frank", "gina", "hank"]) {
+  const invite = await api("/invites", owner.token, { uses: 10, expires_in_hours: 1 });
+  for (const username of ["alice", "bob", "carol", "dave", "eve", "frank", "gina", "hank", "ivy", "jules"]) {
     const account = await api("/auth/register", undefined, { username, password, device_name: "dm-ci", invitation: invite.token });
     accounts.set(username, account);
   }
@@ -207,8 +245,26 @@ try {
     await attempt("owner starts first DM", () => exchange(starter, eve, "owner starts first DM"));
     await attempt("member starts first DM to owner", () => exchange(frank, starter, "member starts first DM to owner"));
     await attempt("first DM after replying elsewhere", () => exchange(eve, frank, "first DM after replying elsewhere"));
+    await eve.app.close(); eve.closed = true;
+    await frank.app.close(); frank.closed = true;
+    await attempt("older device first-contact setup", async () => {
+      const oldIvy = await launch("ivy", "ivy-old"), oldJules = await launch("jules", "jules-old");
+      await exchange(starter, oldIvy, "owner to ivy before device change");
+      await exchange(starter, oldJules, "owner to jules before device change");
+      const oldDevices = await Promise.all([deviceID(oldIvy), deviceID(oldJules)]);
+      await oldIvy.app.close(); oldIvy.closed = true;
+      await oldJules.app.close(); oldJules.closed = true;
+      const ivy = await launch("ivy", "ivy-current"), jules = await launch("jules", "jules-current");
+      await exchange(starter, ivy, "owner to current ivy device");
+      await exchange(starter, jules, "owner to current jules device");
+      expirePackages(oldDevices);
+      await attempt("first DM with expired older devices", () => exchange(ivy, jules, "first DM with expired older devices"));
+      await attempt("reverse first DM with expired older devices", () => exchange(jules, ivy, "reverse first DM with expired older devices"));
+      await attempt("ivy replies to owner after failed first contact", () => exchange(starter, ivy, "ivy replies to owner after failed first contact"));
+      await attempt("jules replies to owner after failed first contact", () => exchange(starter, jules, "jules replies to owner after failed first contact"));
+    });
   });
-  report.passed = checks.length >= 7 && checks.every((check) => check.passed);
+  report.passed = checks.length >= 15 && checks.every((check) => check.passed);
   assert(report.passed, "At least one first-DM case failed; see report.json");
 } catch (error) {
   report.error = error.stack;
@@ -222,5 +278,6 @@ try {
   await save();
   console.log("DM first-message report", JSON.stringify(report));
   for (const client of clients.filter((entry) => !entry.closed)) await client.app.close().catch(() => {});
+  keyring?.kill();
   await fs.rm(scratch, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
 }

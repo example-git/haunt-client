@@ -38,7 +38,7 @@ jobs:
           go-version-file: fixture-server/go.mod
           cache-dependency-path: fixture-server/go.sum
       - name: Install desktop test dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 libsecret-1-0 ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libnotify4 dbus-x11 gnome-keyring libsecret-1-0 libpulse-dev libglib2.0-dev libx11-dev libxrandr-dev libxcomposite-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libpipewire-0.3-dev pipewire pipewire-pulse wireplumber gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire ffmpeg postgresql-client
       - run: npm ci
       - run: npm run build && npm run electron:stage
       - run: npx electron-builder --linux --x64 --dir --publish never
