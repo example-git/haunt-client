@@ -92,6 +92,8 @@ async function launch(username, suffix = username) {
 
 async function open(client, username) {
   const page = client.page;
+  const dismissMembers = page.getByRole("button", { name: "Dismiss member list", exact: true });
+  if (await dismissMembers.isVisible()) await dismissMembers.click();
   await page.getByRole("button", { name: /^Direct messages and notifications/ }).click();
   await page.getByRole("button", { name: "New direct message", exact: true }).click();
   await page.getByLabel("Find people").fill(username);
