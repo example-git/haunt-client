@@ -24,6 +24,8 @@ vi.mock("../packages/browser/src/preferences", () => ({
     microphoneGain: 100,
     automaticGainControl: false,
     noiseSuppression: false,
+    noiseGate: false,
+    noiseGateThreshold: -45,
     ...hardware.preferences(),
   }),
   subscribePreferences: () => () => {},
@@ -143,6 +145,7 @@ beforeEach(() => {
         });
       },
       setGain: async () => {},
+      setGate: vi.fn(),
       setSuppression: async () => {},
       close: () => {
         track.stop();

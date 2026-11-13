@@ -474,6 +474,10 @@ export class Call {
       const prepare = this.retryNoiseProcessing();
       if (waitForPlugin && getPreferences().noiseSuppression) await prepare;
       if (this.ended) return;
+      microphone.setGate({
+        enabled: getPreferences().noiseGate,
+        threshold: getPreferences().noiseGateThreshold,
+      });
       this.tracks.set("audio", microphone.track);
       this.updateLocal();
       await this.join();
@@ -568,6 +572,10 @@ export class Call {
         return;
       }
       microphone.setMuted(this.snapshot.state.muted);
+      microphone.setGate({
+        enabled: getPreferences().noiseGate,
+        threshold: getPreferences().noiseGateThreshold,
+      });
       this.pendingMicrophones.delete(stream);
       this.microphones.add(microphone);
       const previousMicrophone = this.microphone,
