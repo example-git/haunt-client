@@ -202,6 +202,8 @@ export function NoiseControls({ instance }: { instance: InstanceClient }) {
         showDiagnostics
         device={prefs.microphone}
         gain={prefs.microphoneGain}
+        noiseGate={prefs.noiseGate}
+        gateThreshold={prefs.noiseGateThreshold}
         automaticGain={prefs.automaticGainControl}
         noiseSuppression={prefs.noiseSuppression}
         noiseOptions={selection}

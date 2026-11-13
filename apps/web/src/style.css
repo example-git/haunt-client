@@ -2751,6 +2751,44 @@ dialog.image-viewer {
     #ef6268 90% 100%
   );
 }
+.noise-gate-meter {
+  position: relative;
+  margin-top: 8px;
+}
+.noise-gate-meter .microphone-meter {
+  height: 20px;
+}
+.noise-gate-meter input.noise-gate-threshold {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  cursor: ew-resize;
+}
+.noise-gate-threshold::-webkit-slider-thumb {
+  appearance: none;
+  width: 4px;
+  height: 26px;
+  border-radius: 2px;
+  background: var(--text);
+  box-shadow: 0 0 0 1px var(--haunt-black);
+}
+.noise-gate-threshold::-moz-range-thumb {
+  width: 4px;
+  height: 26px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--text);
+}
+.noise-gate-threshold:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 .microphone-meter-mask {
   position: absolute;
   inset: 0 0 0 var(--mic-level);

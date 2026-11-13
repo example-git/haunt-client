@@ -52,6 +52,8 @@ export interface ClientPreferences extends NotificationPolicy {
   noiseSuppressionNoticeShown: boolean;
   automaticGainControl: boolean;
   microphoneGain: number;
+  noiseGate: boolean;
+  noiseGateThreshold: number;
   sound: NotificationSound;
   serverSounds: Record<string, NotificationSound>;
   conversationSounds: Record<string, NotificationSound>;
@@ -93,6 +95,8 @@ const defaults: ClientPreferences = {
   noiseSuppressionNoticeShown: false,
   automaticGainControl: true,
   microphoneGain: 100,
+  noiseGate: false,
+  noiseGateThreshold: -45,
   sound: "ping",
   serverSounds: {},
   conversationSounds: {},
@@ -183,6 +187,7 @@ function read(): ClientPreferences {
       "previewMessages",
       "noiseSuppression",
       "noiseSuppressionNoticeShown",
+      "noiseGate",
       "automaticGainControl",
       "voiceChatHidden",
     ] as const)
@@ -204,6 +209,11 @@ function read(): ClientPreferences {
         Math.max(0, Math.min(200, raw.microphoneGain)),
       );
     next.memberListsCollapsed = collapsedLists(raw.memberListsCollapsed);
+    if (Number.isFinite(raw.noiseGateThreshold))
+      next.noiseGateThreshold = Math.max(
+        -60,
+        Math.min(0, raw.noiseGateThreshold),
+      );
     next.collapsedCategories = favorites(raw.collapsedCategories);
     next.dmFavorites = favorites(raw.dmFavorites);
     next.serverSounds = soundOverrides(raw.serverSounds);
@@ -227,6 +237,13 @@ export const subscribePreferences = (fn: () => void) => {
   };
 };
 export function setPreferences(patch: Partial<ClientPreferences>) {
+  if (
+    patch.noiseGateThreshold !== undefined &&
+    (!Number.isFinite(patch.noiseGateThreshold) ||
+      patch.noiseGateThreshold < -60 ||
+      patch.noiseGateThreshold > 0)
+  )
+    throw Error("Choose a noise gate threshold between -60 and 0 dBFS.");
   if (patch.archive !== undefined && !validArchivePolicy(patch.archive))
     throw Error("Invalid archive download budget.");
   if (patch.screenMode && !validVideoMode(patch.screenMode))

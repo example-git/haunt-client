@@ -37,6 +37,7 @@ import { checkOnboarding } from "./check-onboarding.mjs";
 import { checkModeration } from "./check-moderation.mjs";
 import { checkEmojis, checkDesktopEmojiSettings } from "./check-emojis.mjs";
 import { checkNoise } from "./check-noise.mjs";
+import { checkNoiseGate } from "./check-noise-gate.mjs";
 import { checkCallControls } from "./check-call-controls.mjs";
 import {
   checkEmbeds,
@@ -631,6 +632,21 @@ try {
     );
   } else if (process.env.HAUNT_CLIENT_CHECK === "noise") {
     await checkNoise(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "noise-gate") {
+    await checkScreen(process.env.HAUNT_PACKAGED_EXECUTABLE, async (page) => {
+      await checkNoiseGate(page, browser, fixtures, "electron");
+    });
+    const context = await browser.newContext({ permissions: ["microphone"] });
+    try {
+      await checkNoiseGate(
+        await context.newPage(),
+        browser,
+        fixtures,
+        "browser",
+      );
+    } finally {
+      await context.close();
+    }
   } else if (process.env.HAUNT_CLIENT_CHECK === "voice-settings") {
     await checkVoiceSettings(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "notification-search") {

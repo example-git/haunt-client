@@ -1,7 +1,18 @@
 import workletURL from "../audio-plugins/bridge-worklet.js?url";
+import gateWorkletURL from "./noise-gate-worklet.js?url";
 import type { PluginSelection } from "../audio-plugins/contract";
 export type NoiseStatus = "off" | "loading" | "active" | "fallback";
 export type NoiseScores = Record<string, number>;
+export type GateSettings = { enabled: boolean; threshold: number };
+export type GateLevels = {
+  input: number;
+  output: number;
+  state: "off" | "open" | "closing" | "closed" | "muted";
+};
+type GateOptions = GateSettings & {
+  metering?: boolean;
+  onError?: (error: string | undefined) => void;
+};
 // One stable 48 kHz output track across plugin switches. Device input rates
 // are resampled by Web Audio before reaching the plugin's mono PCM boundary.
 export class MicrophoneCapture {
@@ -11,6 +22,21 @@ export class MicrophoneCapture {
   private dry?: GainNode;
   private wet?: GainNode;
   private outputGain?: GainNode;
+  private gateNode?: AudioWorkletNode;
+  private gateEnabled = false;
+  private gateFailure?: string;
+  private gateReport?: GateOptions["onError"];
+  private gateReported?: string;
+  private levels?: GateLevels;
+  get gateError() {
+    return this.gateEnabled ? this.gateFailure : undefined;
+  }
+  getGateLevels(): GateLevels | undefined {
+    if (!this.gateNode) return;
+    if (this.muted || this.context?.state !== "running")
+      return { input: 0, output: 0, state: "muted" };
+    return this.levels;
+  }
   private automaticGain = true;
   private browserSuppression = false;
   private node?: AudioWorkletNode;
@@ -36,6 +62,7 @@ export class MicrophoneCapture {
   ) {
     this.track = raw.getAudioTracks()[0];
     if (!this.track) throw Error("The selected microphone has no audio track.");
+    this.muted = !this.track.enabled;
   }
   static async open(
     raw: MediaStream,
@@ -45,9 +72,11 @@ export class MicrophoneCapture {
     gain = { level: 100, automatic: true },
     options?: PluginSelection,
     scores?: (value: NoiseScores | undefined) => void,
+    gate: GateOptions = { enabled: false, threshold: -45 },
   ) {
     const mic = new MicrophoneCapture(raw, status, scores);
     mic.automaticGain = gain.automatic;
+    mic.gateReport = gate.onError;
     const abort = () => mic.close();
     signal?.addEventListener("abort", abort, { once: true });
     mic.offAbort = () => signal?.removeEventListener("abort", abort);
@@ -81,9 +110,71 @@ export class MicrophoneCapture {
       await mic.context?.close().catch(() => {});
       mic.context = undefined;
     }
+    try {
+      const ctx = mic.context;
+      if (!ctx?.audioWorklet) throw Error("Audio processing unavailable");
+      await ctx.audioWorklet.addModule(gateWorkletURL);
+      if (mic.closed) return mic;
+      const node = new AudioWorkletNode(ctx, "haunt-noise-gate", {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+        channelCount: 1,
+        channelCountMode: "explicit",
+        processorOptions: {
+          enabled: gate.enabled,
+          threshold: gate.threshold,
+          metering: gate.metering,
+          muted: mic.muted,
+        },
+      });
+      mic.gateNode = node;
+      node.port.onmessage = ({ data }: MessageEvent<GateLevels>) => {
+        if (!mic.closed) mic.levels = data;
+      };
+      node.addEventListener("processorerror", () => {
+        if (mic.closed) return;
+        node.port.postMessage({ type: "close" });
+        node.disconnect();
+        mic.gateNode = undefined;
+        mic.gateFailure =
+          "Noise gate unavailable. Retry the microphone or turn the gate off.";
+        mic.setGate({ enabled: mic.gateEnabled, threshold: gate.threshold });
+      });
+      mic.outputGain!.disconnect();
+      mic.outputGain!.connect(node).connect(mic.destination!);
+    } catch {
+      mic.gateFailure =
+        "Noise gate unavailable. Retry the microphone or turn the gate off.";
+    }
+    mic.setGate(gate);
+    if (mic.gateError) {
+      mic.close();
+      throw Error(mic.gateError);
+    }
     await mic.setSuppression(enabled, options);
     await mic.setGain(gain.level, gain.automatic);
     return mic;
+  }
+  setGate(settings: GateSettings) {
+    if (this.closed) return;
+    this.gateEnabled = settings.enabled;
+    if (this.gateNode) {
+      this.gateNode.port.postMessage({
+        type: "settings",
+        enabled: settings.enabled,
+        threshold: settings.threshold,
+      });
+    } else if (this.context && this.outputGain && this.destination) {
+      this.outputGain.disconnect();
+      if (!settings.enabled) this.outputGain.connect(this.destination);
+    }
+    this.track.enabled = !this.muted && !this.gateError;
+    this.raw.getAudioTracks()[0].enabled = !this.muted && !this.gateError;
+    if (this.gateError !== this.gateReported) {
+      this.gateReported = this.gateError;
+      this.gateReport?.(this.gateError);
+    }
   }
   private state() {
     this.node?.port.postMessage({
@@ -332,10 +423,11 @@ export class MicrophoneCapture {
     }
   }
   setMuted(muted: boolean) {
-    this.track.enabled = !muted;
-    this.raw.getAudioTracks()[0].enabled = !muted;
+    this.track.enabled = !muted && !this.gateError;
+    this.raw.getAudioTracks()[0].enabled = !muted && !this.gateError;
     if (muted === this.muted) return;
     this.muted = muted;
+    this.gateNode?.port.postMessage({ type: "muted", muted });
     this.state();
     if (muted) this.scores?.(undefined);
   }
@@ -350,6 +442,8 @@ export class MicrophoneCapture {
     this.dry?.disconnect();
     this.wet?.disconnect();
     this.outputGain?.disconnect();
+    this.gateNode?.port.postMessage({ type: "close" });
+    this.gateNode?.disconnect();
     this.track.stop();
     this.destination?.stream.getTracks().forEach((track) => track.stop());
     this.raw.getTracks().forEach((track) => track.stop());

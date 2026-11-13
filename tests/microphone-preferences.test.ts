@@ -15,6 +15,28 @@ async function load(raw: Record<string, unknown> = {}) {
   return { prefs, storage };
 }
 describe("microphone preferences", () => {
+  it("persists the gate independently and rejects invalid explicit thresholds", async () => {
+    const { prefs, storage } = await load();
+    expect(prefs.getPreferences()).toMatchObject({
+      noiseGate: false,
+      noiseGateThreshold: -45,
+    });
+    prefs.setPreferences({ noiseGate: true, noiseGateThreshold: -32 });
+    prefs.setPreferences({ noiseSuppression: false, microphoneGain: 80 });
+    expect(
+      JSON.parse(storage.get("chatxo-client-preferences-v1")!),
+    ).toMatchObject({ noiseGate: true, noiseGateThreshold: -32 });
+    for (const value of [NaN, Infinity, -61, 1])
+      expect(() =>
+        prefs.setPreferences({ noiseGateThreshold: value }),
+      ).toThrow();
+    vi.resetModules();
+    const reloaded = await import("../packages/browser/src/preferences");
+    expect(reloaded.getPreferences()).toMatchObject({
+      noiseGate: true,
+      noiseGateThreshold: -32,
+    });
+  });
   it("defaults to noise suppression and automatic gain, and saves manual gain independently", async () => {
     const { prefs, storage } = await load();
     expect(prefs.getPreferences()).toMatchObject({

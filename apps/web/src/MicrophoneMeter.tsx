@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { followAudioOutput } from "@haunt/browser/audio-output";
 import {
   getPreferences,
+  setPreferences,
   subscribePreferences,
 } from "@haunt/browser/preferences";
 import {
@@ -21,6 +22,8 @@ export function MicrophoneMeter({
   gain,
   automaticGain,
   noiseOptions,
+  noiseGate,
+  gateThreshold,
   onAccessGranted,
   showDiagnostics = false,
 }: {
@@ -29,10 +32,15 @@ export function MicrophoneMeter({
   gain: number;
   automaticGain: boolean;
   noiseOptions?: PluginSelection;
+  noiseGate: boolean;
+  gateThreshold: number;
   onAccessGranted: () => void;
   showDiagnostics?: boolean;
 }) {
   const meter = useRef<HTMLDivElement>(null);
+  const inputMeter = useRef<HTMLDivElement>(null);
+  const gateState = useRef<HTMLOutputElement>(null);
+  const [gateError, setGateError] = useState<string | undefined>();
   const microphone = useRef<MicrophoneCapture | undefined>(undefined);
   const playback = useRef<HTMLAudioElement>(null);
   const [scores, setScores] = useState<NoiseScores | undefined>(undefined);
@@ -75,16 +83,31 @@ export function MicrophoneMeter({
     gain,
     automaticGain,
     noiseOptions,
+    noiseGate,
+    gateThreshold,
   });
-  desired.current = { noiseSuppression, gain, automaticGain, noiseOptions };
+  desired.current = {
+    noiseSuppression,
+    gain,
+    automaticGain,
+    noiseOptions,
+    noiseGate,
+    gateThreshold,
+  };
   const [noise, setNoise] = useState<NoiseStatus>("loading");
   useEffect(() => {
     void microphone.current?.setSuppression(noiseSuppression, noiseOptions);
     void microphone.current?.setGain(gain, automaticGain);
+    microphone.current?.setGate({
+      enabled: noiseGate,
+      threshold: gateThreshold,
+    });
   }, [
     noiseSuppression,
     gain,
     automaticGain,
+    noiseGate,
+    gateThreshold,
     noiseOptions?.plugin.digest,
     noiseOptions?.variant,
     JSON.stringify(noiseOptions?.values),
@@ -101,6 +124,7 @@ export function MicrophoneMeter({
     stopListening();
     setReady(false);
     setPlaybackError("");
+    setGateError(undefined);
     setStatus("Starting microphone…");
     const start = async () => {
       if (!navigator.mediaDevices?.getUserMedia)
@@ -129,6 +153,9 @@ export function MicrophoneMeter({
           void context?.close().catch(() => {});
           meter.current?.style.setProperty("--mic-level", "0%");
           meter.current?.setAttribute("aria-valuenow", "0");
+          inputMeter.current?.style.setProperty("--mic-level", "0%");
+          inputMeter.current?.setAttribute("aria-valuenow", "0");
+          if (gateState.current) gateState.current.textContent = "Unavailable";
           setStatus("Microphone disconnected. Retry or select another input.");
         }
       });
@@ -140,11 +167,11 @@ export function MicrophoneMeter({
           setNoise(value);
           setStatus(
             value === "active"
-              ? "Input level · after audio plugin"
+              ? "Noise suppression active"
               : value === "off"
-                ? "Input level · noise cancellation off"
+                ? "Noise suppression off"
                 : value === "fallback"
-                  ? "Input level · plugin unavailable, unprocessed audio"
+                  ? "Noise plugin unavailable"
                   : "Starting noise cancellation…",
           );
         },
@@ -159,6 +186,14 @@ export function MicrophoneMeter({
               if (!closed) setScores(value);
             }
           : undefined,
+        {
+          enabled: desired.current.noiseGate,
+          threshold: desired.current.gateThreshold,
+          metering: true,
+          onError: (error) => {
+            if (!closed) setGateError(error);
+          },
+        },
       );
       if (closed) {
         processing.close();
@@ -173,6 +208,10 @@ export function MicrophoneMeter({
         desired.current.gain,
         desired.current.automaticGain,
       );
+      processing.setGate({
+        enabled: desired.current.noiseGate,
+        threshold: desired.current.gateThreshold,
+      });
       if (closed) return;
       audio.srcObject = new MediaStream([processing.track]);
       setReady(true);
@@ -195,6 +234,42 @@ export function MicrophoneMeter({
           analyser.getFloatTimeDomainData(samples);
           let peak = 0;
           for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
+          const levels = processing?.getGateLevels();
+          if (levels) peak = levels.output;
+          const input = levels?.input ?? peak;
+          const inputLevel = Math.max(
+            0,
+            Math.min(
+              100,
+              ((20 * Math.log10(Math.max(input, 0.000001)) + 60) / 60) * 100,
+            ),
+          );
+          inputMeter.current?.style.setProperty(
+            "--mic-level",
+            `${inputLevel}%`,
+          );
+          inputMeter.current?.setAttribute(
+            "aria-valuenow",
+            String(Math.round(inputLevel)),
+          );
+          inputMeter.current?.setAttribute(
+            "aria-valuetext",
+            input > 0.000001
+              ? `${Math.round(20 * Math.log10(input))} dBFS`
+              : "Silent",
+          );
+          if (gateState.current)
+            gateState.current.textContent = processing?.gateError
+              ? "Unavailable"
+              : levels
+                ? {
+                    off: "Off",
+                    open: "Open",
+                    closing: "Closing",
+                    closed: "Closed",
+                    muted: "Muted",
+                  }[levels.state]
+                : "Off";
           const measured = Math.max(
             0,
             Math.min(1, (20 * Math.log10(Math.max(peak, 0.000001)) + 60) / 60),
@@ -245,6 +320,7 @@ export function MicrophoneMeter({
       stream?.getTracks().forEach((t) => t.stop());
       void context?.close().catch(() => {});
       meter.current?.style.setProperty("--mic-level", "0%");
+      inputMeter.current?.style.setProperty("--mic-level", "0%");
     };
   }, [device, attempt, onAccessGranted, showDiagnostics]);
   return (
@@ -258,6 +334,56 @@ export function MicrophoneMeter({
         onEnded={stopListening}
         onError={stopListening}
       />
+      <label className="device-toggle">
+        <span>Noise gate</span>
+        <input
+          type="checkbox"
+          checked={noiseGate}
+          onChange={(e) => setPreferences({ noiseGate: e.target.checked })}
+        />
+      </label>
+      <div className="microphone-meter-label">
+        <span>Before gate</span>
+        <output ref={gateState} aria-label="Noise gate state">
+          {gateError ? "Unavailable" : noiseGate ? "Starting" : "Off"}
+        </output>
+      </div>
+      <div className="noise-gate-meter">
+        <div
+          ref={inputMeter}
+          className="microphone-meter"
+          role="meter"
+          aria-label="Microphone level before gate"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={0}
+        >
+          <div className="microphone-meter-colors" />
+          <div className="microphone-meter-mask" />
+        </div>
+        <input
+          className="noise-gate-threshold"
+          type="range"
+          aria-label="Noise gate threshold"
+          min="-60"
+          max="0"
+          step="1"
+          value={gateThreshold}
+          disabled={!noiseGate}
+          onChange={(e) =>
+            setPreferences({ noiseGateThreshold: e.target.valueAsNumber })
+          }
+        />
+      </div>
+      <div className="microphone-meter-label">
+        <span>Threshold</span>
+        <output>{gateThreshold} dBFS</output>
+      </div>
+      <p className="muted small">
+        Filters quiet sound after noise suppression and microphone gain.
+      </p>
+      {gateError && <p role="alert">{gateError}</p>}
+      <div className="microphone-meter-label">After gate</div>
       <div
         ref={meter}
         className="microphone-meter"
@@ -301,7 +427,7 @@ export function MicrophoneMeter({
         <button
           type="button"
           className="secondary"
-          disabled={!ready}
+          disabled={!ready || !!gateError}
           aria-pressed={listening}
           onClick={() => {
             if (releaseLoopback.current) {
@@ -324,9 +450,9 @@ export function MicrophoneMeter({
           {listening ? "Stop listening" : "Listen to microphone"}
         </button>
         <small className="muted">
-          Hear your microphone after noise suppression and gain. Use headphones
-          to avoid feedback. Mutes and deafens your call while listening. Stops
-          when you leave these settings.
+          Hear your microphone after noise suppression, gain and the noise gate.
+          Use headphones to avoid feedback. Mutes and deafens your call while
+          listening. Stops when you leave these settings.
         </small>
         {playbackError && <small role="status">{playbackError}</small>}
       </div>

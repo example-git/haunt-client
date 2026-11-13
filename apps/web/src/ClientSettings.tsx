@@ -959,6 +959,8 @@ export function ClientSettingsContent({
                         audioPlugins.length > 0 && prefs.noiseSuppression
                       }
                       gain={prefs.microphoneGain}
+                      noiseGate={prefs.noiseGate}
+                      gateThreshold={prefs.noiseGateThreshold}
                       automaticGain={prefs.automaticGainControl}
                       noiseOptions={pluginSelection(selectedServer)}
                     />

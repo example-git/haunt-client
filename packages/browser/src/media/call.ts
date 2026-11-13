@@ -202,6 +202,7 @@ export class Call {
   private failures = 0;
   private cues: VoiceCues;
   private microphone?: MicrophoneCapture;
+  private gateError?: string;
   private microphones = new Set<MicrophoneCapture>();
   private pendingMicrophones = new Set<MediaStream>();
   private microphoneStream?: MediaStream;
@@ -286,7 +287,8 @@ export class Call {
       {
         microphone:
           usable(this.tracks.get("audio")) &&
-          usable(this.microphoneStream?.getAudioTracks()[0]),
+          usable(this.microphoneStream?.getAudioTracks()[0]) &&
+          !this.microphone?.gateError,
         camera: usable(this.tracks.get("camera")),
         screen: usable(this.tracks.get("screen")),
         loopback: microphoneLoopbacks.getSnapshot(),
@@ -410,6 +412,14 @@ export class Call {
           automatic: prefs.automaticGainControl,
         },
         pluginSelection(this.client),
+        undefined,
+        {
+          enabled: prefs.noiseGate,
+          threshold: prefs.noiseGateThreshold,
+          onError: (error) => {
+            if (!this.ended) this.reportGateError(error);
+          },
+        },
       );
       if (this.ended) {
         microphone.close();
@@ -543,6 +553,15 @@ export class Call {
           automatic: prefs.automaticGainControl,
         },
         pluginSelection(this.client),
+        undefined,
+        {
+          enabled: prefs.noiseGate,
+          threshold: prefs.noiseGateThreshold,
+          onError: (error) => {
+            if (!this.ended && generation === this.microphoneGeneration)
+              this.reportGateError(error);
+          },
+        },
       );
       if (this.ended || generation !== this.microphoneGeneration) {
         microphone.close();
@@ -616,10 +635,26 @@ export class Call {
     }
   }
   private preparing?: Promise<void>;
+  private reportGateError(error?: string) {
+    const previous = this.gateError;
+    this.gateError = error;
+    this.change(
+      error
+        ? { error }
+        : this.snapshot.error === previous
+          ? { error: undefined }
+          : {},
+    );
+    this.synchronizeStateInBackground();
+  }
   private async refreshProcessing() {
     const microphone = this.microphone;
     if (this.ended || !microphone) return;
     const prefs = getPreferences();
+    microphone.setGate({
+      enabled: prefs.noiseGate,
+      threshold: prefs.noiseGateThreshold,
+    });
     await microphone.setGain(prefs.microphoneGain, prefs.automaticGainControl);
     if (this.ended) return;
     const catalog = pluginDownloads(this.client).getSnapshot().catalog;
