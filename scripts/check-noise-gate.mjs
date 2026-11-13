@@ -1,5 +1,4 @@
 import { expect } from "@playwright/test";
-import assert from "node:assert/strict";
 import { fillSignin } from "./signin-fields.mjs";
 import { speechPeak } from "./check-noise.mjs";
 
@@ -146,15 +145,27 @@ export async function checkNoiseGate(sender, browser, fixtures, label) {
       await sender
         .getByRole("button", { name: "Devices", exact: true })
         .click();
-      const device = sender.getByLabel("Default microphone", { exact: true });
-      const next = await device
-        .locator("option")
-        .evaluateAll(
-          (options) =>
-            options.find((option) => option.value && !option.disabled)?.value,
-        );
-      assert(next, "A selectable input is required");
-      await device.selectOption(next);
+      const captures = await sender.evaluate(() => {
+        const count = window.gateTestNodes.filter(
+          ({ name }) => name === "haunt-noise-gate",
+        ).length;
+        navigator.mediaDevices.dispatchEvent(new Event("devicechange"));
+        return count;
+      });
+      await expect
+        .poll(() =>
+          sender.evaluate(
+            () =>
+              window.gateTestNodes.filter(
+                ({ name }) => name === "haunt-noise-gate",
+              ).length,
+          ),
+        )
+        .toBeGreaterThan(captures);
+      await expect(sender.locator(".call-panel")).toHaveAttribute(
+        "data-noise-suppression",
+        "active",
+      );
       await expect(
         sender.getByRole("button", {
           name: "Listen to microphone",
