@@ -2315,8 +2315,7 @@ function MessageRow({
   onReply: (message: Message) => void;
   onNavigateReply: (id: string) => void;
 }) {
-  const [resolvedReply, setResolvedReply] = useState<Message>(),
-    [replyAttempt, setReplyAttempt] = useState(0);
+  const [resolvedReply, setResolvedReply] = useState<Message>();
   const reply = suppliedReply ?? resolvedReply;
   useEffect(() => {
     setResolvedReply(undefined);
@@ -2337,7 +2336,6 @@ function MessageRow({
     message.deleted,
     suppliedReply,
     instance.snapshot.messageRevisions?.[message.conversation_id],
-    replyAttempt,
   ]);
   const user = instance.snapshot.users.find((u) => u.id === message.author_id),
     own = message.author_id === instance.account.login.user.id;
@@ -2514,11 +2512,7 @@ function MessageRow({
                 ? `Reply to ${messageAuthorName(reply, instance.snapshot.users)}: ${reply.deleted ? "Message deleted" : reply.body || "Attachment message"}`
                 : "Original message unavailable"
             }
-            onClick={() =>
-              reply
-                ? onNavigateReply(message.reply_to_id!)
-                : setReplyAttempt((value) => value + 1)
-            }
+            onClick={() => onNavigateReply(message.reply_to_id!)}
           >
             {reply ? (
               <>
