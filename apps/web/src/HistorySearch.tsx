@@ -1,5 +1,10 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { friendlyError, type InstanceClient, type Message } from "@haunt/core";
+import {
+  messageAuthorName,
+  friendlyError,
+  type InstanceClient,
+  type Message,
+} from "@haunt/core";
 import { messageLink } from "@haunt/browser/deep-links";
 import { copyText } from "./clipboard";
 
@@ -159,9 +164,8 @@ export function HistorySearch({
                   }}
                 >
                   <small>
-                    {state.users.find((user) => user.id === message.author_id)
-                      ?.username ?? "Member"}{" "}
-                    · {new Date(message.created_at).toLocaleString()}
+                    {messageAuthorName(message, state.users)} ·{" "}
+                    {new Date(message.created_at).toLocaleString()}
                   </small>
                   <span>{message.body.slice(0, 400)}</span>
                 </button>

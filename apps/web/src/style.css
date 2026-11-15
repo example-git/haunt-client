@@ -6442,3 +6442,20 @@ button:disabled:hover {
   padding: 8px 16px;
   box-shadow: 0 3px 12px #0006;
 }
+
+.ai-conversation-status {
+  margin: 8px 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.ai-conversation-status p { margin: 5px 0; }
+.ai-conversation-status article { padding-top: 8px; }
+.ai-stream { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; margin: 8px 0; }
+.ai-label { display: inline-block; font-size: 10px; padding: 1px 4px; border: 1px solid currentColor; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
+.ai-avatar { background: color-mix(in srgb, var(--text) 10%, transparent); }
+.ai-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.ai-avatar-editor { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.ai-preset, .ai-account { padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.ai-preset code { display: block; font-size: 11px; overflow-wrap: anywhere; margin: 6px 0; }

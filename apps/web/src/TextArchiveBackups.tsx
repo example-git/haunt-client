@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { friendlyError, type ArchivedText } from "@haunt/core";
+import {
+  messageAuthorName,
+  friendlyError,
+  type ArchivedText,
+} from "@haunt/core";
 import { multiServerClient } from "@haunt/browser/client-context";
 import { archiveJob } from "@haunt/browser/archive-jobs";
 import { saveMedia } from "@haunt/browser/downloads";
@@ -188,12 +192,7 @@ export function TextArchiveBackups() {
               <article key={row.id}>
                 <small>
                   {new Date(row.created_at).toLocaleString()} ·{" "}
-                  {selected?.snapshot.users.find((u) => u.id === row.author_id)
-                    ?.display_name ||
-                    selected?.snapshot.users.find((u) => u.id === row.author_id)
-                      ?.username ||
-                    row.author_id}{" "}
-                  ·{" "}
+                  {messageAuthorName(row, selected?.snapshot.users ?? [])} ·{" "}
                   {selected?.snapshot.channels.find(
                     (c) => c.id === row.conversation_id,
                   )?.name || row.conversation_id}

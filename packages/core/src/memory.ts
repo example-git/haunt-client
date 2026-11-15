@@ -17,6 +17,14 @@ import type {
 export class MemoryStore implements MessageStore {
   private rows = new Map<Scope, Map<string, Message>>();
   private cursors = new Map<Scope, number>();
+  private pruned = new Map<string, number>();
+  async pruneHistory(scope: Scope, conversation: string, through: number) {
+    const key = JSON.stringify([scope, conversation]);
+    this.pruned.set(key, Math.max(through, this.pruned.get(key) ?? 0));
+    for (const [id, message] of this.rows.get(scope) ?? [])
+      if (message.conversation_id === conversation && message.seq <= through)
+        this.rows.get(scope)?.delete(id);
+  }
   private outbox = new Map<Scope, Map<string, PendingMessage>>();
   async search(
     scope: Scope,
@@ -69,6 +77,11 @@ export class MemoryStore implements MessageStore {
     const rows = this.rows.get(scope) ?? new Map();
     for (const raw of messages) {
       const message = cachedMessage(raw);
+      if (
+        message.seq <=
+        (this.pruned.get(JSON.stringify([scope, message.conversation_id])) ?? 0)
+      )
+        continue;
       const old = rows.get(message.id);
       if (shouldMerge(old, message))
         rows.set(message.id, structuredClone(message));

@@ -36,6 +36,8 @@ const instance = (id = "one"): Instance => ({
   },
   limits: {
     text_max_bytes: 256_000_000,
+    ai_channel_max_bytes: 64 * 1024 * 1024,
+    ai_text_max_bytes: 128 * 1024 * 1024,
     text_retention_days: 30,
     image_max_bytes: 2 << 20,
     video_max_bytes: 10 << 20,

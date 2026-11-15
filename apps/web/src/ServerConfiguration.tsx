@@ -27,6 +27,13 @@ const limits: [
     4096 / MiB,
   ],
   ["text_retention_days", "Keep messages (days)", 1, 1],
+  [
+    "ai_channel_max_bytes",
+    "Default AI channel history budget (MiB)",
+    MiB,
+    4096 / MiB,
+  ],
+  ["ai_text_max_bytes", "Total AI conversation budget (MiB)", MiB, 4096 / MiB],
 ];
 export function ServerConfiguration({
   instance,

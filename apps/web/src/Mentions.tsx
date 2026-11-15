@@ -3,7 +3,12 @@ import { UserName } from "./UserName";
 import { EmojiText } from "./EmojiText";
 import { ExternalLink } from "./RichContent";
 import { hauntLink } from "@haunt/browser/deep-links";
-import { messageLinks, mentions, type InstanceClient } from "@haunt/core";
+import {
+  aiMentions,
+  messageLinks,
+  mentions,
+  type InstanceClient,
+} from "@haunt/core";
 import { useSyncExternalStore, type ReactNode } from "react";
 export function MentionText({
   text,
@@ -21,6 +26,7 @@ export function MentionText({
       ]),
     ),
   );
+  useSyncExternalStore(instance.ai.subscribe, () => instance.ai.revision);
   const output: ReactNode[] = [];
   let offset = 0;
   const links = messageLinks(text);
@@ -49,7 +55,7 @@ export function MentionText({
         b = link.end - start;
       pieces.push(
         <EmojiText
-          key={`text-${at}`}
+          key={`text-${start + at}`}
           text={value.slice(at, a)}
           sourceText={text}
           offset={start + at}
@@ -63,7 +69,7 @@ export function MentionText({
     }
     pieces.push(
       <EmojiText
-        key={`text-${at}`}
+        key={`text-${start + at}`}
         text={value.slice(at)}
         sourceText={text}
         offset={start + at}
@@ -72,13 +78,30 @@ export function MentionText({
     );
     return pieces;
   };
-  for (const mention of mentions(text)) {
+  for (const mention of [...mentions(text), ...aiMentions(text)].sort(
+    (a, b) => a.start - b.start,
+  )) {
     if (
       links.some(
         (link) => mention.start >= link.start && mention.start < link.end,
       )
     )
       continue;
+    if ("id" in mention) {
+      const preset = instance.ai.preset(mention.id);
+      output.push(...plain(text.slice(offset, mention.start), offset));
+      output.push(
+        <span
+          key={mention.start}
+          className="mention ai-mention"
+          title={`AI preset ${mention.id}`}
+        >
+          @{preset?.name ?? "AI preset"}
+        </span>,
+      );
+      offset = mention.end;
+      continue;
+    }
     const user = instance.snapshot.users.find(
       (u) => u.username.toLowerCase() === mention.username,
     );

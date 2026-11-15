@@ -1,5 +1,6 @@
 import {
   Hash,
+  Bot,
   Headphones,
   MessageCircle,
   Megaphone,
@@ -75,7 +76,7 @@ export function ChannelIcon({
       : channel?.kind === "voice"
         ? "headphones"
         : "hash";
-  const Icon = icons.get(key)!;
+  const Icon = !channel?.icon && channel?.kind === "ai" ? Bot : icons.get(key)!;
   return <Icon size={size} aria-hidden="true" data-channel-icon={key} />;
 }
 export function ChannelIconPicker({

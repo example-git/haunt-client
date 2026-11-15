@@ -1,3 +1,5 @@
+import { checkAIServer } from "./check-ai-server.mjs";
+import { checkAIDesktop } from "./check-ai-desktop.mjs";
 import { checkImageViewer } from "./check-image-viewer.mjs";
 import { checkUIRefresh } from "./check-ui-refresh.mjs";
 import { checkMobileWeb } from "./check-mobile-web.mjs";
@@ -187,6 +189,7 @@ try {
   if (
     process.env.HAUNT_CLIENT_BUILD === "dist-standalone" ||
     ![
+      "ai-desktop",
       "demo",
       "embeds",
       "live-embeds",
@@ -207,8 +210,9 @@ try {
   )
     vite = await serveBuild();
   if (
-    process.env.HAUNT_CLIENT_CHECK !== "source-audio" ||
-    process.env.HAUNT_MUTE_DIAGNOSTICS !== "1"
+    process.env.HAUNT_CLIENT_CHECK !== "ai-desktop" &&
+    (process.env.HAUNT_CLIENT_CHECK !== "source-audio" ||
+      process.env.HAUNT_MUTE_DIAGNOSTICS !== "1")
   ) {
     const chrome = launch("/usr/bin/google-chrome", [
       "--headless=new",
@@ -254,7 +258,13 @@ try {
     });
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   }
-  if (process.env.HAUNT_CLIENT_CHECK === "demo") {
+  if (process.env.HAUNT_CLIENT_CHECK === "ai") {
+    await checkAIServer(browser, fixtures);
+  } else if (process.env.HAUNT_CLIENT_CHECK === "ai-desktop") {
+    await checkScreen(process.env.HAUNT_PACKAGED_EXECUTABLE, (page, desktop) =>
+      checkAIDesktop(page, desktop, fixtures),
+    );
+  } else if (process.env.HAUNT_CLIENT_CHECK === "demo") {
     await captureDemo(browser, fixtures);
   } else if (process.env.HAUNT_CLIENT_CHECK === "image-viewer") {
     await checkImageViewer(browser, fixtures);

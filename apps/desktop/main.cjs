@@ -48,6 +48,7 @@ const { installLinuxAudio } = require("./linux-audio.cjs");
 const { DiskMediaCache } = require("./media-cache.cjs");
 const { installDesktopTools } = require("./desktop-tools.cjs");
 const { installDeepLinks } = require("./deep-links.cjs");
+const { installAIOAuth } = require("./ai-oauth.cjs");
 const { installDesktopCalls } = require("./desktop-calls.cjs");
 const { initializeProfile, runKeyMigrationHelper } = require("./profile.cjs");
 if (runKeyMigrationHelper(app, safeStorage)) return;
@@ -131,6 +132,7 @@ function validateAccounts(accounts) {
   }
 }
 const attachDeepLinks = installDeepLinks(app, ipcMain, validateSender);
+installAIOAuth(app, ipcMain, shell, validateSender);
 async function startMain() {
   await profile.migrateCredentials(safeStorage);
   let linuxDesktopError;

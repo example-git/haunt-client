@@ -1,6 +1,9 @@
 import type { InstanceClient } from "@haunt/core";
 
 export const Permission = {
+  ManageChannels: 16,
+  UseAI: 1 << 18,
+  SwitchAIPreset: 1 << 19,
   ManageServer: 32,
   ManageRoles: 64,
   KickMembers: 128,

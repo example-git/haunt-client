@@ -10,6 +10,11 @@ ipcRenderer.on("native:event", (_event, value) => {
 });
 contextBridge.exposeInMainWorld("hauntDesktop", {
   platform: process.platform,
+  aiOAuth: {
+    reserve: (provider) => ipcRenderer.invoke("ai-oauth:reserve", provider),
+    launch: (id, url) => ipcRenderer.invoke("ai-oauth:launch", id, url),
+    cancel: (id) => ipcRenderer.invoke("ai-oauth:cancel", id),
+  },
   calls: {
     settings: (value) => ipcRenderer.invoke("calls:settings", value),
     state: (value) => ipcRenderer.invoke("calls:state", value),

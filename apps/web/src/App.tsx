@@ -1,3 +1,12 @@
+import { Permission } from "./Permissions";
+import { AIConversationStatus, useAIChannel } from "./AIConversationStatus";
+import { MessageAvatar, MessageAuthor, AIAvatar } from "./AIIdentity";
+import {
+  aiMention,
+  messageAuthorKey,
+  messageAuthorName,
+  AISwitchPermission,
+} from "@haunt/core";
 import { mediaTask } from "@haunt/browser/media-queue";
 import { MessageWindow } from "./MessageWindow";
 import { HistorySearch } from "./HistorySearch";
@@ -1207,7 +1216,9 @@ function Workspace({
       .catch((e) => setError(friendlyError(e)));
   };
   useEffect(() => {
-    const text = state.channels.find((c) => c.kind === "text");
+    const text = state.channels.find(
+      (c) => c.kind === "text" || c.kind === "ai",
+    );
     const exists = state.channels.some((c) => c.id === conversation);
     if (!exists && text) choose(text.id);
     else if (!exists && conversation && state.status === "online")
@@ -2068,7 +2079,13 @@ export function ConversationView({
         aria-label={`${title} messages`}
       >
         <div className="history-note">
-          <span>Downloaded messages stay on this device</span>
+          <span>
+            {state.channels.some(
+              (c) => c.id === conversation && c.kind === "ai",
+            )
+              ? "Oldest AI channel history is removed when storage fills"
+              : "Downloaded messages stay on this device"}
+          </span>
         </div>
         {(messages.length > limit ||
           (olderAvailable && !!messages.length && messages[0].seq > 1)) && (
@@ -2103,6 +2120,7 @@ export function ConversationView({
             {loadingHistory ? "Loading older messages…" : "Show older messages"}
           </button>
         )}
+        <AIConversationStatus instance={instance} channel={conversation} />
         <MessageWindow
           key={`${instance.scope}:${conversation}`}
           items={messages.slice(-limit)}
@@ -2154,7 +2172,10 @@ export function ConversationView({
                   messageDay(items[index - 1].created_at) ===
                     messageDay(message.created_at) &&
                   !message.reply_to_id &&
-                  items[index - 1].author_id === message.author_id &&
+                  messageAuthorKey(items[index - 1]) ===
+                    messageAuthorKey(message) &&
+                  JSON.stringify(items[index - 1].ai_author) ===
+                    JSON.stringify(message.ai_author) &&
                   items[index - 1].security === message.security &&
                   items[index - 1].securityError === message.securityError &&
                   items[index - 1].deleted === message.deleted &&
@@ -2462,7 +2483,7 @@ function MessageRow({
       ) : (
         <div className="message-avatar">
           {!grouped ? (
-            <Avatar instance={instance} user={user} />
+            <MessageAvatar instance={instance} message={message} />
           ) : !dated ? (
             <time
               className="message-compact-time"
@@ -2490,7 +2511,7 @@ function MessageRow({
             className="message-reply-reference"
             aria-label={
               reply
-                ? `Reply to ${displayName(replyUser)}: ${reply.deleted ? "Message deleted" : reply.body || "Attachment message"}`
+                ? `Reply to ${messageAuthorName(reply, instance.snapshot.users)}: ${reply.deleted ? "Message deleted" : reply.body || "Attachment message"}`
                 : "Original message unavailable"
             }
             onClick={() =>
@@ -2501,13 +2522,13 @@ function MessageRow({
           >
             {reply ? (
               <>
-                <Avatar
+                <MessageAvatar
                   instance={instance}
-                  user={replyUser}
+                  message={reply}
                   size="reply-avatar"
                 />
                 <strong>
-                  <UserName instance={instance} user={replyUser} />
+                  <MessageAuthor instance={instance} message={reply} />
                 </strong>
                 <span className="reply-preview">
                   {reply.deleted
@@ -2525,7 +2546,11 @@ function MessageRow({
             {instance.isDM(message.conversation_id) && !message.deleted && (
               <MessageSecurity message={message} />
             )}
-            {user ? (
+            {message.ai_author ? (
+              <strong>
+                <MessageAuthor instance={instance} message={message} />
+              </strong>
+            ) : user ? (
               <button
                 className="user-name"
                 onClick={() => openProfile(instance, user.id)}
@@ -2719,16 +2744,45 @@ function Composer({
   const query =
     !mentionDismissed &&
     /(^|[\s([{"'.,!?:;])@([a-zA-Z0-9_]{0,32})$/.exec(body.slice(0, caret));
+  const aiState = useAIChannel(instance, conversation);
+  const aiChannel = instance.snapshot.channels.find(
+    (c) => c.id === conversation && c.kind === "ai",
+  );
+  const maySwitchPreset =
+    aiChannel &&
+    (can(instance, Permission.Administrator) ||
+      !!((aiChannel.permissions ?? 0) & AISwitchPermission));
   const candidates = query
-    ? instance.snapshot.users
-        .filter(
-          (u) =>
-            u.username.toLowerCase().startsWith(query[2].toLowerCase()) ||
-            (u.display_name ?? "")
-              .toLowerCase()
-              .includes(query[2].toLowerCase()),
-        )
-        .slice(0, 8)
+    ? [
+        ...instance.snapshot.users
+          .filter(
+            (u) =>
+              u.username.toLowerCase().startsWith(query[2].toLowerCase()) ||
+              (u.display_name ?? "")
+                .toLowerCase()
+                .includes(query[2].toLowerCase()),
+          )
+          .map((user) => ({
+            id: `user:${user.id}`,
+            token: `@${user.username}`,
+            name: displayName(user),
+            user,
+            preset: undefined,
+          })),
+        ...(maySwitchPreset
+          ? aiState.presets
+              .filter((p) =>
+                p.name.toLowerCase().includes(query[2].toLowerCase()),
+              )
+              .map((preset) => ({
+                id: `ai:${preset.id}`,
+                token: aiMention(preset.id),
+                name: preset.name,
+                preset,
+                user: undefined,
+              }))
+          : []),
+      ].slice(0, 8)
     : [];
   const emojiQuery =
     !emojiDismissed &&
@@ -2753,10 +2807,10 @@ function Composer({
       input.current?.setSelectionRange(next, next);
     });
   };
-  const insertMention = (username: string) => {
+  const insertMention = (token: string) => {
     if (!query) return;
     const start = caret - query[2].length - 1,
-      text = `@${username} `;
+      text = `${token} `;
     draft(body.slice(0, start) + text + body.slice(caret));
     dismissMention(true);
     requestAnimationFrame(() => {
@@ -2856,25 +2910,27 @@ function Composer({
           className="mention-picker"
           id="mention-picker"
           role="listbox"
-          aria-label="Mention a person"
+          aria-label="Mention a person or AI preset"
         >
-          {candidates.map((user, index) => (
+          {candidates.map((candidate, index) => (
             <button
               type="button"
               id={`mention-option-${index}`}
               role="option"
               aria-selected={index === mentionIndex % candidates.length}
-              key={user.id}
+              key={candidate.id}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => insertMention(user.username)}
+              onClick={() => insertMention(candidate.token)}
             >
-              <Avatar instance={instance} user={user} />
+              {candidate.preset ? (
+                <AIAvatar instance={instance} author={candidate.preset} />
+              ) : (
+                <Avatar instance={instance} user={candidate.user} />
+              )}
               <span>
-                <UserName instance={instance} user={user} />
+                {candidate.name}
                 <small>
-                  <UserName instance={instance} user={user}>
-                    @{user.username}
-                  </UserName>
+                  {candidate.preset ? "AI preset" : candidate.token}
                 </small>
               </span>
             </button>
@@ -2887,12 +2943,7 @@ function Composer({
           <div>
             <span>Replying to</span>
             <strong>
-              <UserName
-                instance={instance}
-                user={instance.snapshot.users.find(
-                  (user) => user.id === replyTo.author_id,
-                )}
-              />
+              <MessageAuthor instance={instance} message={replyTo} />
             </strong>
             <small>{replyTo.body || "Attachment message"}</small>
           </div>
@@ -3075,7 +3126,7 @@ function Composer({
               if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
                 e.preventDefault();
                 insertMention(
-                  candidates[mentionIndex % candidates.length].username,
+                  candidates[mentionIndex % candidates.length].token,
                 );
                 return;
               }

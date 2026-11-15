@@ -26,3 +26,5 @@ export * from "./message-content.js";
 export * from "./account-address.js";
 export * from "./history.js";
 export * from "./search.js";
+
+export * from "./ai.js";

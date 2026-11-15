@@ -83,6 +83,11 @@ export interface MessageStore {
   putPending(scope: Scope, message: PendingMessage): Promise<void>;
   removePending(scope: Scope, requestId: string): Promise<void>;
   clear(scope: Scope): Promise<void>;
+  pruneHistory?(
+    scope: Scope,
+    conversation: string,
+    through: number,
+  ): Promise<void>;
 }
 // Bivariant event handlers accept browser WebSocket and native socket adapters.
 type SocketHandler<T> = { handle(event: T): void }["handle"];

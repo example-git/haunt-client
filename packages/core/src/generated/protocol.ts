@@ -134,7 +134,7 @@ export const protocol = {
       "$ref": "#/components/schemas/HttpapiEventCommand"
     },
     "durable_events": {
-      "data": "Message object for created/updated/deleted; {pruned_through: sequence} for history.pruned. For dm.keys_changed the data is {revision}; for dm.devices_changed it is {user}. Refresh the DM encryption endpoints without incrementing unread counts. Monotonic global event IDs can skip inaccessible events. A gap requires HTTP history refresh.",
+      "data": "Message object for created/updated/deleted; AI authors use ai_author identity snapshots and an empty author_id. ai.settings.updated carries the settings revision and requires an authorized settings/presets refresh. ai.turn.updated carries a coalesced durable AI turn checkpoint with a monotonic revision; reconnect reads /channels/{id}/ai/turns. AI history pruning also evicts downloaded client history. {pruned_through: sequence} for history.pruned. For dm.keys_changed the data is {revision}; for dm.devices_changed it is {user}. Refresh the DM encryption endpoints without incrementing unread counts. Monotonic global event IDs can skip inaccessible events. A gap requires HTTP history refresh.",
       "schema": {
         "$ref": "#/components/schemas/ChatEvent"
       },
@@ -143,6 +143,8 @@ export const protocol = {
         "message.updated",
         "message.deleted",
         "history.pruned",
+        "ai.turn.updated",
+        "ai.settings.updated",
         "dm.keys_changed",
         "dm.devices_changed"
       ]

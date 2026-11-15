@@ -1,3 +1,4 @@
+import { AIClient } from "./ai.js";
 import type { DMEncryption } from "./dm.js";
 import { ArchiveBudget, historyDelay } from "./history.js";
 import {
@@ -38,6 +39,15 @@ import {
 } from "./types.js";
 
 export class InstanceClient {
+  readonly ai = new AIClient(this);
+  async pruneAIHistory(conversation: string, through: number) {
+    if (!Number.isSafeInteger(through) || through < 1) return;
+    if (this.store.pruneHistory) {
+      await this.store.pruneHistory(this.scope, conversation, through);
+      this.changedMessages(conversation);
+    }
+  }
+
   private encryption?: DMEncryption;
   get dmEncryption() {
     if (!this.account.instance.capabilities?.includes("dms.mls.v1"))
@@ -139,6 +149,25 @@ export class InstanceClient {
       account.login.user.id,
     );
     this.http = api(this.origin, runtime, account.login.token);
+  }
+  aiRequest(
+    path: string,
+    method = "GET",
+    body?: unknown,
+    signal?: AbortSignal,
+  ) {
+    if (!/^\/api\/v1\/(?:ai\/|channels\/[a-f0-9-]+\/ai(?:\/|$))/.test(path))
+      throw Error("Invalid AI API path");
+    return requestBoundedJSON(
+      (request) => this.runtime.fetch(request),
+      this.origin,
+      this.account.login.token,
+      path,
+      method,
+      body,
+      signal,
+      8 * 1024 * 1024,
+    );
   }
   menuRequest(
     path: string,
@@ -391,6 +420,7 @@ export class InstanceClient {
       this.changed({ status: "online", readiness: "ready", error: undefined });
       void this.dmEncryption?.start().catch(() => {});
       this.scheduleRefresh();
+      this.ai.reconnect();
       if (this.active && this.pagedHistory)
         this.startArchive(
           this.active,
@@ -447,6 +477,7 @@ export class InstanceClient {
     }, 60_000);
   }
   private handleEvent(event: WireEvent) {
+    this.ai.receive(event);
     if (!event.type.startsWith("message."))
       for (const fn of this.wireListeners) fn(event);
     if (
@@ -570,7 +601,17 @@ export class InstanceClient {
           if (message.author_id === this.account.login.user.id)
             await this.store.removePending(this.scope, message.request_id);
         }
-        // Retention events intentionally keep older downloaded content.
+        if (
+          event.type === "history.pruned" &&
+          this.snapshot.channels.some(
+            (c) => c.id === event.conversation_id && c.kind === "ai",
+          )
+        ) {
+          const boundary = (event.data as { pruned_through?: number })
+            ?.pruned_through;
+          if (boundary)
+            await this.pruneAIHistory(String(event.conversation_id), boundary);
+        }
         await this.store.setCursor(this.scope, Number(event.id));
         if (event.type.startsWith("message."))
           this.changedMessages(String(event.conversation_id));
@@ -830,6 +871,12 @@ export class InstanceClient {
       response = await request();
     }
     const page = await unwrap(Promise.resolve(response));
+    if (
+      this.snapshot.channels.some(
+        (c) => c.id === conversation && c.kind === "ai",
+      )
+    )
+      await this.pruneAIHistory(conversation, page.pruned_through);
     const messages = [];
     for (const raw of page.messages ?? [])
       messages.push(await this.decodeMessage(raw));
@@ -1041,6 +1088,12 @@ export class InstanceClient {
           params: { path: { id: conversation }, query: { after, limit: 100 } },
         }),
       );
+      if (
+        this.snapshot.channels.some(
+          (c) => c.id === conversation && c.kind === "ai",
+        )
+      )
+        await this.pruneAIHistory(conversation, page.pruned_through);
       const messages: Message[] = [];
       for (const message of page.messages ?? [])
         messages.push(await this.decodeMessage(message));
@@ -1528,6 +1581,37 @@ export class InstanceClient {
       },
     );
     if (!response.ok) throw new APIError(response.status, "not_found");
+    return response.blob();
+  }
+  async aiAvatar(
+    path: string,
+    image?: Blob,
+    signal?: AbortSignal,
+  ): Promise<Blob> {
+    const url = new URL(path, this.origin);
+    if (
+      url.origin !== this.origin ||
+      !/^\/api\/v1\/channels\/[a-f0-9-]+\/ai(?:\/presets\/[a-f0-9-]+)?\/avatar$/.test(
+        url.pathname,
+      ) ||
+      (image && image.size > 20 * 1024 * 1024)
+    )
+      throw Error("Invalid AI avatar request.");
+    const response = await this.runtime.fetch(url.href, {
+      method: image ? "PUT" : "GET",
+      body: image,
+      headers: {
+        Authorization: `Bearer ${this.account.login.token}`,
+        ...(image ? { "Content-Type": image.type } : {}),
+      },
+      credentials: "omit",
+      redirect: "error",
+      signal: AbortSignal.any([
+        AbortSignal.timeout(30_000),
+        ...(signal ? [signal] : []),
+      ]),
+    });
+    if (!response.ok) throw new APIError(response.status, "image_unavailable");
     return response.blob();
   }
   async art(

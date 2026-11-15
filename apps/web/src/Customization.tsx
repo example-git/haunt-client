@@ -1,3 +1,5 @@
+import { AIChannelSettings } from "./AIChannelSettings";
+import { AIConnections } from "./AIConnections";
 import { Permission } from "./Permissions";
 import { UserName } from "./UserName";
 import { AudioPluginsAdmin } from "./AudioPluginsAdmin";
@@ -36,6 +38,8 @@ const permissions = [
   [1, "View channels"],
   [2, "Send messages"],
   [4, "Join voice channels"],
+  [Permission.UseAI, "Request AI responses"],
+  [Permission.SwitchAIPreset, "Switch AI presets"],
   [8, "Create invitations"],
   [16, "Manage channels"],
   [32, "Manage server appearance & emojis"],
@@ -398,6 +402,14 @@ export function ChannelSettings({
             >
               Overview
             </button>
+            {channel?.kind === "ai" && (
+              <button
+                className={tab === "ai" ? "active" : ""}
+                onClick={() => setTab("ai")}
+              >
+                AI settings
+              </button>
+            )}
             {channel && (
               <button
                 className={tab === "permissions" ? "active" : ""}
@@ -419,7 +431,9 @@ export function ChannelSettings({
           }}
         />
       )}
-      {tab === "permissions" && channel ? (
+      {tab === "ai" && channel ? (
+        <AIChannelSettings instance={instance} channel={channel.id} />
+      ) : tab === "permissions" && channel ? (
         <ChannelPermissions instance={instance} channel={channel} />
       ) : tab === "overview" ? (
         <>
@@ -430,7 +444,7 @@ export function ChannelSettings({
               const data = new FormData(e.currentTarget);
               const body = {
                 name: String(data.get("name")),
-                kind: String(data.get("kind")) as "text" | "voice",
+                kind: String(data.get("kind")) as "text" | "voice" | "ai",
                 category_id: String(data.get("category")) || null,
                 topic: String(data.get("topic")),
                 ...(supportsIcons ? { icon } : {}),
@@ -466,11 +480,14 @@ export function ChannelSettings({
               <select
                 name="kind"
                 value={kind}
-                onChange={(e) => setKind(e.target.value as "text" | "voice")}
+                onChange={(e) =>
+                  setKind(e.target.value as "text" | "voice" | "ai")
+                }
                 disabled={!!channel}
               >
                 <option value="text">Text</option>
                 <option value="voice">Voice</option>
+                <option value="ai">AI conversation</option>
               </select>
               {channel && (
                 <input type="hidden" name="kind" value={channel.kind} />
@@ -618,7 +635,9 @@ function ChannelPermissions({
         </select>
       </label>
       {permissions
-        .filter(([bit]) => bit <= 4)
+        .filter(([bit]) =>
+          [1, 2, 4, Permission.UseAI, Permission.SwitchAIPreset].includes(bit),
+        )
         .map(([bit, label]) => (
           <label className="permission-row" key={bit}>
             <span>{label}</span>
@@ -679,6 +698,9 @@ export function ServerSettings({
 }) {
   useSyncExternalStore(instance.subscribe, instance.getSnapshot);
   const fallbackTabs = [
+    ...(can(instance, Permission.ManageConfiguration)
+      ? [["ai-connections", "AI connections"]]
+      : []),
     ...(can(instance, Permission.ManageConfiguration) &&
     instance.account.instance.capabilities?.includes("server.extensions.v1")
       ? [["server-extensions", "Server extensions"]]
@@ -740,6 +762,7 @@ export function ServerSettings({
         <div className="settings-content" key={selectedID}>
           <MenuLoadStatus state={serverMenu} />
           {page && <ServerMenuPage instance={instance} page={page} />}
+          {tab === "ai-connections" && <AIConnections instance={instance} />}
           {tab === "configuration" && (
             <ServerConfiguration instance={instance} />
           )}

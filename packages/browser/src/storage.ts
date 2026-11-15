@@ -73,6 +73,8 @@ interface Archive extends DBSchema {
     indexes: { scope: string };
   };
 }
+const pruneKey = (scope: string, conversation: string) =>
+  JSON.stringify([scope, "ai-pruned", conversation]);
 export class IndexedDBStore implements MessageStore {
   private db: Promise<IDBPDatabase<Archive>>;
   private listeners = new Set<
@@ -199,7 +201,7 @@ export class IndexedDBStore implements MessageStore {
   }
   async merge(scope: Scope, messages: Message[]) {
     const tx = (await this.db).transaction(
-      ["messages", "search", "textArchive", "archiveChunks"],
+      ["messages", "search", "textArchive", "archiveChunks", "cursors"],
       "readwrite",
     );
     void tx.done.catch(() => {});
@@ -216,6 +218,13 @@ export class IndexedDBStore implements MessageStore {
     const writes: Promise<unknown>[] = [];
     for (const raw of messages) {
       const message = cachedMessage(raw);
+      if (
+        message.seq <=
+        ((await tx
+          .objectStore("cursors")
+          .get(pruneKey(scope, message.conversation_id))) ?? 0)
+      )
+        continue;
       const old = oldRows.get(message.id);
       const saved = archivedText(message.deleted && old ? old : message);
       if (saved) archival.push(saved);
@@ -232,6 +241,58 @@ export class IndexedDBStore implements MessageStore {
     await tx.done;
     if (changed.size)
       for (const listener of this.listeners) listener(scope, [...changed]);
+  }
+  async pruneHistory(scope: Scope, conversation: string, through: number) {
+    if (!Number.isSafeInteger(through) || through < 1) return;
+    const tx = (await this.db).transaction(
+      ["messages", "search", "textArchive", "archiveChunks", "cursors"],
+      "readwrite",
+    );
+    const boundary = pruneKey(scope, conversation);
+    const previous = (await tx.objectStore("cursors").get(boundary)) ?? 0;
+    if (previous >= through) {
+      await tx.done;
+      return;
+    }
+    await tx.objectStore("cursors").put(through, boundary);
+    let messages = await tx
+      .objectStore("messages")
+      .index("conversation")
+      .openCursor(
+        IDBKeyRange.bound(
+          [scope, conversation, 0],
+          [scope, conversation, through],
+        ),
+      );
+    while (messages) {
+      await tx.objectStore("search").delete([scope, messages.value.id]);
+      await messages.delete();
+      messages = await messages.continue();
+    }
+    const dirty = new Set<string>();
+    let archived = await tx
+      .objectStore("textArchive")
+      .index("scope")
+      .openCursor(scope);
+    while (archived) {
+      if (
+        archived.value.message.conversation_id === conversation &&
+        archived.value.message.seq <= through
+      ) {
+        dirty.add(archived.value.bucket);
+        await archived.delete();
+      }
+      archived = await archived.continue();
+    }
+    for (const key of dirty) {
+      const old = await tx.objectStore("archiveChunks").get(key);
+      if (old)
+        await tx
+          .objectStore("archiveChunks")
+          .put({ ...old, revision: old.revision + 1, chunk: undefined });
+    }
+    await tx.done;
+    for (const listener of this.listeners) listener(scope, [conversation]);
   }
   async cursor(scope: Scope) {
     return (await (await this.db).get("cursors", scope)) ?? 0;
@@ -284,6 +345,7 @@ export class IndexedDBStore implements MessageStore {
         | "textArchive"
         | "archiveChunks"
         | "archiveMigrations"
+        | "cursors"
       )[],
       "readwrite"
     >,
@@ -302,6 +364,13 @@ export class IndexedDBStore implements MessageStore {
     const dirty = new Map<string, Omit<TextArchiveChunk, "data">>();
     const writes: Promise<unknown>[] = [];
     for (const row of rows) {
+      if (
+        row.seq <=
+        ((await tx
+          .objectStore("cursors")
+          .get(pruneKey(scope, row.conversation_id))) ?? 0)
+      )
+        continue;
       const before = current.get(row.id),
         next = mergeArchivedText(before, row);
       if (JSON.stringify(before) === JSON.stringify(next)) continue;
@@ -339,7 +408,13 @@ export class IndexedDBStore implements MessageStore {
       for (;;) {
         signal?.throwIfAborted();
         const tx = db.transaction(
-          ["messages", "textArchive", "archiveChunks", "archiveMigrations"],
+          [
+            "messages",
+            "textArchive",
+            "archiveChunks",
+            "archiveMigrations",
+            "cursors",
+          ],
           "readwrite",
         );
         const state = await tx.objectStore("archiveMigrations").get(scope);
@@ -501,7 +576,10 @@ export class IndexedDBStore implements MessageStore {
         throw Error("Text archive belongs to another account or server.");
       const rows = await unpackTextChunk(chunk);
       signal?.throwIfAborted();
-      const tx = db.transaction(["textArchive", "archiveChunks"], "readwrite");
+      const tx = db.transaction(
+        ["textArchive", "archiveChunks", "cursors"],
+        "readwrite",
+      );
       await this.archiveRows(tx, chunk.scope, rows);
       await tx.done;
       progress?.((count += rows.length));
@@ -534,7 +612,10 @@ export class IndexedDBStore implements MessageStore {
   }
   async removeArchivedMessage(scope: string, id: string) {
     const db = await this.db;
-    const tx = db.transaction(["textArchive", "archiveChunks"], "readwrite");
+    const tx = db.transaction(
+      ["textArchive", "archiveChunks", "cursors"],
+      "readwrite",
+    );
     const row = await tx.objectStore("textArchive").get([scope, id]);
     if (row)
       await this.archiveRows(tx, scope, [
@@ -746,6 +827,16 @@ export interface DesktopUpdateState {
   localSigning?: boolean;
 }
 export interface DesktopBridge extends NativeBridge {
+  aiOAuth?: {
+    reserve(
+      provider: "claude" | "codex" | "antigravity",
+    ): Promise<{ id: string; redirect_uri: string }>;
+    launch(
+      id: string,
+      url: string,
+    ): Promise<{ code?: string; state?: string; paste?: boolean }>;
+    cancel(id: string): Promise<void>;
+  };
   calls?: {
     settings(value?: {
       shortcuts: boolean;

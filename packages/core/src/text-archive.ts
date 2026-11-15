@@ -5,6 +5,7 @@ export interface ArchivedText {
   id: string;
   conversation_id: string;
   author_id: string;
+  ai_author?: import("./ai.js").AIAuthor;
   seq: number;
   body: string;
   created_at: string;
@@ -62,6 +63,7 @@ export function archivedText(raw: Message): ArchivedText | undefined {
     id: m.id,
     conversation_id: m.conversation_id,
     author_id: m.author_id,
+    ...(m.ai_author ? { ai_author: m.ai_author } : {}),
     seq: m.seq,
     body: m.body,
     created_at: m.created_at,
@@ -136,7 +138,16 @@ export async function unpackTextChunk(
     if (
       !row ||
       !id(row.id) ||
-      !id(row.author_id) ||
+      !(row.ai_author
+        ? row.author_id === "" &&
+          id(row.ai_author.id) &&
+          typeof row.ai_author.name === "string" &&
+          row.ai_author.name.length > 0 &&
+          row.ai_author.name.length <= 160 &&
+          (row.ai_author.avatar_url === undefined ||
+            (typeof row.ai_author.avatar_url === "string" &&
+              row.ai_author.avatar_url.length <= 1024))
+        : id(row.author_id)) ||
       seen.has(row.id) ||
       row.conversation_id !== chunk.conversation ||
       !Number.isSafeInteger(row.seq) ||
@@ -156,6 +167,17 @@ export async function unpackTextChunk(
   return rows.map((row) => ({
     id: row.id,
     author_id: row.author_id,
+    ...(row.ai_author
+      ? {
+          ai_author: {
+            id: row.ai_author.id,
+            name: row.ai_author.name,
+            ...(row.ai_author.avatar_url
+              ? { avatar_url: row.ai_author.avatar_url }
+              : {}),
+          },
+        }
+      : {}),
     conversation_id: row.conversation_id,
     seq: row.seq,
     body: row.body,

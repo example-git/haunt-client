@@ -42,6 +42,12 @@ export async function checkScreen(executablePath, afterCheck) {
         ]);
       } catch (error) {
         closeError = error;
+        if (process.env.HAUNT_DESKTOP_SHUTDOWN_TRACE === "1")
+          console.error("Desktop shutdown timeout:", {
+            exitCode: desktop?.process().exitCode,
+            signalCode: desktop?.process().signalCode,
+            diagnostics,
+          });
         desktop?.process().kill("SIGKILL");
       } finally {
         clearTimeout(closeTimer);
@@ -74,7 +80,12 @@ export async function checkScreen(executablePath, afterCheck) {
         }
         await exited;
       }
-      await fs.rm(scratch, { recursive: true, force: true });
+      await fs.rm(scratch, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 200,
+      });
       if (closeError) throw closeError;
     })());
   activeCleanup = cleanup;
@@ -163,7 +174,12 @@ export async function checkScreen(executablePath, afterCheck) {
       timeout: 30000,
     });
     desktop.process().stdout.on("data", (data) => process.stdout.write(data));
-    if (process.env.HAUNT_DESKTOP_SHUTDOWN_TRACE === "1")
+    if (process.env.HAUNT_DESKTOP_SHUTDOWN_TRACE === "1") {
+      desktop
+        .process()
+        .once("exit", (code, signal) =>
+          console.log("Desktop shutdown: process exit", { code, signal }),
+        );
       await desktop.evaluate(({ app, BrowserWindow }) => {
         for (const event of ["before-quit", "will-quit", "quit"])
           app.on(event, () => console.log(`Desktop shutdown: ${event}`));
@@ -172,6 +188,7 @@ export async function checkScreen(executablePath, afterCheck) {
             console.log("Desktop shutdown: window closed"),
           );
       });
+    }
     desktop.process().stderr.on("data", (data) => {
       diagnostics = (diagnostics + data).slice(-24000);
       if (String(data).includes("CAPTURE")) process.stderr.write(data);

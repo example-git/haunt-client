@@ -388,6 +388,102 @@ export interface APIContract {
       patch?: never;
       trace?: never;
     };
+    "/api/v1/ai/accounts": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationAiAccounts;
+      put?: never;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/ai/accounts/{account}": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get?: never;
+      put?: never;
+      post?: never;
+      delete: OperationAiDisconnect;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/ai/accounts/{account}/models": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationAiModels;
+      put?: never;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/ai/oauth/start": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get?: never;
+      put?: never;
+      post: OperationAiOAuthStart;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/ai/oauth/{session}/complete": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get?: never;
+      put?: never;
+      post: OperationAiOAuthComplete;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/ai/providers": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationAiProviders;
+      put?: never;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
     "/api/v1/attachments/{id}": {
       parameters: {
         query?: never;
@@ -623,6 +719,150 @@ export interface APIContract {
       put: OperationUpdateChannel;
       post?: never;
       delete: OperationDeleteChannel;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/channels/{id}/ai": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationAiSettings;
+      put: OperationAiSaveSettings;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/channels/{id}/ai/avatar": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationAiAvatarGet;
+      put: OperationAiAvatarSave;
+      post?: never;
+      delete: OperationAiAvatarDelete;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/channels/{id}/ai/presets": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationAiPresets;
+      put?: never;
+      post: OperationAiCreatePreset;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/channels/{id}/ai/presets/{preset}": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get?: never;
+      put: OperationAiSavePreset;
+      post?: never;
+      delete: OperationAiDeletePreset;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/channels/{id}/ai/presets/{preset}/avatar": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationAiPresetAvatarGet;
+      put: OperationAiPresetAvatarSave;
+      post?: never;
+      delete: OperationAiPresetAvatarDelete;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/channels/{id}/ai/turns": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationAiTurns;
+      put?: never;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/channels/{id}/ai/turns/{turn}/cancel": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get?: never;
+      put?: never;
+      post: OperationAiCancel;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/channels/{id}/ai/turns/{turn}/retry": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get?: never;
+      put?: never;
+      post: OperationAiRetry;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
+    "/api/v1/channels/{id}/ai/usage": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationAiUsage;
+      put?: never;
+      post?: never;
+      delete?: never;
       options?: never;
       head?: never;
       patch?: never;
@@ -1607,6 +1847,17 @@ export interface APIContract {
   };
   components: {
     schemas: {
+      AiAccount: AiAccount;
+      AiOAuthCompleteInput: AiOAuthCompleteInput;
+      AiOAuthPrepareInput: AiOAuthPrepareInput;
+      AiOAuthSession: AiOAuthSession;
+      AiPreset: AiPreset;
+      AiPresetInput: AiPresetInput;
+      AiProviderInfo: AiProviderInfo;
+      AiSettings: AiSettings;
+      AiSettingsInput: AiSettingsInput;
+      AiTurn: AiTurn;
+      AiUsage: AiUsage;
       AttachmentsAttachment: AttachmentsAttachment;
       AttachmentsDMPurge: AttachmentsDMPurge;
       AttachmentsDMUsage: AttachmentsDMUsage;
@@ -1624,6 +1875,7 @@ export interface APIContract {
       BlobstoreCredentials: BlobstoreCredentials;
       BlobstoreProvider: BlobstoreProvider;
       BlobstoreRegisterRequest: BlobstoreRegisterRequest;
+      ChatAIAuthor: ChatAIAuthor;
       ChatConversation: ChatConversation;
       ChatDMCryptoBundle: ChatDMCryptoBundle;
       ChatDMCryptoCommit: ChatDMCryptoCommit;
@@ -1645,6 +1897,11 @@ export interface APIContract {
       EmbedsMedia: EmbedsMedia;
       EmbedsPreview: EmbedsPreview;
       HttpapiActivateStorageRequest: HttpapiActivateStorageRequest;
+      HttpapiAiAccountsResponse: HttpapiAiAccountsResponse;
+      HttpapiAiModelsResponse: HttpapiAiModelsResponse;
+      HttpapiAiPresetsResponse: HttpapiAiPresetsResponse;
+      HttpapiAiProvidersResponse: HttpapiAiProvidersResponse;
+      HttpapiAiTurnsResponse: HttpapiAiTurnsResponse;
       HttpapiAppealsResponse: HttpapiAppealsResponse;
       HttpapiArtResponse: HttpapiArtResponse;
       HttpapiAssignRolesRequest: HttpapiAssignRolesRequest;
@@ -1736,6 +1993,7 @@ export interface APIContract {
       IdentityUser: IdentityUser;
       IdentityVoiceRestriction: IdentityVoiceRestriction;
       IdentityVoiceRestrictionMember: IdentityVoiceRestrictionMember;
+      ProviderModel: ProviderModel;
       ServerextensionConfiguration: ServerextensionConfiguration;
       ServerextensionExtension: ServerextensionExtension;
       ServerextensionField: ServerextensionField;
@@ -1784,6 +2042,12 @@ export interface APIContract {
     removeStorage: OperationRemoveStorage;
     checkStorage: OperationCheckStorage;
     rotateStorageCredentials: OperationRotateStorageCredentials;
+    aiAccounts: OperationAiAccounts;
+    aiDisconnect: OperationAiDisconnect;
+    aiModels: OperationAiModels;
+    aiOAuthStart: OperationAiOAuthStart;
+    aiOAuthComplete: OperationAiOAuthComplete;
+    aiProviders: OperationAiProviders;
     downloadAttachment: OperationDownloadAttachment;
     deleteAttachment: OperationDeleteAttachment;
     headAttachment: OperationHeadAttachment;
@@ -1806,6 +2070,22 @@ export interface APIContract {
     getChannel: OperationGetChannel;
     updateChannel: OperationUpdateChannel;
     deleteChannel: OperationDeleteChannel;
+    aiSettings: OperationAiSettings;
+    aiSaveSettings: OperationAiSaveSettings;
+    aiAvatarGet: OperationAiAvatarGet;
+    aiAvatarSave: OperationAiAvatarSave;
+    aiAvatarDelete: OperationAiAvatarDelete;
+    aiPresets: OperationAiPresets;
+    aiCreatePreset: OperationAiCreatePreset;
+    aiSavePreset: OperationAiSavePreset;
+    aiDeletePreset: OperationAiDeletePreset;
+    aiPresetAvatarGet: OperationAiPresetAvatarGet;
+    aiPresetAvatarSave: OperationAiPresetAvatarSave;
+    aiPresetAvatarDelete: OperationAiPresetAvatarDelete;
+    aiTurns: OperationAiTurns;
+    aiCancel: OperationAiCancel;
+    aiRetry: OperationAiRetry;
+    aiUsage: OperationAiUsage;
     getChannelMenu: OperationGetChannelMenu;
     getChannelPermissions: OperationGetChannelPermissions;
     setChannelPermissions: OperationSetChannelPermissions;
@@ -2781,6 +3061,8 @@ export interface HttpapiStatsResponse {
   } | null;
 }
 export interface ConfigPolicy {
+  ai_channel_max_bytes: number;
+  ai_text_max_bytes: number;
   attachment_max_bytes: number;
   attachment_retention_days: number;
   dm?: ConfigDMPolicy;
@@ -3015,6 +3297,228 @@ export interface OperationRotateStorageCredentials {
       };
     };
   };
+}
+export interface OperationAiAccounts {
+  parameters: {
+    query?: never;
+    header?: never;
+    path?: never;
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiAiAccountsResponse;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface HttpapiAiAccountsResponse {
+  accounts: AiAccount[] | null;
+}
+export interface AiAccount {
+  created_at: string;
+  expires_at?: null | string;
+  id: string;
+  label: string;
+  provider: string;
+  status: string;
+}
+export interface OperationAiDisconnect {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      account: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "204": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content?: never;
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationAiModels {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      account: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiAiModelsResponse;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface HttpapiAiModelsResponse {
+  models: ProviderModel[] | null;
+}
+export interface ProviderModel {
+  context_window: number;
+  id: string;
+  max_output_tokens: number;
+  name: string;
+  vision: boolean;
+}
+export interface OperationAiOAuthStart {
+  parameters: {
+    query?: never;
+    header?: never;
+    path?: never;
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/json": AiOAuthPrepareInput;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiOAuthSession;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface AiOAuthPrepareInput {
+  account_id?: string;
+  provider: string;
+  redirect_uri: string;
+}
+export interface AiOAuthSession {
+  authorization_url: string;
+  expires_at: string;
+  id: string;
+  provider: string;
+  redirect_uri: string;
+  state: string;
+}
+export interface OperationAiOAuthComplete {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      session: string;
+    };
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/json": AiOAuthCompleteInput;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiAccount;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface AiOAuthCompleteInput {
+  code: string;
+  state: string;
+}
+export interface OperationAiProviders {
+  parameters: {
+    query?: never;
+    header?: never;
+    path?: never;
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiAiProvidersResponse;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface HttpapiAiProvidersResponse {
+  providers: AiProviderInfo[] | null;
+}
+export interface AiProviderInfo {
+  id: string;
+  models: ProviderModel[] | null;
+  name: string;
+  redirect_mode: string;
+  redirect_uri: string;
 }
 export interface OperationDownloadAttachment {
   parameters: {
@@ -3766,7 +4270,7 @@ export interface HttpapiSaveChannelRequest {
         | "shield"
         | "wrench"
       );
-  kind: "text" | "voice";
+  kind: "text" | "voice" | "ai";
   name: string;
   topic?: null | string;
 }
@@ -3858,6 +4362,592 @@ export interface OperationDeleteChannel {
       };
     };
   };
+}
+export interface OperationAiSettings {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiSettings;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface AiSettings {
+  account_id: string;
+  active_preset_id?: string;
+  avatar_url?: string;
+  channel_id: string;
+  connection_status: string;
+  instructions: string;
+  max_bytes: number;
+  model: string;
+  name: string;
+  provider: string;
+  revision: number;
+}
+export interface OperationAiSaveSettings {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/json": AiSettingsInput;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiSettings;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface AiSettingsInput {
+  account_id: string;
+  avatar_url?: string;
+  instructions: string;
+  max_bytes: number;
+  model: string;
+  name: string;
+  provider: string;
+}
+export interface OperationAiAvatarGet {
+  parameters: {
+    query?: {
+      /**
+       * Immutable avatar version retained while referenced by settings, personas, turns or messages. Omit to read the current avatar.
+       */
+      v?: string;
+    };
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    "206": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    "416": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content?: never;
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationAiAvatarSave {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/octet-stream": string;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiSettings;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationAiAvatarDelete {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "204": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content?: never;
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationAiPresets {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiAiPresetsResponse;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface HttpapiAiPresetsResponse {
+  presets: AiPreset[] | null;
+}
+export interface AiPreset {
+  avatar_url?: string;
+  channel_id: string;
+  id: string;
+  instructions: string;
+  name: string;
+  revision: number;
+}
+export interface OperationAiCreatePreset {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/json": AiPresetInput;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiPreset;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface AiPresetInput {
+  avatar_url?: string;
+  instructions: string;
+  name: string;
+}
+export interface OperationAiSavePreset {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+      preset: string;
+    };
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/json": AiPresetInput;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiPreset;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationAiDeletePreset {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+      preset: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "204": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content?: never;
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationAiPresetAvatarGet {
+  parameters: {
+    query?: {
+      /**
+       * Immutable avatar version retained while referenced by settings, personas, turns or messages. Omit to read the current avatar.
+       */
+      v?: string;
+    };
+    header?: never;
+    path: {
+      id: string;
+      preset: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    "206": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/octet-stream": string;
+      };
+    };
+    "416": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content?: never;
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationAiPresetAvatarSave {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+      preset: string;
+    };
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/octet-stream": string;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiPreset;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationAiPresetAvatarDelete {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+      preset: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "204": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content?: never;
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationAiTurns {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiAiTurnsResponse;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface HttpapiAiTurnsResponse {
+  turns: AiTurn[] | null;
+}
+export interface AiTurn {
+  actor_id: string;
+  channel_id: string;
+  created_at: string;
+  error_code?: string;
+  id: string;
+  partial_text?: string;
+  retry_at?: null | string;
+  revision: number;
+  status: string;
+  trigger_message_id: string;
+  updated_at: string;
+}
+export interface OperationAiCancel {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+      turn: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiTurn;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationAiRetry {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+      turn: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiTurn;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface OperationAiUsage {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiUsage;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface AiUsage {
+  channel_bytes: number;
+  channel_max_bytes: number;
+  global_bytes: number;
+  global_max_bytes: number;
+  history_epoch: number;
+  pruned_through: number;
+  pruned_through_seq: number;
 }
 export interface OperationGetChannelMenu {
   parameters: {
@@ -4389,6 +5479,7 @@ export interface ChatHistory {
   pruned_through: number;
 }
 export interface ChatMessage {
+  ai_author?: ChatAIAuthor;
   attachment_ids: string[] | null;
   author_id: string;
   body: string;
@@ -4401,6 +5492,11 @@ export interface ChatMessage {
   reply_to_id?: null | string;
   request_id: string;
   seq: number;
+}
+export interface ChatAIAuthor {
+  avatar_url?: string;
+  id: string;
+  name: string;
 }
 export interface OperationCreateMessage {
   parameters: {

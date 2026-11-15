@@ -1,6 +1,8 @@
 import { resolveNotificationSound } from "./notification-sound-options";
 import {
   mentions,
+  messageAuthorName,
+  messageAuthorKey,
   shouldNotify,
   type InstanceClient,
   type Message,
@@ -100,13 +102,13 @@ export class NotificationCenter {
       const author = instance.snapshot.users.find((u) => u.id === m.author_id);
       const ping: Ping = {
         direct: conversation?.kind === "dm",
-        author: m.author_id,
+        author: m.ai_author ? messageAuthorKey(m) : m.author_id,
         id: key,
         scope: instance.scope,
         instance: id,
         conversation: m.conversation_id,
         title:
-          `${author?.display_name || author?.username || "Someone"} · ${channel ? `#${channel.name}` : "Direct message"} · ${instance.account.instance.name}`.slice(
+          `${messageAuthorName(m, instance.snapshot.users)} · ${channel ? `#${channel.name}` : "Direct message"} · ${instance.account.instance.name}`.slice(
             0,
             240,
           ),
