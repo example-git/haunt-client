@@ -188,7 +188,7 @@ export async function checkUIRefresh(browser, fixtures) {
     });
     const principal = await request("GET", "/api/v1/me", aliceAPI.token);
     assert.equal(principal.user.is_owner, false);
-    assert.equal(principal.permissions, 262143);
+    assert.equal(principal.permissions, 1048575);
     await request(
       "PUT",
       `/api/v1/members/${aliceAPI.user.id}/roles`,
