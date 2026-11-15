@@ -1,6 +1,7 @@
 // Explicit runtime allowlist shared by staging and package verification.
 export const desktopFiles = [
   "main.cjs",
+  "ai-oauth.cjs",
   "appearance.cjs",
   "bootstrap.cjs",
   "profile.cjs",
