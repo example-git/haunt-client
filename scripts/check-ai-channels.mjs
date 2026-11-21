@@ -435,10 +435,14 @@ try {
   assert.equal(created[0].description, "Checks citations");
   assert.match(created[0].request_id, /^[a-f0-9-]{36}$/);
   await page.getByLabel("Allow the agent to switch personalities").check();
+  const timing = page.getByLabel("When to switch personalities");
+  await expect(timing).toHaveValue("next");
+  await timing.selectOption("immediate");
   await page
     .getByRole("button", { name: "Save AI settings", exact: true })
     .click();
   await expect.poll(() => settings.allow_agent_switch).toBe(true);
+  await expect.poll(() => settings.switch_during_reply).toBe(true);
   await expect(
     page.getByRole("button", { name: "Connect account", exact: true }),
   ).toBeDisabled();

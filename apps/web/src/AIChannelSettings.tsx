@@ -95,6 +95,7 @@ export function AIChannelSettings({
                   instructions: draft.instructions,
                   max_bytes: draft.max_bytes,
                   allow_agent_switch: !!draft.allow_agent_switch,
+                  switch_during_reply: !!draft.switch_during_reply,
                 },
               );
               await refresh();
@@ -165,16 +166,35 @@ export function AIChannelSettings({
             </select>
           </label>
           {multiple ? (
-            <label>
-              <input
-                type="checkbox"
-                checked={!!draft.allow_agent_switch}
-                onChange={(e) =>
-                  setDraft({ ...draft, allow_agent_switch: e.target.checked })
-                }
-              />
-              Allow the agent to switch personalities
-            </label>
+            <>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={!!draft.allow_agent_switch}
+                  onChange={(e) =>
+                    setDraft({ ...draft, allow_agent_switch: e.target.checked })
+                  }
+                />
+                Allow the agent to switch personalities
+              </label>
+              {draft.allow_agent_switch && (
+                <label>
+                  When to switch personalities
+                  <select
+                    value={draft.switch_during_reply ? "immediate" : "next"}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        switch_during_reply: e.target.value === "immediate",
+                      })
+                    }
+                  >
+                    <option value="next">After the current reply</option>
+                    <option value="immediate">During the current reply</option>
+                  </select>
+                </label>
+              )}
+            </>
           ) : (
             <>
               <label>

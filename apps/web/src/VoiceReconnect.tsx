@@ -111,6 +111,7 @@ export function VoiceReconnectBanner({
     <aside className="voice-reconnect-banner" role="status">
       <span>Return to {verified.name}?</span>
       <button
+        className="primary"
         disabled={busy}
         onClick={() => {
           setBusy(true);

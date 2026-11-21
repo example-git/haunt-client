@@ -4405,6 +4405,7 @@ export interface AiSettings {
   name: string;
   provider: string;
   revision: number;
+  switch_during_reply?: null | boolean;
 }
 export interface OperationAiSaveSettings {
   parameters: {
@@ -4448,6 +4449,7 @@ export interface AiSettingsInput {
   model: string;
   name: string;
   provider: string;
+  switch_during_reply?: null | boolean;
 }
 export interface OperationAiAvatarGet {
   parameters: {
