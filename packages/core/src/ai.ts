@@ -74,6 +74,18 @@ export class AIClient {
   private listeners = new Set<() => void>();
   private pending = new Map<string, Promise<void>>();
   private dirty = new Set<string>();
+  private watching = new Map<string, number>();
+  watch(id: string) {
+    const count = this.watching.get(id) ?? 0;
+    this.watching.set(id, count + 1);
+    if (!count && this.instance.snapshot.status === "online")
+      void this.refresh(id).catch(() => {});
+    return () => {
+      const remaining = (this.watching.get(id) ?? 1) - 1;
+      if (remaining) this.watching.set(id, remaining);
+      else this.watching.delete(id);
+    };
+  }
   constructor(private instance: InstanceClient) {}
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -97,45 +109,55 @@ export class AIClient {
       throw Error("Invalid AI API path");
     return this.instance.aiRequest(path, method, body, signal) as Promise<T>;
   }
-  async refresh(id: string) {
+  async refresh(id: string, settingsOnly = false, invalidate = false) {
     const running = this.pending.get(id);
     if (running) {
-      this.dirty.add(id);
+      if (invalidate) this.dirty.add(id);
       return running;
     }
-    const refresh = async () => {
-      const initial = new Set(this.channel(id).turns.map((turn) => turn.id));
+    const base = `/api/v1/channels/${id}/ai`;
+    const read = async (configurationOnly: boolean) => {
+      const initial = new Map(
+        this.channel(id).turns.map((turn) => [turn.id, turn.revision]),
+      );
       this.change(id, { loading: true, error: undefined });
       try {
-        const base = `/api/v1/channels/${id}/ai`;
-        const [settings, presets, turns, usage] = await Promise.all([
+        const [settings, presets, snapshot] = await Promise.all([
           this.request<AISettings>(base),
           this.request<{ presets: AIPreset[] }>(base + "/presets"),
-          this.request<{ turns: AITurn[] }>(base + "/turns"),
-          this.request<AIUsage>(base + "/usage"),
+          configurationOnly
+            ? undefined
+            : Promise.all([
+                this.request<{ turns: AITurn[] }>(base + "/turns"),
+                this.request<AIUsage>(base + "/usage"),
+              ]),
         ]);
-        if (
-          !this.instance.snapshot.channels.some(
+        const available = () =>
+          this.channels.has(id) &&
+          this.instance.snapshot.channels.some(
             (c) => c.id === id && c.kind === "ai",
-          )
-        )
-          return;
-        await this.instance.pruneAIHistory(id, usage.pruned_through);
-        if (!this.channels.has(id)) return;
-        const current = this.channel(id);
-        this.change(id, {
+          );
+        if (!available()) return;
+        const patch: Partial<AIChannelState> = {
           settings,
           presets: presets.presets,
-          turns: current.turns.reduce(
-            (rows, turn) =>
-              !initial.has(turn.id) || rows.some((r) => r.id === turn.id)
-                ? mergeAITurn(rows, turn)
-                : rows,
-            turns.turns.reduce(mergeAITurn, [] as AITurn[]),
-          ),
-          usage,
           loading: false,
-        });
+        };
+        if (snapshot) {
+          const [listed, usage] = snapshot;
+          await this.instance.pruneAIHistory(id, usage.pruned_through);
+          if (!available()) return;
+          let merged = listed.turns.reduce(mergeAITurn, [] as AITurn[]);
+          for (const turn of this.channel(id).turns)
+            if (
+              initial.get(turn.id) !== turn.revision ||
+              listed.turns.some((r) => r.id === turn.id)
+            )
+              merged = mergeAITurn(merged, turn);
+          patch.turns = merged;
+          patch.usage = usage;
+        }
+        this.change(id, patch);
       } catch (error) {
         if (!this.channels.has(id)) return;
         this.change(id, {
@@ -149,10 +171,8 @@ export class AIClient {
       }
     };
     const job = (async () => {
-      do {
-        this.dirty.delete(id);
-        await refresh();
-      } while (this.dirty.has(id) && this.channels.has(id));
+      await read(settingsOnly && !!this.channel(id).settings);
+      while (this.dirty.delete(id) && this.channels.has(id)) await read(true);
     })();
     this.pending.set(id, job);
     try {
@@ -162,6 +182,11 @@ export class AIClient {
       this.dirty.delete(id);
     }
   }
+  updateTurn(turn: AITurn) {
+    const old = this.channel(turn.channel_id).turns;
+    const turns = mergeAITurn(old, turn);
+    if (turns !== old) this.change(turn.channel_id, { turns });
+  }
   receive(event: { type: string; [key: string]: unknown }) {
     if (event.type === "subscription.revoked") {
       this.channels.delete(String(event.conversation_id));
@@ -169,20 +194,14 @@ export class AIClient {
       this.revision++;
       for (const listener of this.listeners) listener();
     }
-    if (event.type === "directory.changed") this.reconnect();
     if (
       event.type === "ai.settings.updated" &&
       typeof event.conversation_id === "string"
-    )
-      void this.refresh(event.conversation_id).catch(() => {});
-    if (
-      event.type === "message.created" &&
-      (event.data as Message)?.author_id &&
-      this.instance.snapshot.channels.some(
-        (c) => c.id === event.conversation_id && c.kind === "ai",
-      )
-    )
-      void this.refresh(String(event.conversation_id)).catch(() => {});
+    ) {
+      const id = event.conversation_id;
+      if (this.watching.has(id) || this.pending.has(id))
+        void this.refresh(id, true, true).catch(() => {});
+    }
     if (event.type !== "ai.turn.updated") return;
     const turn = event.data as AITurn;
     if (
@@ -192,13 +211,15 @@ export class AIClient {
       !Number.isSafeInteger(turn.revision)
     )
       return;
-    const current = this.channel(turn.channel_id);
-    this.change(turn.channel_id, { turns: mergeAITurn(current.turns, turn) });
-    if (!activeAITurn(turn) || turn.status === "queued")
-      void this.refresh(turn.channel_id).catch(() => {});
+    if (
+      this.instance.snapshot.channels.some(
+        (c) => c.id === turn.channel_id && c.kind === "ai",
+      )
+    )
+      this.updateTurn(turn);
   }
   reconnect() {
-    for (const id of this.channels.keys())
+    for (const id of this.watching.keys())
       if (
         this.instance.snapshot.channels.some(
           (c) => c.id === id && c.kind === "ai",

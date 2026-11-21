@@ -922,10 +922,10 @@ export class InstanceClient {
     });
   }
   async syncHistory(conversation: string): Promise<number> {
-    if (!this.pagedHistory) return this.syncLegacyHistory(conversation);
     const running = this.historySyncs.get(conversation);
     if (running) return running;
     const job = (async () => {
+      if (!this.pagedHistory) return this.syncLegacyHistory(conversation);
       const hadCached =
         (await this.store.messages(this.scope, conversation, { limit: 1 }))
           .length > 0;
@@ -1166,10 +1166,12 @@ export class InstanceClient {
       for (const controller of this.archiveControllers.values())
         controller.abort();
     this.active = id;
-    if (this.snapshot.status === "online") {
-      if (this.accountFeed) await this.syncHistory(id);
-      else await this.refresh();
-    }
+    if (
+      this.accountFeed &&
+      (this.snapshot.status === "online" || this.snapshot.status === "syncing")
+    )
+      await this.syncHistory(id);
+    else if (this.snapshot.status === "online") await this.refresh();
   }
   setForeground(enabled: boolean) {
     if (this.foreground === enabled) return;
@@ -1594,7 +1596,7 @@ export class InstanceClient {
       !/^\/api\/v1\/channels\/[a-f0-9-]+\/ai(?:\/presets\/[a-f0-9-]+)?\/avatar$/.test(
         url.pathname,
       ) ||
-      (image && image.size > 20 * 1024 * 1024)
+      (image && image.size > 64 * 1024 * 1024)
     )
       throw Error("Invalid AI avatar request.");
     const response = await this.runtime.fetch(url.href, {

@@ -126,6 +126,7 @@ it("keeps streaming revisions monotonic and refreshes authoritative state on rec
     pruneAIHistory,
     snapshot: { channels: [{ id: channel, kind: "ai" }] },
   } as unknown as InstanceClient);
+  const unwatch = client.watch(channel);
   client.receive({ type: "ai.turn.updated", data: turn });
   client.receive({
     type: "ai.turn.updated",
@@ -139,6 +140,7 @@ it("keeps streaming revisions monotonic and refreshes authoritative state on rec
   expect(client.channel(channel).turns[0].revision).toBe(3);
   client.receive({ type: "subscription.revoked", conversation_id: channel });
   expect(client.channel(channel).turns).toHaveLength(0);
+  unwatch();
 });
 it("shows the latest failures after loading newest-first server history", async () => {
   const channel = "22222222-2222-4222-8222-222222222222";
@@ -220,7 +222,7 @@ it("reloads shared settings when a newer event arrives during an older request",
   await refreshing;
   expect(client.channel(channel).settings?.name).toBe("Sage");
   expect(client.channel(channel).settings?.revision).toBe(2);
-  expect(pruneAIHistory).toHaveBeenCalledTimes(2);
+  expect(pruneAIHistory).toHaveBeenCalledTimes(1);
 });
 it("does not restore revoked AI state when an in-flight refresh finishes", async () => {
   const channel = "22222222-2222-4222-8222-222222222222";
@@ -248,6 +250,49 @@ it("does not restore revoked AI state when an in-flight refresh finishes", async
   await refreshing;
   expect(client.channel(channel).settings).toBeUndefined();
   expect(client.channel(channel).loading).toBeUndefined();
+});
+it("hydrates shared viewers once and handles activity and ordinary messages without extra reads", async () => {
+  const channel = "22222222-2222-4222-8222-222222222222";
+  const request = vi.fn(async (path: string) =>
+    path.endsWith("/presets")
+      ? { presets: [] }
+      : path.endsWith("/turns")
+        ? { turns: [] }
+        : path.endsWith("/usage")
+          ? { pruned_through: 0 }
+          : { channel_id: channel, revision: 1 },
+  );
+  const client = new AIClient({
+    aiRequest: request,
+    pruneAIHistory: async () => {},
+    snapshot: { channels: [{ id: channel, kind: "ai" }], status: "online" },
+  } as unknown as InstanceClient);
+  const first = client.watch(channel),
+    second = client.watch(channel);
+  await vi.waitFor(() => expect(client.channel(channel).loading).toBe(false));
+  for (let revision = 1; revision <= 20; revision++) {
+    client.receive({
+      type: "message.created",
+      conversation_id: channel,
+      data: { author_id: "person" },
+    });
+    client.receive({
+      type: "ai.turn.updated",
+      conversation_id: channel,
+      data: {
+        id: "turn",
+        channel_id: channel,
+        revision,
+        status:
+          revision === 1 ? "queued" : revision === 20 ? "completed" : "running",
+      },
+    });
+  }
+  expect(request).toHaveBeenCalledTimes(4);
+  first();
+  second();
+  client.reconnect();
+  expect(request).toHaveBeenCalledTimes(4);
 });
 it("reserves Claude callback before browser launch and accepts only matching state", async () => {
   let callback = "";

@@ -1,4 +1,4 @@
-import type { InstanceClient } from "@haunt/core";
+import { APIError, type InstanceClient } from "@haunt/core";
 import { cachedMedia, mediaKey } from "./media-cache";
 export type Art = "avatar" | "icon" | "banner" | "emoji";
 type Entry = {
@@ -15,7 +15,7 @@ class ArtPool {
   private unsubscribe?: () => void;
   constructor(private instance: InstanceClient) {}
   acquire(
-    kind: Art,
+    kind: Art | "ai-avatar",
     version: string,
     id: string | undefined,
     listener: (url: string) => void,
@@ -58,7 +58,9 @@ class ArtPool {
                 instance.snapshot.status === "signed-out"
               )
                 throw Error("Server offline");
-              return instance.art(kind, id, signal);
+              return kind === "ai-avatar"
+                ? instance.aiAvatar(version, undefined, signal)
+                : instance.art(kind, id, signal);
             },
             current.controller.signal,
           )
@@ -67,7 +69,13 @@ class ArtPool {
               current.url = URL.createObjectURL(blob);
               for (const update of current.listeners) update(current.url);
             })
-            .catch(() => {
+            .catch((error) => {
+              if (
+                kind === "ai-avatar" &&
+                error instanceof APIError &&
+                [400, 401, 403, 404].includes(error.status)
+              )
+                return;
               if (!current.controller.signal.aborted)
                 current.timer = setTimeout(
                   current.start,
@@ -103,7 +111,7 @@ class ArtPool {
 const pools = new WeakMap<InstanceClient, ArtPool>();
 export function subscribeArt(
   instance: InstanceClient,
-  kind: Art,
+  kind: Art | "ai-avatar",
   version: string,
   id: string | undefined,
   listener: (url: string) => void,

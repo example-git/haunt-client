@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { subscribeArt } from "@haunt/browser/art";
 import { Bot } from "lucide-react";
 import { type AIAuthor, type InstanceClient, type Message } from "@haunt/core";
 import { Avatar } from "./People";
@@ -12,25 +13,24 @@ export function AIAvatar({
   author: AIAuthor;
   size?: string;
 }) {
-  const [url, setURL] = useState<string>();
+  const path = author.avatar_url;
+  const channel = path?.match(/^\/api\/v1\/channels\/([a-f0-9-]+)\//)?.[1];
+  const visible = useSyncExternalStore(
+    instance.subscribe,
+    () =>
+      !!channel &&
+      instance.snapshot.status !== "signed-out" &&
+      instance.snapshot.channels.some((c) => c.id === channel),
+  );
+  const [loaded, setLoaded] = useState<{ path: string; url: string }>();
+  const url = visible && loaded?.path === path ? loaded?.url : undefined;
   useEffect(() => {
-    setURL(undefined);
-    if (!author.avatar_url) return;
-    const abort = new AbortController();
-    let object: string | undefined;
-    void instance
-      .aiAvatar(author.avatar_url, undefined, abort.signal)
-      .then((blob) => {
-        if (abort.signal.aborted) return;
-        object = URL.createObjectURL(blob);
-        setURL(object);
-      })
-      .catch(() => {});
-    return () => {
-      abort.abort();
-      if (object) URL.revokeObjectURL(object);
-    };
-  }, [instance, author.avatar_url]);
+    setLoaded(undefined);
+    if (visible && path)
+      return subscribeArt(instance, "ai-avatar", path, channel, (url) =>
+        setLoaded({ path, url }),
+      );
+  }, [instance, channel, path, visible]);
   return (
     <span
       className={`avatar ai-avatar ${size}`}

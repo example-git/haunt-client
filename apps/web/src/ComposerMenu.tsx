@@ -1,3 +1,4 @@
+import type { MessageInputHandle } from "./MessageInput";
 import {
   useEffect,
   useRef,
@@ -11,7 +12,7 @@ import type { DesktopBridge } from "@haunt/browser/storage";
 import { MenuAction, useContextMenu } from "./ContextMenu";
 
 type Options = {
-  input: RefObject<HTMLTextAreaElement | null>;
+  input: RefObject<MessageInputHandle | null>;
   file: RefObject<HTMLInputElement | null>;
   uploads: AttachmentDraft;
   uploadsAllowed: boolean;

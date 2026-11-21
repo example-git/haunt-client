@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { aiMention, type AIPreset, type InstanceClient } from "@haunt/core";
-import { Status, useAction } from "./Customization";
+import { useEffect, useState } from "react";
+import { type AIPreset, type InstanceClient } from "@haunt/core";
+import { prepareAIAvatar, Status, useAction } from "./Customization";
 import { AIAvatar } from "./AIIdentity";
 export function AIAvatarEditor({
   instance,
@@ -21,13 +21,13 @@ export function AIAvatarEditor({
         Avatar
         <input
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
+          accept="image/*"
           disabled={action.busy}
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (file)
               void action.run(async () => {
-                await instance.aiAvatar(path, file);
+                await instance.aiAvatar(path, await prepareAIAvatar(file));
                 await onSaved();
               }, "Avatar saved.");
             e.target.value = "";
@@ -65,29 +65,26 @@ export function AIPresets({
   active?: string;
   onSaved: () => Promise<unknown>;
 }) {
-  const [editing, setEditing] = useState<AIPreset>();
-  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState<{
+    editing?: AIPreset;
+    requestID: string;
+  }>();
   const action = useAction();
   const base = `/api/v1/channels/${channel}/ai/presets`;
   return (
     <section className="form">
-      <h3>Persona presets</h3>
-      <p className="muted">
-        Mention a preset to select it for the channel. It applies to that
-        message and subsequent messages; a response already running keeps its
-        original preset.
-      </p>
+      <h3>Personalities</h3>
       {presets.map((preset) => (
         <article key={preset.id} className="ai-preset">
+          <AIAvatar instance={instance} author={preset} />
           <strong>{preset.name}</strong>
           {active === preset.id && <span> · active</span>}
-          <code>{aiMention(preset.id)}</code>
+          {preset.description && <p>{preset.description}</p>}
           <div className="button-row">
             <button
-              onClick={() => {
-                setEditing(preset);
-                setCreating(false);
-              }}
+              onClick={() =>
+                setDraft({ editing: preset, requestID: crypto.randomUUID() })
+              }
             >
               Edit
             </button>
@@ -97,7 +94,7 @@ export function AIPresets({
                 void action.run(async () => {
                   await instance.ai.request(`${base}/${preset.id}`, "DELETE");
                   await onSaved();
-                }, "Preset removed.")
+                }, "Personality removed.")
               }
             >
               Delete
@@ -105,80 +102,175 @@ export function AIPresets({
           </div>
         </article>
       ))}
-      <button
-        onClick={() => {
-          setEditing(undefined);
-          setCreating(true);
-        }}
-      >
-        Add preset
+      <button onClick={() => setDraft({ requestID: crypto.randomUUID() })}>
+        Add personality
       </button>
-      {(editing || creating) && (
-        <div key={editing?.id ?? "new"} className="form">
-          <form
-            className="form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const data = new FormData(e.currentTarget);
-              void action.run(async () => {
-                await instance.ai.request(
-                  editing ? `${base}/${editing.id}` : base,
-                  editing ? "PUT" : "POST",
-                  {
-                    name: String(data.get("name")),
-                    instructions: String(data.get("instructions")),
-                  },
-                );
-                setEditing(undefined);
-                setCreating(false);
-                await onSaved();
-              }, "Preset saved.");
-            }}
-          >
-            <label>
-              Name
-              <input
-                name="name"
-                required
-                maxLength={80}
-                defaultValue={editing?.name ?? ""}
-              />
-            </label>
-            <label>
-              Instructions
-              <textarea
-                name="instructions"
-                rows={5}
-                maxLength={32768}
-                defaultValue={editing?.instructions ?? ""}
-              />
-            </label>
-            <div className="button-row">
-              <button className="primary" disabled={action.busy}>
-                Save preset
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditing(undefined);
-                  setCreating(false);
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-          {editing && (
-            <AIAvatarEditor
-              instance={instance}
-              path={`${base}/${editing.id}/avatar`}
-              author={presets.find((p) => p.id === editing.id) ?? editing}
-              onSaved={onSaved}
-            />
-          )}
-        </div>
+      {draft && (
+        <PresetForm
+          key={draft.requestID}
+          instance={instance}
+          base={base}
+          editing={draft.editing}
+          requestID={draft.requestID}
+          close={() => setDraft(undefined)}
+          onSaved={onSaved}
+        />
       )}
       <Status action={action} />
     </section>
+  );
+}
+
+function avatarData(image: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1]);
+    reader.onerror = () =>
+      reject(Error("Could not read the selected picture."));
+    reader.readAsDataURL(image);
+  });
+}
+
+function PresetForm({
+  instance,
+  base,
+  editing,
+  requestID,
+  onSaved,
+  close,
+}: {
+  instance: InstanceClient;
+  base: string;
+  editing?: AIPreset;
+  requestID: string;
+  onSaved: () => Promise<unknown>;
+  close: () => void;
+}) {
+  const action = useAction();
+  const [picture, setPicture] = useState<Blob>();
+  const [preview, setPreview] = useState("");
+  const [removed, setRemoved] = useState(false);
+  useEffect(() => {
+    if (!picture) {
+      setPreview("");
+      return;
+    }
+    const url = URL.createObjectURL(picture);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [picture]);
+  return (
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const fields = new FormData(e.currentTarget);
+        void action.run(async () => {
+          await instance.ai.request(
+            editing ? `${base}/${editing.id}` : base,
+            editing ? "PUT" : "POST",
+            {
+              name: String(fields.get("name")),
+              description: String(fields.get("description")),
+              instructions: String(fields.get("instructions")),
+              ...(!editing && { request_id: requestID }),
+              ...(picture && { avatar_data: await avatarData(picture) }),
+            },
+          );
+          await onSaved();
+          close();
+        }, "");
+      }}
+    >
+      <label>
+        Name
+        <input
+          name="name"
+          required
+          maxLength={80}
+          defaultValue={editing?.name ?? ""}
+        />
+      </label>
+      <label>
+        Description
+        <textarea
+          name="description"
+          maxLength={4096}
+          rows={2}
+          defaultValue={editing?.description ?? ""}
+        />
+      </label>
+      <label>
+        Instructions
+        <textarea
+          name="instructions"
+          rows={5}
+          maxLength={32768}
+          defaultValue={editing?.instructions ?? ""}
+        />
+      </label>
+      <div className="ai-avatar-editor">
+        {preview ? (
+          <span className="avatar ai-avatar">
+            <img src={preview} alt="Selected picture preview" />
+          </span>
+        ) : (
+          editing &&
+          !removed && <AIAvatar instance={instance} author={editing} />
+        )}
+        <label>
+          Profile picture
+          <input
+            type="file"
+            accept="image/*"
+            disabled={action.busy}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file)
+                void action.run(async () => {
+                  setPicture(await prepareAIAvatar(file));
+                }, "");
+            }}
+          />
+        </label>
+        {picture && (
+          <button
+            type="button"
+            disabled={action.busy}
+            onClick={() => setPicture(undefined)}
+          >
+            Discard selected picture
+          </button>
+        )}
+        {!picture && editing?.avatar_url && !removed && (
+          <button
+            type="button"
+            disabled={action.busy}
+            onClick={() =>
+              void action.run(async () => {
+                await instance.ai.request(
+                  `${base}/${editing.id}/avatar`,
+                  "DELETE",
+                );
+                setRemoved(true);
+                await onSaved();
+              }, "")
+            }
+          >
+            Remove picture
+          </button>
+        )}
+      </div>
+      <div className="button-row">
+        <button className="primary" disabled={action.busy}>
+          Save personality
+        </button>
+        <button type="button" disabled={action.busy} onClick={close}>
+          Cancel
+        </button>
+      </div>
+      <Status action={action} />
+    </form>
   );
 }

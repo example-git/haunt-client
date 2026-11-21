@@ -4395,6 +4395,7 @@ export interface OperationAiSettings {
 export interface AiSettings {
   account_id: string;
   active_preset_id?: string;
+  allow_agent_switch: boolean;
   avatar_url?: string;
   channel_id: string;
   connection_status: string;
@@ -4440,6 +4441,7 @@ export interface OperationAiSaveSettings {
 }
 export interface AiSettingsInput {
   account_id: string;
+  allow_agent_switch: boolean;
   avatar_url?: string;
   instructions: string;
   max_bytes: number;
@@ -4588,11 +4590,14 @@ export interface HttpapiAiPresetsResponse {
   presets: AiPreset[] | null;
 }
 export interface AiPreset {
+  avatar_data?: string;
   avatar_url?: string;
   channel_id: string;
+  description: string;
   id: string;
   instructions: string;
   name: string;
+  request_id?: string;
   revision: number;
 }
 export interface OperationAiCreatePreset {
@@ -4629,9 +4634,12 @@ export interface OperationAiCreatePreset {
   };
 }
 export interface AiPresetInput {
+  avatar_data?: string;
   avatar_url?: string;
+  description: string;
   instructions: string;
   name: string;
+  request_id?: string;
 }
 export interface OperationAiSavePreset {
   parameters: {
@@ -4839,11 +4847,14 @@ export interface HttpapiAiTurnsResponse {
   turns: AiTurn[] | null;
 }
 export interface AiTurn {
+  action?: string;
   actor_id: string;
   channel_id: string;
   created_at: string;
+  detail?: string;
   error_code?: string;
   id: string;
+  last_progress_at?: null | string;
   partial_text?: string;
   retry_at?: null | string;
   revision: number;

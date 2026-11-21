@@ -10,7 +10,7 @@ import { Status, useAction } from "./Customization";
 import { AIConnections } from "./AIConnections";
 import { AIPresets, AIAvatarEditor } from "./AIPresets";
 import { useAIChannel } from "./AIConversationStatus";
-import { can, Permission } from "./Permissions";
+import { canInChannel, Permission } from "./Permissions";
 const mib = (bytes: number) =>
   (bytes / 1048576).toLocaleString(undefined, { maximumFractionDigits: 1 });
 export function AIChannelSettings({
@@ -65,8 +65,9 @@ export function AIChannelSettings({
       active = false;
     };
   }, [instance, draft?.account_id]);
-  const refresh = () => instance.ai.refresh(channel);
-  if (!can(instance, Permission.ManageChannels))
+  const refresh = () => instance.ai.refresh(channel, true, true);
+  const multiple = state.presets.length > 0;
+  if (!canInChannel(instance, channel, Permission.ManageChannels))
     return <p>Your role cannot edit this channel’s AI settings.</p>;
   return (
     <section className="form">
@@ -93,6 +94,7 @@ export function AIChannelSettings({
                   name: draft.name,
                   instructions: draft.instructions,
                   max_bytes: draft.max_bytes,
+                  allow_agent_switch: !!draft.allow_agent_switch,
                 },
               );
               await refresh();
@@ -162,26 +164,41 @@ export function AIChannelSettings({
               ))}
             </select>
           </label>
-          <label>
-            AI name
-            <input
-              required
-              maxLength={80}
-              value={draft.name}
-              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            />
-          </label>
-          <label>
-            Instructions
-            <textarea
-              rows={6}
-              maxLength={32768}
-              value={draft.instructions}
-              onChange={(e) =>
-                setDraft({ ...draft, instructions: e.target.value })
-              }
-            />
-          </label>
+          {multiple ? (
+            <label>
+              <input
+                type="checkbox"
+                checked={!!draft.allow_agent_switch}
+                onChange={(e) =>
+                  setDraft({ ...draft, allow_agent_switch: e.target.checked })
+                }
+              />
+              Allow the agent to switch personalities
+            </label>
+          ) : (
+            <>
+              <label>
+                AI name
+                <input
+                  required
+                  maxLength={80}
+                  value={draft.name}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                />
+              </label>
+              <label>
+                Instructions
+                <textarea
+                  rows={6}
+                  maxLength={32768}
+                  value={draft.instructions}
+                  onChange={(e) =>
+                    setDraft({ ...draft, instructions: e.target.value })
+                  }
+                />
+              </label>
+            </>
+          )}
           <label>
             Conversation storage (MiB)
             <input
@@ -222,7 +239,7 @@ export function AIChannelSettings({
           MiB.
         </p>
       )}
-      {state.settings && (
+      {state.settings && !multiple && (
         <AIAvatarEditor
           instance={instance}
           path={`/api/v1/channels/${channel}/ai/avatar`}
@@ -241,10 +258,7 @@ export function AIChannelSettings({
         active={state.settings?.active_preset_id}
         onSaved={refresh}
       />
-      <p className="muted">
-        Image generation is unavailable. Image attachments can be read by models
-        that support images.
-      </p>
+
       <AIConnections
         instance={instance}
         onChange={() => void reload().catch(() => {})}

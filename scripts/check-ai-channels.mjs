@@ -34,17 +34,26 @@ try {
     id: "33333333-3333-4333-8333-333333333333",
     name: "ai-room",
     kind: "ai",
-    permissions: 1 | 2 | (1 << 18) | (1 << 19),
+    permissions: 1 | 2 | 16 | (1 << 18) | (1 << 19),
     category_id: null,
   };
   const accountID = "44444444-4444-4444-8444-444444444444";
   const preset = {
     id: "55555555-5555-4555-8555-555555555555",
-    name: "Sage",
+    name: "Sage Research",
     channel_id: channel.id,
     instructions: "Be clear.",
     revision: 1,
   };
+  const portraitPath = `/api/v1/channels/${channel.id}/ai/presets/${preset.id}/avatar?v=11111111111111111111111111111111`;
+  const pixel = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/5RAAAAAASUVORK5CYII=",
+    "base64",
+  );
+  let portraitReads = 0;
+  const aiReads = [];
+  const created = [];
+  const roster = [preset];
   let settings = {
     channel_id: channel.id,
     provider: "claude",
@@ -108,7 +117,7 @@ try {
       id: "77777777-7777-4777-8777-777777777771",
       conversation_id: channel.id,
       author_id: "",
-      ai_author: { id: preset.id, name: "Sage" },
+      ai_author: { id: preset.id, name: "Sage", avatar_url: portraitPath },
       body: "First AI reply",
       seq: 1,
       created_at: now,
@@ -120,7 +129,11 @@ try {
       id: "77777777-7777-4777-8777-777777777773",
       conversation_id: channel.id,
       author_id: "",
-      ai_author: { id: "88888888-8888-4888-8888-888888888888", name: "Guide" },
+      ai_author: {
+        id: "88888888-8888-4888-8888-888888888888",
+        name: "Guide",
+        avatar_url: portraitPath,
+      },
       body: "Second AI reply",
       seq: 2,
       created_at: now,
@@ -148,6 +161,13 @@ try {
     const req = route.request(),
       url = new URL(req.url()),
       p = url.pathname;
+    if (url.pathname + url.search === portraitPath) {
+      portraitReads++;
+      await route.fulfill({ body: pixel, contentType: "image/png" });
+      return;
+    }
+    if (req.method() === "GET" && p.includes(`/channels/${channel.id}/ai`))
+      aiReads.push(p);
     let body;
     if (p === "/api/v1/instance") body = instance;
     else if (p === "/api/v1/me")
@@ -215,8 +235,21 @@ try {
           revision: settings.revision + 1,
         };
       body = settings;
-    } else if (p.endsWith("/ai/presets")) body = { presets: [preset] };
-    else if (p.endsWith("/ai/turns")) body = { turns };
+    } else if (p.endsWith("/ai/presets")) {
+      if (req.method() === "POST") {
+        const payload = req.postDataJSON();
+        created.push(payload);
+        body = {
+          id: payload.request_id,
+          channel_id: channel.id,
+          name: payload.name,
+          description: payload.description,
+          instructions: payload.instructions,
+          revision: 1,
+        };
+        roster.push(body);
+      } else body = { presets: roster };
+    } else if (p.endsWith("/ai/turns")) body = { turns };
     else if (p.endsWith("/ai/usage"))
       body = {
         channel_bytes: 1024,
@@ -299,29 +332,34 @@ try {
   const input = page.getByRole("textbox", { name: "Message", exact: true });
   await expect(input).toBeVisible();
   await expect(
-    page.getByText("Your messages automatically request a response.", {
-      exact: false,
-    }),
-  ).toBeVisible();
-  await expect(
     page.locator(".message-meta").filter({ hasText: "Sage" }),
   ).toHaveCount(1);
   await expect(
     page.locator(".message-meta").filter({ hasText: "Guide" }),
   ).toHaveCount(1);
+  await expect.poll(() => portraitReads).toBe(1);
   await input.fill("@Sa");
   await expect(
-    page.getByRole("option", { name: "Sage AI preset" }),
+    page.getByRole("option", { name: "Sage Research AI preset" }),
   ).toBeVisible();
   await expect(
     page.getByRole("option", { name: "Human Sage @sage" }),
   ).toBeVisible();
-  await page.getByRole("option", { name: "Sage AI preset" }).click();
-  await expect(input).toHaveValue(`<@ai:${preset.id}> `);
+  await page.getByRole("option", { name: "Sage Research AI preset" }).click();
+  await expect(input.locator('[contenteditable="false"]')).toHaveText(
+    "@Sage Research",
+  );
+  await expect(input).not.toContainText(preset.id);
+  await input.press("Home");
+  await input.press("Delete");
+  await expect(input.locator("[data-ai-mention]")).toHaveCount(0);
+  await input.fill("@Sage Res");
+  await page.getByRole("option", { name: "Sage Research AI preset" }).click();
   await input.press("End");
   await input.press("Enter");
   await expect.poll(() => posted.length).toBe(1);
   assert.equal(posted[0].body, `<@ai:${preset.id}> `);
+  const readsBeforeActivity = aiReads.length;
   const turn = {
     id: "99999999-9999-4999-8999-999999999999",
     channel_id: channel.id,
@@ -329,6 +367,9 @@ try {
     actor_id: own.id,
     status: "running",
     revision: 3,
+    action: "read_url",
+    detail: "Reading example.org",
+    last_progress_at: now,
     partial_text: "Streaming answer",
     created_at: now,
     updated_at: now,
@@ -336,7 +377,7 @@ try {
   turns = [turn];
   send({ type: "ai.turn.updated", data: turn, conversation_id: channel.id });
   await expect(
-    page.getByText("Streaming answer", { exact: true }),
+    page.getByText("Reading example.org", { exact: false }),
   ).toBeVisible();
   send({
     type: "ai.turn.updated",
@@ -350,9 +391,10 @@ try {
     data: turns[0],
     conversation_id: channel.id,
   });
-  await expect(page.getByText("Streaming answer", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByText("Reading example.org", { exact: false }),
+  ).toHaveCount(0);
+  assert.equal(aiReads.length, readsBeforeActivity);
   await page
     .locator(`[data-channel-id="${channel.id}"] .channel`)
     .click({ button: "right" });
@@ -363,11 +405,40 @@ try {
   await expect(
     page.getByRole("combobox", { name: "Model", exact: true }),
   ).toHaveValue("claude-test");
-  await page.getByLabel("AI name", { exact: true }).fill("Guide updated");
+  await page.getByRole("button", { name: "Add personality" }).click();
+  const form = page
+    .locator("form")
+    .filter({ has: page.getByRole("button", { name: "Save personality" }) });
+  await form.getByLabel("Name", { exact: true }).fill("Field Guide");
+  await form.getByLabel("Description").fill("Checks citations");
+  const largePicture = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1600;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "navy";
+    ctx.fillRect(0, 0, 1600, 1600);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await form
+    .getByLabel("Profile picture")
+    .setInputFiles({
+      name: "large.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(largePicture, "base64"),
+    });
+  await expect(form.getByAltText("Selected picture preview")).toBeVisible();
+  await form.getByRole("button", { name: "Save personality" }).click();
+  await expect.poll(() => created.length).toBe(1);
+  const resized = Buffer.from(created[0].avatar_data, "base64");
+  assert.equal(resized.readUInt32BE(16), 256);
+  assert.equal(resized.readUInt32BE(20), 256);
+  assert.equal(created[0].description, "Checks citations");
+  assert.match(created[0].request_id, /^[a-f0-9-]{36}$/);
+  await page.getByLabel("Allow the agent to switch personalities").check();
   await page
     .getByRole("button", { name: "Save AI settings", exact: true })
     .click();
-  await expect.poll(() => settings.name).toBe("Guide updated");
+  await expect.poll(() => settings.allow_agent_switch).toBe(true);
   await expect(
     page.getByRole("button", { name: "Connect account", exact: true }),
   ).toBeDisabled();
@@ -385,7 +456,7 @@ try {
   ).toBeVisible();
   await input.fill("@Sa");
   await expect(
-    page.getByRole("option", { name: "Sage AI preset" }),
+    page.getByRole("option", { name: "Sage Research AI preset" }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("option", { name: "Human Sage @sage" }),
@@ -421,7 +492,10 @@ try {
           "AI-only initial channel selection",
           "separate AI authors",
           "stable preset mention distinct from human mention",
-          "automatic invocation notice",
+          "active tool above the composer without additional reads",
+          "historical avatar requests shared across rows",
+          "multiword mention chip deletion and stable wire ID",
+          "picture preview and automatic 256px conversion during creation",
           "stream revisions",
           "channel settings persistence",
           "desktop-only browser login notice",

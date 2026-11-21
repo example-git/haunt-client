@@ -1,3 +1,8 @@
+import {
+  MessageInput,
+  EditMentionText,
+  type MessageInputHandle,
+} from "./MessageInput";
 import { Permission } from "./Permissions";
 import { AIConversationStatus, useAIChannel } from "./AIConversationStatus";
 import { MessageAvatar, MessageAuthor, AIAvatar } from "./AIIdentity";
@@ -2120,7 +2125,6 @@ export function ConversationView({
             {loadingHistory ? "Loading older messages…" : "Show older messages"}
           </button>
         )}
-        <AIConversationStatus instance={instance} channel={conversation} />
         <MessageWindow
           key={`${instance.scope}:${conversation}`}
           items={messages.slice(-limit)}
@@ -2267,6 +2271,7 @@ export function ConversationView({
         </div>
       )}
       <ErrorNotice error={error} />
+      <AIConversationStatus instance={instance} channel={conversation} />
       {writable ? (
         <Composer
           instance={instance}
@@ -2580,7 +2585,16 @@ function MessageRow({
                 .catch((e) => setError(friendlyError(e)));
             }}
           >
-            <textarea name="body" defaultValue={message.body} autoFocus />
+            {instance.snapshot.channels.some(
+              (c) => c.id === message.conversation_id && c.kind === "ai",
+            ) ? (
+              <EditMentionText
+                value={message.body}
+                presets={instance.ai.channel(message.conversation_id).presets}
+              />
+            ) : (
+              <textarea name="body" defaultValue={message.body} autoFocus />
+            )}
             <div className="button-row">
               <button className="secondary">Save</button>
               <button
@@ -2698,7 +2712,7 @@ function Composer({
   const uploading = uploadState.entries.some((entry) => !entry.attachment);
   useEffect(() => () => uploads.dispose(), [uploads]);
   useAttachmentDrop(dropTarget, uploads, busy);
-  const input = useRef<HTMLTextAreaElement>(null);
+  const input = useRef<MessageInputHandle>(null);
   const composerMenu = useComposerMenu({
     input,
     file,
@@ -2709,8 +2723,8 @@ function Composer({
     onError: setError,
   });
   useLayoutEffect(() => {
-    const node = input.current;
-    if (!node) return;
+    const node = input.current?.element;
+    if (!(node instanceof HTMLTextAreaElement)) return;
     const fit = () => {
       node.style.height = "0px";
       node.style.height = `${Math.min(180, Math.max(32, node.scrollHeight))}px`;
@@ -2735,13 +2749,14 @@ function Composer({
   const [caret, setCaret] = useState(0),
     [mentionIndex, setMentionIndex] = useState(0),
     [mentionDismissed, dismissMention] = useState(false);
-  const query =
-    !mentionDismissed &&
-    /(^|[\s([{"'.,!?:;])@([a-zA-Z0-9_]{0,32})$/.exec(body.slice(0, caret));
   const aiState = useAIChannel(instance, conversation);
   const aiChannel = instance.snapshot.channels.find(
     (c) => c.id === conversation && c.kind === "ai",
   );
+  const mentionPattern = aiChannel
+    ? /(^|[\s([{"'.,!?:;])@([^@\r\n<>]{0,80})$/u
+    : /(^|[\s([{"'.,!?:;])@([a-zA-Z0-9_]{0,32})$/;
+  const query = !mentionDismissed && mentionPattern.exec(body.slice(0, caret));
   const maySwitchPreset =
     aiChannel &&
     (can(instance, Permission.Administrator) ||
@@ -2791,7 +2806,7 @@ function Composer({
       completion && emojiQuery ? caret - emojiQuery[2].length - 1 : caret;
     const end = completion ? caret : (input.current?.selectionEnd ?? caret);
     const text = literal ? `${value} ` : `:${value}: `;
-    draft(body.slice(0, start) + text + body.slice(end));
+    input.current?.replace(start, end, text);
     const next = start + text.length;
     setCaret(next);
     dismissEmoji(true);
@@ -2805,7 +2820,7 @@ function Composer({
     if (!query) return;
     const start = caret - query[2].length - 1,
       text = `${token} `;
-    draft(body.slice(0, start) + text + body.slice(caret));
+    input.current?.replace(start, caret, text);
     dismissMention(true);
     requestAnimationFrame(() => {
       input.current?.focus();
@@ -3023,7 +3038,8 @@ function Composer({
             }
           }}
         />
-        <textarea
+        <MessageInput
+          presets={aiChannel ? aiState.presets : undefined}
           aria-label="Message"
           ref={input}
           aria-autocomplete="list"
@@ -3042,12 +3058,11 @@ function Composer({
                 : undefined
           }
           value={body}
-          rows={1}
           placeholder={uploading ? "Uploading attachment…" : `Message ${title}`}
           onContextMenu={composerMenu?.onContextMenu}
-          onChange={(e) => {
-            draft(e.target.value);
-            setCaret(e.target.selectionStart);
+          onDraft={(value, caret) => {
+            draft(value);
+            setCaret(caret);
             setMentionIndex(0);
             dismissMention(false);
             dismissEmoji(false);
@@ -3062,9 +3077,9 @@ function Composer({
             // Preserve accompanying text, without inserting OS file paths/URIs.
             const text = e.clipboardData.getData("text/plain");
             if (text && !e.clipboardData.types.includes("text/uri-list")) {
-              const start = e.currentTarget.selectionStart,
-                end = e.currentTarget.selectionEnd;
-              draft(body.slice(0, start) + text + body.slice(end));
+              const start = input.current?.selectionStart ?? caret,
+                end = input.current?.selectionEnd ?? caret;
+              input.current?.replace(start, end, text);
               setCaret(start + text.length);
               requestAnimationFrame(() =>
                 input.current?.setSelectionRange(
@@ -3074,7 +3089,7 @@ function Composer({
               );
             }
           }}
-          onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+          onCaret={setCaret}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
             composerMenu?.onKeyDown(e);

@@ -102,7 +102,27 @@ async function prepareArt(file: File, banner: boolean): Promise<Blob> {
   )
     throw Error("Choose a PNG, JPEG, WebP or GIF image up to 20 MiB.");
   if (file.type === "image/gif") return file; // Preserve every animation frame.
-  const bitmap = await createImageBitmap(file);
+  return resizeArt(file, banner);
+}
+export async function prepareAIAvatar(file: File): Promise<Blob> {
+  const signature = await file.slice(0, 6).text();
+  if (signature === "GIF87a" || signature === "GIF89a") {
+    if (file.size > 64 * 1024 * 1024)
+      throw Error("This animated image exceeds the 64 MiB input limit.");
+    return file;
+  }
+  try {
+    return await resizeArt(file, false);
+  } catch {
+    throw Error(
+      "This image could not be decoded or converted into a profile picture.",
+    );
+  }
+}
+async function resizeArt(file: File, banner: boolean): Promise<Blob> {
+  const bitmap = await createImageBitmap(file, {
+    imageOrientation: "from-image",
+  });
   try {
     const canvas = document.createElement("canvas");
     canvas.width = banner ? 1200 : 256;

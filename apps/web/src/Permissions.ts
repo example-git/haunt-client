@@ -25,6 +25,19 @@ export function can(instance: InstanceClient, bits: number) {
     (instance.snapshot.permissions & bits) === bits
   );
 }
+export function canInChannel(
+  instance: InstanceClient,
+  channel: string,
+  bit: number,
+) {
+  return (
+    can(instance, Permission.Administrator) ||
+    !!(
+      (instance.snapshot.channels.find((c) => c.id === channel)?.permissions ??
+        0) & bit
+    )
+  );
+}
 export function canManageServer(instance: InstanceClient) {
   return (
     instance.account.login.user.is_owner ||
