@@ -393,210 +393,206 @@ export function ChannelSettings({
   const supportsIcons = instance.account.instance.capabilities?.includes(
     "community.channel_icons",
   );
+  const tabs = dynamic
+    ? (serverMenu.menu?.pages ?? [])
+    : [
+        { id: "overview", label: "Overview" },
+        ...(channel?.kind === "ai" ? [{ id: "ai", label: "AI settings" }] : []),
+        ...(channel ? [{ id: "permissions", label: "Permissions" }] : []),
+      ];
   return (
     <Modal
       title={channel ? `Channel settings · ${channel.name}` : "Create channel"}
       onClose={onClose}
+      settings
+      className="channel-settings-dialog"
     >
       <MenuLoadStatus
         state={dynamic ? serverMenu : { ...serverMenu, supported: false }}
       />
-      {dynamic ? (
-        <div className="tabs">
-          {serverMenu.menu?.pages.map((p) => (
+      {tabs.length > 1 && (
+        <nav
+          className="channel-settings-tabs"
+          aria-label="Channel settings sections"
+        >
+          {tabs.map((p) => (
             <button
+              type="button"
               key={p.id}
-              className={page?.id === p.id ? "active" : ""}
+              aria-current={
+                p.id === (dynamic ? page?.id : tab) ? "page" : undefined
+              }
               onClick={() => setTab(p.id)}
             >
               {p.label}
             </button>
           ))}
-        </div>
-      ) : (
-        <>
-          <div className="tabs">
-            <button
-              className={tab === "overview" ? "active" : ""}
-              onClick={() => setTab("overview")}
-            >
-              Overview
-            </button>
-            {channel?.kind === "ai" && (
-              <button
-                className={tab === "ai" ? "active" : ""}
-                onClick={() => setTab("ai")}
-              >
-                AI settings
-              </button>
-            )}
-            {channel && (
-              <button
-                className={tab === "permissions" ? "active" : ""}
-                onClick={() => setTab("permissions")}
-              >
-                Permissions
-              </button>
-            )}
-          </div>
-        </>
+        </nav>
       )}
-      {dynamic && page && (
-        <ServerMenuPage
-          instance={instance}
-          page={page}
-          onDone={() => {
-            onSaved?.();
-            onClose();
-          }}
-        />
-      )}
-      {tab === "ai" && channel ? (
-        <AIChannelSettings instance={instance} channel={channel.id} />
-      ) : tab === "permissions" && channel ? (
-        <ChannelPermissions instance={instance} channel={channel} />
-      ) : tab === "overview" ? (
-        <>
-          <form
-            className="form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const data = new FormData(e.currentTarget);
-              const body = {
-                name: String(data.get("name")),
-                kind: String(data.get("kind")) as "text" | "voice" | "ai",
-                category_id: String(data.get("category")) || null,
-                topic: String(data.get("topic")),
-                ...(supportsIcons ? { icon } : {}),
-              };
-              void action.run(async () => {
-                const saved = channel
-                  ? await unwrap(
-                      instance.http.PUT("/api/v1/channels/{id}", {
-                        params: { path: { id: channel.id } },
-                        body,
-                      }),
-                    )
-                  : await unwrap(
-                      instance.http.POST("/api/v1/channels", { body }),
-                    );
-                await instance.refreshAfterChange();
-                onSaved?.(saved.id);
-                onClose();
-              });
+      <div className="settings-content" key={dynamic ? page?.id : tab}>
+        {dynamic && page && (
+          <ServerMenuPage
+            instance={instance}
+            page={page}
+            onDone={() => {
+              onSaved?.();
+              onClose();
             }}
-          >
-            <label>
-              Channel name
-              <input
-                name="name"
-                required
-                maxLength={64}
-                defaultValue={channel?.name}
-              />
-            </label>
-            <label>
-              Channel type
-              <select
-                name="kind"
-                value={kind}
-                onChange={(e) =>
-                  setKind(e.target.value as "text" | "voice" | "ai")
-                }
-                disabled={!!channel}
-              >
-                <option value="text">Text</option>
-                <option value="voice">Voice</option>
-                <option value="ai">AI conversation</option>
-              </select>
-              {channel && (
-                <input type="hidden" name="kind" value={channel.kind} />
-              )}
-            </label>
-            {supportsIcons && (
-              <ChannelIconPicker kind={kind} value={icon} onChange={setIcon} />
-            )}
-            <label>
-              Topic
-              <textarea
-                name="topic"
-                aria-label="Topic"
-                maxLength={512}
-                rows={3}
-                defaultValue={channel?.topic ?? ""}
-                placeholder="What is this channel for?"
-              />
-            </label>
-            <label>
-              Category
-              <select
-                name="category"
-                defaultValue={channel?.category_id ?? initialCategory ?? ""}
-              >
-                <option value="">No category</option>
-                {instance.snapshot.categories.map((c) => (
-                  <option value={c.id} key={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Status action={action} />
-            <button className="primary" disabled={action.busy}>
-              {channel ? "Save channel" : "Create channel"}
-            </button>
-          </form>
-          {channel && !dynamic && (
-            <div className="danger-zone">
-              <h3>Delete channel</h3>
-              {!confirm ? (
-                <button className="danger" onClick={() => setConfirm(true)}>
-                  Delete channel
-                </button>
-              ) : (
-                <>
-                  <p>
-                    Delete <strong>{channel.name}</strong> and its server
-                    history? This cannot be undone. Type the channel name to
-                    confirm.
-                  </p>
+          />
+        )}
+        {tab === "ai" && channel ? (
+          <AIChannelSettings instance={instance} channel={channel.id} />
+        ) : tab === "permissions" && channel ? (
+          <ChannelPermissions instance={instance} channel={channel} />
+        ) : tab === "overview" ? (
+          <>
+            <form
+              className="form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const data = new FormData(e.currentTarget);
+                const body = {
+                  name: String(data.get("name")),
+                  kind: String(data.get("kind")) as "text" | "voice" | "ai",
+                  category_id: String(data.get("category")) || null,
+                  topic: String(data.get("topic")),
+                  ...(supportsIcons ? { icon } : {}),
+                };
+                void action.run(async () => {
+                  const saved = channel
+                    ? await unwrap(
+                        instance.http.PUT("/api/v1/channels/{id}", {
+                          params: { path: { id: channel.id } },
+                          body,
+                        }),
+                      )
+                    : await unwrap(
+                        instance.http.POST("/api/v1/channels", { body }),
+                      );
+                  await instance.refreshAfterChange();
+                  onSaved?.(saved.id);
+                  onClose();
+                });
+              }}
+            >
+              <div className="channel-settings-pair">
+                <label>
+                  Channel name
                   <input
-                    aria-label="Confirm channel name"
-                    value={confirmName}
-                    onChange={(e) => setConfirmName(e.target.value)}
+                    name="name"
+                    required
+                    maxLength={64}
+                    defaultValue={channel?.name}
                   />
-                  <div className="button-row">
-                    <button
-                      className="danger"
-                      disabled={action.busy || confirmName !== channel.name}
-                      onClick={() =>
-                        void action.run(async () => {
-                          await unwrap(
-                            instance.http.DELETE("/api/v1/channels/{id}", {
-                              params: { path: { id: channel.id } },
-                            }),
-                          );
-                          await instance.refreshAfterChange();
-                          onSaved?.();
-                          onClose();
-                        })
-                      }
-                    >
-                      Permanently delete channel
-                    </button>
-                    <button
-                      className="text-button"
-                      onClick={() => setConfirm(false)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </>
+                </label>
+                <label>
+                  Channel type
+                  <select
+                    name="kind"
+                    value={kind}
+                    onChange={(e) =>
+                      setKind(e.target.value as "text" | "voice" | "ai")
+                    }
+                    disabled={!!channel}
+                  >
+                    <option value="text">Text</option>
+                    <option value="voice">Voice</option>
+                    <option value="ai">AI conversation</option>
+                  </select>
+                  {channel && (
+                    <input type="hidden" name="kind" value={channel.kind} />
+                  )}
+                </label>
+              </div>
+              {supportsIcons && (
+                <ChannelIconPicker
+                  kind={kind}
+                  value={icon}
+                  onChange={setIcon}
+                />
               )}
-            </div>
-          )}
-        </>
-      ) : null}
+              <label>
+                Topic
+                <textarea
+                  name="topic"
+                  aria-label="Topic"
+                  maxLength={512}
+                  rows={3}
+                  defaultValue={channel?.topic ?? ""}
+                  placeholder="What is this channel for?"
+                />
+              </label>
+              <label>
+                Category
+                <select
+                  name="category"
+                  defaultValue={channel?.category_id ?? initialCategory ?? ""}
+                >
+                  <option value="">No category</option>
+                  {instance.snapshot.categories.map((c) => (
+                    <option value={c.id} key={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Status action={action} />
+              <button className="primary" disabled={action.busy}>
+                {channel ? "Save channel" : "Create channel"}
+              </button>
+            </form>
+            {channel && !dynamic && (
+              <div className="danger-zone">
+                <h3>Delete channel</h3>
+                {!confirm ? (
+                  <button className="danger" onClick={() => setConfirm(true)}>
+                    Delete channel
+                  </button>
+                ) : (
+                  <>
+                    <p>
+                      Delete <strong>{channel.name}</strong> and its server
+                      history? This cannot be undone. Type the channel name to
+                      confirm.
+                    </p>
+                    <input
+                      aria-label="Confirm channel name"
+                      value={confirmName}
+                      onChange={(e) => setConfirmName(e.target.value)}
+                    />
+                    <div className="button-row">
+                      <button
+                        className="danger"
+                        disabled={action.busy || confirmName !== channel.name}
+                        onClick={() =>
+                          void action.run(async () => {
+                            await unwrap(
+                              instance.http.DELETE("/api/v1/channels/{id}", {
+                                params: { path: { id: channel.id } },
+                              }),
+                            );
+                            await instance.refreshAfterChange();
+                            onSaved?.();
+                            onClose();
+                          })
+                        }
+                      >
+                        Permanently delete channel
+                      </button>
+                      <button
+                        className="text-button"
+                        onClick={() => setConfirm(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </>
+        ) : null}
+      </div>
     </Modal>
   );
 }

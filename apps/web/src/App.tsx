@@ -4,13 +4,23 @@ import {
   type MessageInputHandle,
 } from "./MessageInput";
 import { Permission } from "./Permissions";
-import { AIConversationStatus, useAIChannel } from "./AIConversationStatus";
-import { MessageAvatar, MessageAuthor, AIAvatar } from "./AIIdentity";
+import {
+  AIChannelHeader,
+  AIConversationStatus,
+  useAIChannel,
+} from "./AIConversationStatus";
+import {
+  MessageAvatar,
+  MessageAuthor,
+  AIAvatar,
+  AIProfileDialog,
+} from "./AIIdentity";
 import {
   aiMention,
   messageAuthorKey,
   messageAuthorName,
   AISwitchPermission,
+  type AIAuthor,
 } from "@haunt/core";
 import { mediaTask } from "@haunt/browser/media-queue";
 import { MessageWindow } from "./MessageWindow";
@@ -184,12 +194,14 @@ export function Modal({
   children,
   wide = false,
   settings = false,
+  className,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
   settings?: boolean;
+  className?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -202,6 +214,7 @@ export function Modal({
       aria-label={title}
       className={
         [
+          className,
           wide && "wide-dialog",
           settings && "settings-dialog",
           expanded && "settings-expanded",
@@ -1966,6 +1979,17 @@ export function ConversationView({
     [highlighted, setHighlighted] = useState(""),
     [jump, setJump] = useState<{ id: string } | { latest: true }>(),
     [now, setNow] = useState(Date.now);
+  const [profile, setProfile] = useState<AIAuthor>();
+  const aiChannel = state.channels.some(
+    (channel) => channel.id === conversation && channel.kind === "ai",
+  );
+  const profileMode = useSyncExternalStore(
+    instance.ai.subscribe,
+    () => instance.ai.channel(conversation).presets.length > 0,
+  );
+  useEffect(() => {
+    if (!profileMode || !aiChannel) setProfile(undefined);
+  }, [profileMode, aiChannel]);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
@@ -1976,6 +2000,7 @@ export function ConversationView({
     stick = useRef(true);
   useEffect(() => {
     historyNavigation.current++;
+    setProfile(undefined);
     setHistoryBefore(undefined);
     setOlderAvailable(true);
     setLoadingHistory(false);
@@ -2072,6 +2097,9 @@ export function ConversationView({
   }, [instance, conversation]);
   return (
     <div className="conversation-view" ref={dropTarget}>
+      {aiChannel && (
+        <AIChannelHeader instance={instance} channel={conversation} />
+      )}
       <HistorySearch
         instance={instance}
         conversation={conversation}
@@ -2085,9 +2113,7 @@ export function ConversationView({
       >
         <div className="history-note">
           <span>
-            {state.channels.some(
-              (c) => c.id === conversation && c.kind === "ai",
-            )
+            {aiChannel
               ? "Oldest AI channel history is removed when storage fills"
               : "Downloaded messages stay on this device"}
           </span>
@@ -2166,6 +2192,7 @@ export function ConversationView({
                   )
                 }
                 onReply={setReplyingTo}
+                onAIProfile={aiChannel && profileMode ? setProfile : undefined}
                 onNavigateReply={(id) =>
                   void navigateReply(id).catch((error) =>
                     setError(friendlyError(error)),
@@ -2271,7 +2298,6 @@ export function ConversationView({
         </div>
       )}
       <ErrorNotice error={error} />
-      <AIConversationStatus instance={instance} channel={conversation} />
       {writable ? (
         <Composer
           instance={instance}
@@ -2282,10 +2308,28 @@ export function ConversationView({
           onCancelReply={() => setReplyingTo(undefined)}
         />
       ) : (
-        <p className="readonly">
-          You can read this conversation. Sending messages is disabled by the
-          server.
-        </p>
+        <>
+          {aiChannel && (
+            <div className="composer-wrap readonly-status">
+              <AIConversationStatus
+                instance={instance}
+                channel={conversation}
+              />
+            </div>
+          )}
+          <p className="readonly">
+            You can read this conversation. Sending messages is disabled by the
+            server.
+          </p>
+        </>
+      )}
+      {aiChannel && profileMode && profile && (
+        <AIProfileDialog
+          instance={instance}
+          channel={conversation}
+          author={profile}
+          onClose={() => setProfile(undefined)}
+        />
       )}
       {writable && (
         <div className="file-drop-overlay" aria-hidden="true">
@@ -2308,6 +2352,7 @@ function MessageRow({
   canReply,
   onReply,
   onNavigateReply,
+  onAIProfile,
 }: {
   compact: boolean;
   now: number;
@@ -2319,6 +2364,7 @@ function MessageRow({
   canReply: boolean;
   onReply: (message: Message) => void;
   onNavigateReply: (id: string) => void;
+  onAIProfile?: (author: AIAuthor) => void;
 }) {
   const [resolvedReply, setResolvedReply] = useState<Message>();
   const reply = suppliedReply ?? resolvedReply;
@@ -2485,7 +2531,17 @@ function MessageRow({
         </time>
       ) : (
         <div className="message-avatar">
-          {!grouped ? (
+          {!grouped && message.ai_author && onAIProfile ? (
+            <button
+              type="button"
+              className="ai-author-portrait"
+              aria-haspopup="dialog"
+              aria-label={`Open ${message.ai_author.name}’s AI profile`}
+              onClick={() => onAIProfile(message.ai_author!)}
+            >
+              <MessageAvatar instance={instance} message={message} />
+            </button>
+          ) : !grouped ? (
             <MessageAvatar instance={instance} message={message} />
           ) : !dated ? (
             <time
@@ -2545,7 +2601,16 @@ function MessageRow({
             {instance.isDM(message.conversation_id) && !message.deleted && (
               <MessageSecurity message={message} />
             )}
-            {message.ai_author ? (
+            {message.ai_author && onAIProfile ? (
+              <button
+                type="button"
+                className="user-name"
+                aria-haspopup="dialog"
+                onClick={() => onAIProfile(message.ai_author!)}
+              >
+                <MessageAuthor instance={instance} message={message} />
+              </button>
+            ) : message.ai_author ? (
               <strong>
                 <MessageAuthor instance={instance} message={message} />
               </strong>
@@ -2947,8 +3012,11 @@ function Composer({
         </div>
       )}
       <ErrorNotice error={error || uploadState.error} />
+      {aiChannel && (
+        <AIConversationStatus instance={instance} channel={conversation} />
+      )}
       {replyTo && (
-        <div className="composer-reply" role="status">
+        <div className="composer-header composer-reply" role="status">
           <div>
             <span>Replying to</span>
             <strong>

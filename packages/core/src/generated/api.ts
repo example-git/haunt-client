@@ -4402,8 +4402,10 @@ export interface AiSettings {
   instructions: string;
   max_bytes: number;
   model: string;
+  model_name?: string;
   name: string;
   provider: string;
+  provider_name?: string;
   revision: number;
   switch_during_reply?: null | boolean;
 }
@@ -4858,6 +4860,7 @@ export interface AiTurn {
   id: string;
   last_progress_at?: null | string;
   partial_text?: string;
+  participant_ids?: string[];
   retry_at?: null | string;
   revision: number;
   status: string;

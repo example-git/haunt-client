@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { LoaderCircle } from "lucide-react";
+import { Bot, LoaderCircle } from "lucide-react";
 import {
   activeAITurn,
   AIUsePermission,
@@ -44,7 +44,31 @@ const labels: Record<string, string> = {
   image_generate: "Generating image",
   image_edit: "Editing image",
   switch_personality: "Selecting personality",
+  view_user_profile: "Viewing profile",
 };
+
+export function AIChannelHeader({
+  instance,
+  channel,
+}: {
+  instance: InstanceClient;
+  channel: string;
+}) {
+  const settings = useSyncExternalStore(
+    instance.ai.subscribe,
+    () => instance.ai.channel(channel).settings,
+  );
+  if (!settings) return null;
+  return (
+    <section className="ai-channel-header" aria-label="AI provider and model">
+      <Bot size={16} aria-hidden="true" />
+      <strong>{settings.provider_name || settings.provider}</strong>
+      <span className="ai-model-name">
+        {settings.model_name || settings.model || "No model selected"}
+      </span>
+    </section>
+  );
+}
 
 function Elapsed({ since }: { since: string }) {
   const [now, setNow] = useState(Date.now);
@@ -81,7 +105,7 @@ export function AIConversationStatus({
     state.turns.at(-1);
   if (state.error && !turn)
     return (
-      <div role="alert" className="ai-conversation-status">
+      <div role="alert" className="composer-header ai-conversation-status">
         {state.error}
         <button
           disabled={action.busy}
@@ -95,7 +119,7 @@ export function AIConversationStatus({
     );
   if (!turn || turn.status === "completed")
     return canInChannel(instance, channel, AIUsePermission) ? null : (
-      <p className="ai-conversation-status muted">
+      <p className="composer-header ai-conversation-status muted">
         You can post here. Your role cannot request AI responses.
       </p>
     );
@@ -103,6 +127,7 @@ export function AIConversationStatus({
   const phase = (active && turn.action) || turn.status;
   const mayAct =
     turn.actor_id === instance.account.login.user.id ||
+    turn.participant_ids?.includes(instance.account.login.user.id) ||
     canInChannel(instance, channel, Permission.ManageChannels);
   const retry =
     !active &&
@@ -113,7 +138,7 @@ export function AIConversationStatus({
   const command = active ? "cancel" : "retry";
   return (
     <section
-      className="ai-conversation-status"
+      className="composer-header ai-conversation-status"
       aria-label="AI conversation status"
       data-ai-turn={turn.id}
     >

@@ -41,11 +41,13 @@ try {
   const preset = {
     id: "55555555-5555-4555-8555-555555555555",
     name: "Sage Research",
+    description: "Finds and checks original sources.",
     channel_id: channel.id,
     instructions: "Be clear.",
     revision: 1,
   };
   const portraitPath = `/api/v1/channels/${channel.id}/ai/presets/${preset.id}/avatar?v=11111111111111111111111111111111`;
+  preset.avatar_url = portraitPath;
   const pixel = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/5RAAAAAASUVORK5CYII=",
     "base64",
@@ -57,8 +59,10 @@ try {
   let settings = {
     channel_id: channel.id,
     provider: "claude",
+    provider_name: "Claude",
     account_id: accountID,
     model: "claude-test",
+    model_name: "Claude Test",
     instructions: "Respond to the conversation.",
     name: "Guide",
     max_bytes: 67108864,
@@ -79,6 +83,7 @@ try {
       "sessions.persistent",
       "events.account_feed",
       "messages.read_state",
+      "messages.replies",
     ],
     media_transport: "webrtc",
     authentication: {
@@ -338,6 +343,53 @@ try {
     page.locator(".message-meta").filter({ hasText: "Guide" }),
   ).toHaveCount(1);
   await expect.poll(() => portraitReads).toBe(1);
+  const header = page.getByRole("region", { name: "AI provider and model" });
+  await expect(header).toContainText("Claude Test");
+  const configBar = await header.boundingBox();
+  const search = await page
+    .getByRole("searchbox", { name: "Search downloaded messages" })
+    .boundingBox();
+  assert(configBar.y + configBar.height <= search.y);
+  const firstMessage = page.locator(`#message-${messages[0].id}`);
+  const readsBeforeProfile = aiReads.length;
+  await firstMessage.locator(".message-meta button.user-name").click();
+  const profile = page.getByRole("dialog", { name: "AI personality profile" });
+  await expect(
+    profile.getByRole("heading", { name: preset.name }),
+  ).toBeVisible();
+  await expect(profile.getByText(preset.description)).toBeVisible();
+  await expect(profile.locator(".ai-profile-portrait img")).toBeVisible();
+  const portrait = await profile.locator(".ai-profile-portrait").boundingBox();
+  const heading = await profile
+    .getByRole("heading", { name: preset.name })
+    .boundingBox();
+  assert(portrait.width >= 100 && portrait.x + portrait.width <= heading.x);
+  await page.setViewportSize({ width: 390, height: 780 });
+  await expect(profile).toBeVisible();
+  const narrowCard = await profile.boundingBox();
+  const narrowPortrait = await profile
+    .locator(".ai-profile-portrait")
+    .boundingBox();
+  const narrowInfo = await profile.locator(".ai-profile-info").boundingBox();
+  assert(narrowCard.x >= 0 && narrowCard.x + narrowCard.width <= 390);
+  assert(narrowPortrait.x + narrowPortrait.width <= narrowInfo.x);
+  assert(narrowInfo.x + narrowInfo.width <= narrowCard.x + narrowCard.width);
+  await profile.screenshot({
+    path: path.join(output, "personality-profile-mobile.png"),
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.keyboard.press("Escape");
+  await page
+    .locator(`#message-${messages[1].id} .message-avatar button`)
+    .click();
+  await expect(profile.getByRole("heading", { name: "Guide" })).toBeVisible();
+  await expect(profile.locator(".ai-profile-info")).toHaveCSS(
+    "text-align",
+    "center",
+  );
+  await profile.getByRole("button", { name: "Close" }).click();
+  assert.equal(portraitReads, 1);
+  assert.equal(aiReads.length, readsBeforeProfile);
   await input.fill("@Sa");
   await expect(
     page.getByRole("option", { name: "Sage Research AI preset" }),
@@ -379,6 +431,23 @@ try {
   await expect(
     page.getByText("Reading example.org", { exact: false }),
   ).toBeVisible();
+  await firstMessage.hover();
+  await firstMessage
+    .getByRole("button", { name: "Reply", exact: true })
+    .click();
+  const statusStrip = page.locator(".composer-wrap .ai-conversation-status");
+  const replyStrip = page.locator(".composer-wrap .composer-reply");
+  await expect(replyStrip).toBeVisible();
+  const activityBounds = await statusStrip.boundingBox();
+  const replyBounds = await replyStrip.boundingBox();
+  assert.equal(activityBounds.x, replyBounds.x);
+  assert.equal(activityBounds.width, replyBounds.width);
+  assert(activityBounds.y + activityBounds.height <= replyBounds.y);
+  await expect(statusStrip).toHaveCSS(
+    "background-color",
+    await replyStrip.evaluate((el) => getComputedStyle(el).backgroundColor),
+  );
+  await page.getByRole("button", { name: "Cancel reply" }).click();
   send({
     type: "ai.turn.updated",
     data: { ...turn, revision: 2, partial_text: "Stale answer" },
@@ -402,6 +471,28 @@ try {
     .getByRole("menuitem", { name: "Edit channel", exact: true })
     .click();
   await page.getByRole("button", { name: "AI settings", exact: true }).click();
+  const channelDialog = page.getByRole("dialog", {
+    name: `Channel settings · ${channel.name}`,
+  });
+  assert((await channelDialog.boundingBox()).width > 750);
+  await expect(
+    channelDialog.getByRole("button", { name: "Expand settings" }),
+  ).toBeVisible();
+  await channelDialog.screenshot({
+    path: path.join(output, "channel-settings.png"),
+  });
+  await page.setViewportSize({ width: 390, height: 780 });
+  await expect(channelDialog).toBeVisible();
+  const fields = channelDialog.locator(".channel-settings-pair");
+  const fieldBounds = await fields
+    .getByRole("combobox", { name: "Integration", exact: true })
+    .boundingBox();
+  const accountBounds = await fields
+    .getByRole("combobox", { name: "Account", exact: true })
+    .boundingBox();
+  assert(fieldBounds.x >= 0 && fieldBounds.x + fieldBounds.width <= 390);
+  assert(accountBounds.y >= fieldBounds.y + fieldBounds.height);
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await expect(
     page.getByRole("combobox", { name: "Model", exact: true }),
   ).toHaveValue("claude-test");
@@ -419,13 +510,11 @@ try {
     ctx.fillRect(0, 0, 1600, 1600);
     return canvas.toDataURL("image/png").split(",")[1];
   });
-  await form
-    .getByLabel("Profile picture")
-    .setInputFiles({
-      name: "large.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(largePicture, "base64"),
-    });
+  await form.getByLabel("Profile picture").setInputFiles({
+    name: "large.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(largePicture, "base64"),
+  });
   await expect(form.getByAltText("Selected picture preview")).toBeVisible();
   await form.getByRole("button", { name: "Save personality" }).click();
   await expect.poll(() => created.length).toBe(1);
@@ -495,6 +584,10 @@ try {
         passed: [
           "AI-only initial channel selection",
           "separate AI authors",
+          "AI speaker names and portraits open the channel profile with cached image data",
+          "provider and model header uses the channel settings snapshot",
+          "AI activity stacks and aligns with the reply header",
+          "expandable wide channel settings",
           "stable preset mention distinct from human mention",
           "active tool above the composer without additional reads",
           "historical avatar requests shared across rows",

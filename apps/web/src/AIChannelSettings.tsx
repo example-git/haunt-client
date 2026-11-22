@@ -102,47 +102,49 @@ export function AIChannelSettings({
             }, "AI settings saved.");
           }}
         >
-          <label>
-            Integration
-            <select
-              required
-              value={draft.provider}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  provider: e.target.value as AISettings["provider"],
-                  account_id: "",
-                  model: "",
-                })
-              }
-            >
-              <option value="">Choose integration</option>
-              {providers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Account
-            <select
-              required
-              value={draft.account_id}
-              onChange={(e) =>
-                setDraft({ ...draft, account_id: e.target.value, model: "" })
-              }
-            >
-              <option value="">Choose connected account</option>
-              {accounts
-                .filter((a) => a.provider === draft.provider)
-                .map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.label || a.provider} · {a.status}
+          <div className="channel-settings-pair">
+            <label>
+              Integration
+              <select
+                required
+                value={draft.provider}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    provider: e.target.value as AISettings["provider"],
+                    account_id: "",
+                    model: "",
+                  })
+                }
+              >
+                <option value="">Choose integration</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
                   </option>
                 ))}
-            </select>
-          </label>
+              </select>
+            </label>
+            <label>
+              Account
+              <select
+                required
+                value={draft.account_id}
+                onChange={(e) =>
+                  setDraft({ ...draft, account_id: e.target.value, model: "" })
+                }
+              >
+                <option value="">Choose connected account</option>
+                {accounts
+                  .filter((a) => a.provider === draft.provider)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label || a.provider} · {a.status}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
           <p role="status">
             Connection: {state.settings?.connection_status || "not configured"}
           </p>
@@ -167,7 +169,7 @@ export function AIChannelSettings({
           </label>
           {multiple ? (
             <>
-              <label>
+              <label className="checkbox">
                 <input
                   type="checkbox"
                   checked={!!draft.allow_agent_switch}

@@ -34,7 +34,9 @@ export async function checkAIServer(browser, fixtures) {
     await page
       .locator(`[data-channel-id="${server.ai_channel}"] .channel`)
       .click();
-    await expect(page.locator(".ai-conversation-status")).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "AI provider and model" }),
+    ).toContainText("Claude Sonnet 4.6");
     const response = await context.request.post(
       server.url + "/api/v1/auth/login",
       {
@@ -66,10 +68,10 @@ export async function checkAIServer(browser, fixtures) {
     const owner = await login("owner"),
       alice = await login("alice"),
       bob = await login("bob");
-    const send = async (participant, body) => {
+    const send = async (participant, body, channel = server.ai_channel) => {
       const pending = participant.page.waitForResponse(
         (r) =>
-          r.url().endsWith(`/conversations/${server.ai_channel}/messages`) &&
+          r.url().endsWith(`/conversations/${channel}/messages`) &&
           r.request().method() === "POST",
       );
       await participant.page
@@ -136,6 +138,66 @@ export async function checkAIServer(browser, fixtures) {
     const { presets } = await owner.api(channelPath + "/presets");
     const preset = presets.find((p) => p.id === server.ai_preset);
     assert(preset);
+    const batchChannel = await owner.api("/api/v1/channels", "POST", {
+      name: "queue-check",
+      kind: "ai",
+    });
+    const batchPath = `/api/v1/channels/${batchChannel.id}/ai`;
+    const configured = await owner.api(channelPath);
+    await owner.api(batchPath, "PUT", {
+      account_id: configured.account_id,
+      provider: configured.provider,
+      model: configured.model,
+      name: "Guide",
+      instructions: "",
+      max_bytes: configured.max_bytes,
+    });
+    const batchPreset = await owner.api(batchPath + "/presets", "POST", {
+      name: "Researcher",
+    });
+    const openChannel = (participant, id) =>
+      participant.page.locator(`[data-channel-id="${id}"] .channel`).click();
+    for (const member of [alice, bob])
+      await openChannel(member, batchChannel.id);
+    const queue = (member, text) => send(member, text, batchChannel.id);
+    const hold = await queue(
+      alice,
+      "Hold this fixture response until cancellation.",
+    );
+    let heldTurn;
+    await expect
+      .poll(async () => {
+        const { turns } = await owner.api(batchPath + "/turns");
+        heldTurn = turns.find((t) => t.trigger_message_id === hold.id);
+        return heldTurn?.status;
+      })
+      .toBe("running");
+    const firstQueued = await queue(alice, "Queue check one");
+    await queue(bob, "Queue check two");
+    await queue(bob, `<@ai:${batchPreset.id}> Queue check three`);
+    await queue(alice, "Queue check four");
+    await owner.api(batchPath + "/turns/" + heldTurn.id + "/cancel", "POST");
+    const replies = async () => {
+      const history = await owner.api(
+        `/api/v1/conversations/${batchChannel.id}/messages?limit=100`,
+      );
+      return history.messages
+        .filter((m) => m.ai_author && m.seq > firstQueued.seq)
+        .sort((a, b) => a.seq - b.seq);
+    };
+    await expect
+      .poll(async () => (await replies()).map((m) => m.body))
+      .toEqual([
+        expect.stringContaining("persona=Guide; batch authors=alice,bob"),
+        expect.stringContaining(
+          `persona=${batchPreset.name}; batch authors=bob,alice`,
+        ),
+      ]);
+    checked.push(
+      "Four posts during a busy response reach the provider as two attributed user messages, split at the personality change",
+    );
+    for (const member of [alice, bob])
+      await openChannel(member, server.ai_channel);
     const input = alice.page.getByRole("textbox", {
       name: "Message",
       exact: true,
@@ -146,15 +208,24 @@ export async function checkAIServer(browser, fixtures) {
       .filter({ hasText: preset.name })
       .filter({ hasText: "AI preset" })
       .click();
-    await expect(input).toHaveValue(`<@ai:${preset.id}> `);
+    await expect(input.locator("[data-ai-mention]")).toHaveText(
+      "@" + preset.name,
+    );
     const selected = await send(alice, `<@ai:${preset.id}> Use this persona`);
     const presetReply = await completed(selected);
     assert.equal(presetReply.ai_author.id, preset.id);
     assert.equal(presetReply.ai_author.name, preset.name);
     assert(presetReply.body.includes(`persona=${preset.name}`));
+    await bob.page
+      .locator(`#message-${presetReply.id} .message-meta button.user-name`)
+      .click();
+    const profile = bob.page.getByRole("dialog", {
+      name: "AI personality profile",
+    });
     await expect(
-      bob.page.locator(".ai-conversation-status strong").first(),
-    ).toHaveText(preset.name);
+      profile.getByRole("heading", { name: preset.name }),
+    ).toBeVisible();
+    await bob.page.keyboard.press("Escape");
     checked.push(
       "Stable preset mention updates shared selection and the selecting message's response identity",
     );
@@ -208,20 +279,23 @@ export async function checkAIServer(browser, fixtures) {
       .locator(`[data-channel-id="${server.ai_channel}"] .channel`)
       .click({ button: "right" });
     await owner.page
-      .getByRole("menuitem", { name: "AI settings", exact: true })
+      .getByRole("menuitem", { name: "Edit channel", exact: true })
+      .click();
+    await owner.page
+      .getByRole("button", { name: "AI settings", exact: true })
       .click();
     await expect(
       owner.page.getByRole("combobox", { name: "Model", exact: true }),
     ).not.toHaveValue("");
     await owner.page
-      .getByLabel("AI name", { exact: true })
-      .fill("Channel Guide");
+      .getByLabel("Allow the agent to switch personalities")
+      .check();
     await owner.page
       .getByRole("button", { name: "Save AI settings", exact: true })
       .click();
     await expect
-      .poll(async () => (await owner.api(channelPath)).name)
-      .toBe("Channel Guide");
+      .poll(async () => (await owner.api(channelPath)).allow_agent_switch)
+      .toBe(true);
     await expect(
       owner.page.getByRole("button", { name: "Connect account", exact: true }),
     ).toBeDisabled();

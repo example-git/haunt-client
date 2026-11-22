@@ -707,7 +707,7 @@ input[type="checkbox"] {
   padding: 12px 24px 14px;
   background: transparent;
 }
-.composer-reply {
+.composer-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6447,22 +6447,105 @@ button:disabled:hover {
   box-shadow: 0 3px 12px #0006;
 }
 
-.ai-conversation-status {
+.ai-channel-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-  min-width: 0;
-  margin: 4px 16px;
-  font-size: 13px;
+  gap: 9px;
+  flex: none;
+  padding: 7px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, var(--haunt-surface));
+  color: var(--text);
+  font-size: 12px;
 }
+.ai-channel-header svg {
+  flex: none;
+  color: var(--accent);
+}
+.ai-channel-header strong {
+  white-space: nowrap;
+}
+.ai-model-name {
+  min-width: 0;
+  padding-inline-start: 9px;
+  border-inline-start: 1px solid var(--line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-conversation-status {
+  justify-content: flex-start;
+  gap: 7px;
+  font-size: 12px;
+}
+.ai-conversation-status .text-button {
+  flex: none;
+  margin-inline-start: auto;
+  font-size: inherit;
+}
+.ai-conversation-status .error {
+  overflow-wrap: anywhere;
+}
+.ai-conversation-status .muted {
+  font-size: inherit;
+}
+.readonly-status:empty { display: none; }
 .ai-activity-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ai-activity-spinner { flex: none; animation: ai-activity-spin 1s linear infinite; }
+.ai-activity-spinner { flex: none; color: var(--accent); animation: ai-activity-spin 1s linear infinite; }
 @keyframes ai-activity-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ai-activity-spinner { animation: none; } }
 .ai-label { display: inline-block; font-size: 10px; padding: 1px 4px; border: 1px solid currentColor; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
 .ai-avatar { background: color-mix(in srgb, var(--text) 10%, transparent); }
 .ai-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.ai-author-portrait {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+.ai-author-portrait:hover { box-shadow: 0 0 0 2px var(--accent); }
+dialog.ai-profile-dialog {
+  width: min(560px, calc(100vw - 28px));
+  padding: clamp(16px, 4vw, 32px);
+  padding-block-start: 42px;
+}
+.ai-profile-dialog .dialog-head {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.ai-profile-dialog .dialog-head h2 { display: none; }
+.ai-profile-dialog .dialog-head .icon { margin: 0; }
+.ai-profile-card {
+  display: grid;
+  grid-template-columns: clamp(72px, 22vw, 148px) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(12px, 4vw, 26px);
+}
+.ai-profile-card .ai-profile-portrait {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+.ai-profile-portrait > svg { width: 45%; height: 45%; }
+.ai-profile-info { min-width: 0; overflow-wrap: anywhere; }
+.ai-profile-info.name-only { text-align: center; }
+.ai-profile-info h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 4vw, 1.9rem);
+  line-height: 1.15;
+}
+.ai-profile-info p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
 .ai-avatar-editor { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .ai-preset, .ai-account { padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
 .ai-preset code { display: block; font-size: 11px; overflow-wrap: anywhere; margin: 6px 0; }

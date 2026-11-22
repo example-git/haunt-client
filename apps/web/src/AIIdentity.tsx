@@ -4,6 +4,51 @@ import { Bot } from "lucide-react";
 import { type AIAuthor, type InstanceClient, type Message } from "@haunt/core";
 import { Avatar } from "./People";
 import { UserName } from "./UserName";
+import { Modal } from "./App";
+
+export function AIProfileDialog({
+  instance,
+  channel,
+  author,
+  onClose,
+}: {
+  instance: InstanceClient;
+  channel: string;
+  author: AIAuthor;
+  onClose: () => void;
+}) {
+  const preset = useSyncExternalStore(instance.ai.subscribe, () =>
+    instance.ai
+      .channel(channel)
+      .presets.find((entry) => entry.id === author.id),
+  );
+  const profile = preset ?? author;
+  const description = preset?.description?.trim();
+  return (
+    <Modal
+      title="AI personality profile"
+      className="ai-profile-dialog"
+      onClose={onClose}
+    >
+      <div className="ai-profile-card">
+        <AIAvatar
+          instance={instance}
+          author={profile}
+          size="ai-profile-portrait"
+        />
+        <div
+          className={
+            description ? "ai-profile-info" : "ai-profile-info name-only"
+          }
+        >
+          <h2>{profile.name}</h2>
+          {description && <p>{description}</p>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export function AIAvatar({
   instance,
   author,
