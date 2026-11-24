@@ -1371,6 +1371,7 @@ export class InstanceClient {
     body: string,
     attachments: string[] = [],
     replyTo?: string,
+    hideFromAI?: boolean,
   ) {
     const maxBytes = Math.min(
       65_536,
@@ -1388,6 +1389,7 @@ export class InstanceClient {
       body,
       attachment_ids: attachments,
       reply_to_id: replyTo,
+      hidden_from_ai: hideFromAI,
       created_at: new Date().toISOString(),
     };
     await this.store.putPending(this.scope, message);
@@ -1408,6 +1410,11 @@ export class InstanceClient {
     try {
       if (this.snapshot.status !== "online")
         throw Error("Saved on this device. Retry when the server reconnects.");
+      const supportsAIVisibility = this.account.instance.capabilities?.includes(
+        "messages.hide_from_ai.v1",
+      );
+      if (message.hidden_from_ai && !supportsAIVisibility)
+        throw Error("This server cannot send messages hidden from AI.");
       const encryption = this.isDM(message.conversation_id)
         ? this.dmEncryption
         : undefined;
@@ -1424,6 +1431,9 @@ export class InstanceClient {
               body,
               attachment_ids: message.attachment_ids,
               reply_to_id: message.reply_to_id,
+              hidden_from_ai: supportsAIVisibility
+                ? message.hidden_from_ai
+                : undefined,
             },
           }),
         );

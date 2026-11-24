@@ -2200,6 +2200,8 @@ export function ConversationView({
                 }
                 grouped={
                   index > 0 &&
+                  !message.hidden_from_ai &&
+                  !items[index - 1].hidden_from_ai &&
                   messageDay(items[index - 1].created_at) ===
                     messageDay(message.created_at) &&
                   !message.reply_to_id &&
@@ -2300,6 +2302,7 @@ export function ConversationView({
       <ErrorNotice error={error} />
       {writable ? (
         <Composer
+          key={JSON.stringify([instance.scope, conversation])}
           instance={instance}
           conversation={conversation}
           title={title}
@@ -2608,12 +2611,10 @@ function MessageRow({
                 aria-haspopup="dialog"
                 onClick={() => onAIProfile(message.ai_author!)}
               >
-                <MessageAuthor instance={instance} message={message} />
+                {message.ai_author.name}
               </button>
             ) : message.ai_author ? (
-              <strong>
-                <MessageAuthor instance={instance} message={message} />
-              </strong>
+              <strong>{message.ai_author.name}</strong>
             ) : user ? (
               <button
                 className="user-name"
@@ -2624,7 +2625,11 @@ function MessageRow({
             ) : (
               <strong>Deleted user</strong>
             )}
-            {own && <span className="you">you</span>}
+            {message.ai_author && <span className="message-marker">AI</span>}
+            {message.hidden_from_ai && (
+              <span className="message-marker">Hidden from AI</span>
+            )}
+            {own && <span className="message-marker you">you</span>}
             {!compact && (
               <time
                 dateTime={message.created_at}
@@ -2762,6 +2767,10 @@ function Composer({
   const uploadsAllowed =
     !direct || !!instance.account.instance.limits.dm?.images_enabled;
   const key = `chatxo-draft:${instance.scope}:${conversation}`;
+  const visibilityKey = `${key}:hide-from-ai`;
+  const [hideFromAI, setHideFromAI] = useState(
+    () => sessionStorage.getItem(visibilityKey) === "true",
+  );
   const [body, setBody] = useState(() => sessionStorage.getItem(key) ?? ""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -2818,6 +2827,12 @@ function Composer({
   const aiChannel = instance.snapshot.channels.find(
     (c) => c.id === conversation && c.kind === "ai",
   );
+  const showAIVisibility =
+    aiChannel &&
+    (hideFromAI ||
+      instance.account.instance.capabilities?.includes(
+        "messages.hide_from_ai.v1",
+      ));
   const mentionPattern = aiChannel
     ? /(^|[\s([{"'.,!?:;])@([^@\r\n<>]{0,80})$/u
     : /(^|[\s([{"'.,!?:;])@([a-zA-Z0-9_]{0,32})$/;
@@ -2910,6 +2925,7 @@ function Composer({
         body,
         attachments.map((a) => a.id),
         replyTo?.id,
+        showAIVisibility ? hideFromAI : undefined,
       );
       draft("");
       uploads.clear();
@@ -2919,7 +2935,10 @@ function Composer({
       const pending = await instance.pending();
       if (
         pending.some(
-          (m) => m.conversation_id === conversation && m.body === body,
+          (m) =>
+            m.conversation_id === conversation &&
+            m.body === body &&
+            !!m.hidden_from_ai === hideFromAI,
         )
       ) {
         draft("");
@@ -3249,7 +3268,28 @@ function Composer({
           <ArrowUp size={19} />
         </button>
       </form>
-      <div className="composer-hint">
+      <div
+        className={`composer-hint${showAIVisibility ? " has-ai-visibility" : ""}`}
+      >
+        {showAIVisibility && (
+          <label
+            className="composer-ai-visibility"
+            title="While checked, messages you send here are visible to people only."
+          >
+            <input
+              type="checkbox"
+              checked={hideFromAI}
+              disabled={busy}
+              onChange={(event) => {
+                const hidden = event.currentTarget.checked;
+                setHideFromAI(hidden);
+                if (hidden) sessionStorage.setItem(visibilityKey, "true");
+                else sessionStorage.removeItem(visibilityKey);
+              }}
+            />
+            Hide from AI
+          </label>
+        )}
         <span>
           <strong>Enter</strong> to send · <strong>Shift + Enter</strong> for a
           new line

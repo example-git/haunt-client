@@ -5503,6 +5503,7 @@ export interface ChatMessage {
   created_at: string;
   deleted: boolean;
   edited_at?: null | string;
+  hidden_from_ai?: boolean;
   id: string;
   mention_user_ids?: string[];
   reply_to_id?: null | string;
@@ -5556,6 +5557,10 @@ export interface HttpapiCreateMessageRequest {
    * Nonblank body or at least one attachment. UTF-8 bytes are bounded by installation policy (at most 64 KiB).
    */
   body?: string;
+  /**
+   * AI channels only. A hidden message is visible to members and permanently excluded from AI responses and context.
+   */
+  hidden_from_ai?: boolean;
   /**
    * Message in the same conversation to reference as a reply.
    */

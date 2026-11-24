@@ -55,6 +55,7 @@ export interface PendingMessage {
   body: string;
   attachment_ids: string[];
   reply_to_id?: string;
+  hidden_from_ai?: boolean;
   created_at: string;
   error?: string;
 }

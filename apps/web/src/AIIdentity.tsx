@@ -113,7 +113,7 @@ export function MessageAuthor({
 }) {
   return message.ai_author ? (
     <>
-      {message.ai_author.name} <span className="ai-label">AI</span>
+      {message.ai_author.name} <span className="message-marker">AI</span>
     </>
   ) : (
     <UserName

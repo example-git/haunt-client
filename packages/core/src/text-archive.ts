@@ -12,6 +12,7 @@ export interface ArchivedText {
   edited_at?: string | null;
   reply_to_id?: string;
   removed?: true;
+  hidden_from_ai?: true;
 }
 export interface TextArchiveChunk {
   scope: string;
@@ -63,6 +64,7 @@ export function archivedText(raw: Message): ArchivedText | undefined {
     id: m.id,
     conversation_id: m.conversation_id,
     author_id: m.author_id,
+    ...(m.hidden_from_ai ? { hidden_from_ai: true as const } : {}),
     ...(m.ai_author ? { ai_author: m.ai_author } : {}),
     seq: m.seq,
     body: m.body,
@@ -148,6 +150,7 @@ export async function unpackTextChunk(
             (typeof row.ai_author.avatar_url === "string" &&
               row.ai_author.avatar_url.length <= 1024))
         : id(row.author_id)) ||
+      (row.hidden_from_ai !== undefined && row.hidden_from_ai !== true) ||
       seen.has(row.id) ||
       row.conversation_id !== chunk.conversation ||
       !Number.isSafeInteger(row.seq) ||
@@ -184,6 +187,7 @@ export async function unpackTextChunk(
     created_at: row.created_at,
     ...(row.edited_at ? { edited_at: row.edited_at } : {}),
     ...(row.reply_to_id ? { reply_to_id: row.reply_to_id } : {}),
+    ...(row.hidden_from_ai ? { hidden_from_ai: true as const } : {}),
     ...(row.removed ? { removed: true as const } : {}),
   }));
 }

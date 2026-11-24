@@ -173,6 +173,28 @@ export async function checkAIServer(browser, fixtures) {
       })
       .toBe("running");
     const firstQueued = await queue(alice, "Queue check one");
+    const hide = alice.page.getByRole("checkbox", {
+      name: "Hide from AI",
+      exact: true,
+    });
+    await expect(hide).not.toBeChecked();
+    await hide.check();
+    const hidden = await queue(alice, `<@ai:${batchPreset.id}> Members only`);
+    assert.equal(hidden.hidden_from_ai, true);
+    for (const member of [alice, bob]) {
+      const row = member.page.locator(`#message-${hidden.id}`);
+      await expect(
+        row
+          .locator(".message-meta")
+          .getByText("Hidden from AI", { exact: true }),
+      ).toBeVisible();
+      await expect(row.getByRole("checkbox")).toHaveCount(0);
+    }
+    await expect(hide).toBeChecked();
+    await expect(
+      bob.page.getByRole("checkbox", { name: "Hide from AI" }),
+    ).not.toBeChecked();
+    await hide.uncheck();
     await queue(bob, "Queue check two");
     await queue(bob, `<@ai:${batchPreset.id}> Queue check three`);
     await queue(alice, "Queue check four");
