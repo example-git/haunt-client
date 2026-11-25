@@ -1,4 +1,5 @@
 import {
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -221,6 +222,8 @@ function PostMedia({
   avatar?: boolean;
 }) {
   const media = asset === undefined ? undefined : embed.media?.[asset];
+  const gallery = useContext(GalleryContext);
+  const inlineImage = embed.kind === "image" && !gallery;
   const [image, setImage] = useState<string>(),
     [video, setVideo] = useState<string>(),
     [error, setError] = useState(false),
@@ -372,10 +375,17 @@ function PostMedia({
       </div>
     );
   return (
-    <div className="embed-media-frame" style={{ aspectRatio: aspect }}>
+    <div
+      className={inlineImage ? "attachment-card" : "embed-media-frame"}
+      style={inlineImage ? undefined : { aspectRatio: aspect }}
+    >
       {image ? (
-        <ImagePreview className="embed-picture" label="Enlarge preview image">
+        <ImagePreview
+          className={inlineImage ? "attachment-picture" : "embed-picture"}
+          label="Enlarge preview image"
+        >
           <img
+            className={inlineImage ? "attachment-image" : undefined}
             src={image}
             referrerPolicy="no-referrer"
             alt={media?.alt || embed.image_alt || "Post image"}
@@ -787,7 +797,8 @@ export function MessageEmbeds({
           Show link previews
         </button>
       )}
-      {separate && <MessageGallery pictures={pictures} />}
+      {separate &&
+        (grouped ? <MessageGallery pictures={pictures} /> : pictures[0].render)}
       {attachments.map(({ id, meta }) =>
         separate && meta?.content_type.startsWith("image/")
           ? null
@@ -821,8 +832,6 @@ function MessageGallery({ pictures }: { pictures: GalleryItem[] }) {
       behavior: "instant",
     });
   };
-  if (pictures.length === 1)
-    return <div className="embed-gallery">{pictures[0].render}</div>;
   return (
     <div
       className="message-image-gallery"
