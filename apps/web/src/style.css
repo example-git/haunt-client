@@ -6612,3 +6612,59 @@ dialog.ai-profile-dialog {
 .ai-avatar-editor { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .ai-preset, .ai-account { padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
 .ai-preset code { display: block; font-size: 11px; overflow-wrap: anywhere; margin: 6px 0; }
+
+.message-consultations {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.35rem 0;
+}
+.structured-embed-card {
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 0.35rem;
+  background: var(--panel);
+  padding: 0.55rem 0.75rem;
+  max-width: 60ch;
+  overflow-wrap: anywhere;
+}
+.structured-card-title {
+  font-weight: 600;
+  margin: 0 0 0.4rem;
+}
+.structured-card-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+.structured-card-content .avatar {
+  flex-shrink: 0;
+}
+.consultation-answer {
+  white-space: pre-wrap;
+  margin: 0.2rem 0 0;
+}
+.message-image-gallery {
+  width: min(100%, 36rem);
+  min-width: 0;
+}
+.message-gallery-track {
+  display: flex;
+  align-items: flex-start;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+}
+.message-gallery-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+.message-gallery-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: var(--muted);
+}
+.message-gallery-nav button {
+  padding: 0.25em 0.65em;
+}

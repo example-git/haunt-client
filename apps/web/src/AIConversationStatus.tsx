@@ -43,6 +43,7 @@ const labels: Record<string, string> = {
   tool_running: "Using tool",
   image_generate: "Generating image",
   image_edit: "Editing image",
+  consult_personality: "Consulting personality",
   switch_personality: "Selecting personality",
   view_user_profile: "Viewing profile",
 };

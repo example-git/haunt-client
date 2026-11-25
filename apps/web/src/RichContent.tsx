@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -37,7 +38,11 @@ import {
 } from "@haunt/browser/embeds";
 import { providerAsset, directPostImage } from "@haunt/browser/provider-posts";
 
-import { ImagePreview } from "./ImageViewer";
+import {
+  GalleryContext,
+  type GalleryPicture,
+  ImagePreview,
+} from "./ImageViewer";
 import { MediaControls } from "./MediaControls";
 import { saveMedia } from "@haunt/browser/downloads";
 import { hauntLink } from "@haunt/browser/deep-links";
@@ -401,16 +406,19 @@ function PreviewCard({
   instance,
   message,
   embed,
+  separateImages = false,
 }: {
   instance: InstanceClient;
   message: Message;
   embed: Embed;
+  separateImages?: boolean;
 }) {
   const [image, setImage] = useState<string>(),
     [playing, setPlaying] = useState(false);
   const player = providerPlayer(embed, location.hostname);
   useEffect(() => {
-    if (!embed.image || embed.media?.length) return;
+    if (!embed.image || embed.media?.length || (separateImages && !player))
+      return;
     const controller = new AbortController();
     let url: string | undefined;
     void previewImage(instance, message, embed.index, controller.signal, {
@@ -426,7 +434,15 @@ function PreviewCard({
       controller.abort();
       if (url) URL.revokeObjectURL(url);
     };
-  }, [instance, message.id, message.edited_at, embed.index, embed.image]);
+  }, [
+    instance,
+    message.id,
+    message.edited_at,
+    embed.index,
+    embed.image,
+    separateImages,
+    player,
+  ]);
   let host = "";
   try {
     host = new URL(embed.url).hostname;
@@ -501,15 +517,17 @@ function PreviewCard({
         <div
           className={`embed-gallery ${embed.media.length > 1 ? "embed-gallery-multiple" : ""}`}
         >
-          {embed.media.map((_, asset) => (
-            <PostMedia
-              key={asset}
-              instance={instance}
-              message={message}
-              embed={embed}
-              asset={asset}
-            />
-          ))}
+          {embed.media.map((item, asset) =>
+            separateImages && item.kind === "image" ? null : (
+              <PostMedia
+                key={asset}
+                instance={instance}
+                message={message}
+                embed={embed}
+                asset={asset}
+              />
+            ),
+          )}
         </div>
       ) : player && playing ? (
         <div
@@ -548,7 +566,7 @@ function PreviewCard({
             <Play size={28} fill="currentColor" /> Play video
           </span>
         </button>
-      ) : embed.image ? (
+      ) : embed.image && !separateImages ? (
         <div className="embed-media-frame embed-link-image">
           {image ? (
             <ImagePreview
@@ -581,18 +599,52 @@ export function MessageEmbeds({
 }) {
   const supported =
     instance.account.instance.capabilities?.includes("messages.embeds");
-  const eligible = messageLinks(message.body).some(
-    (link) => link.preview && (supported || clientPost(link.url)),
+  const aiChannel = instance.snapshot.channels.some(
+    (channel) =>
+      channel.id === message.conversation_id && channel.kind === "ai",
   );
-  const { ref, visible } = useVisible(eligible),
-    [embeds, setEmbeds] = useState<Embed[]>(
-      () => cachedMessageEmbeds(instance, message) ?? [],
-    ),
-    [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">(
-      embeds.length ? "ready" : "idle",
-    ),
-    [attempt, setAttempt] = useState(0),
+  const eligible = useMemo(
+    () =>
+      messageLinks(message.body).some(
+        (link) => link.preview && (supported || clientPost(link.url)),
+      ),
+    [message.body, supported],
+  );
+  const ids = message.attachment_ids ?? [];
+  const attachmentKey = ids.join(",");
+  const { ref, visible } = useVisible(eligible || ids.length > 0);
+  const [embeds, setEmbeds] = useState<Embed[]>(
+    () => cachedMessageEmbeds(instance, message) ?? [],
+  );
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    embeds.length ? "ready" : "idle",
+  );
+  const [attempt, setAttempt] = useState(0),
     [hidden, setHidden] = useState(false);
+  const [metadata, setMetadata] =
+    useState<Map<string, Schemas["AttachmentsAttachment"]>>();
+  const classify =
+    !!supported && (ids.length > 1 || (eligible && ids.length > 0));
+  useEffect(() => {
+    if (!visible || !classify) return;
+    const abort = new AbortController();
+    void Promise.all(
+      ids.map(async (id) => {
+        try {
+          return [
+            id,
+            await attachmentMetadata(instance, id, abort.signal),
+          ] as const;
+        } catch {
+          return undefined;
+        }
+      }),
+    ).then((entries) => {
+      if (!abort.signal.aborted)
+        setMetadata(new Map(entries.filter((entry) => entry !== undefined)));
+    });
+    return () => abort.abort();
+  }, [visible, classify, instance, attachmentKey]);
   useEffect(() => {
     if (!visible || !eligible) return;
     const controller = new AbortController();
@@ -600,7 +652,7 @@ export function MessageEmbeds({
     void messageEmbeds(instance, message, controller.signal)
       .then((value) => {
         if (!controller.signal.aborted) {
-          setEmbeds(value.slice(0, 3));
+          setEmbeds(value);
           setStatus("ready");
         }
       })
@@ -608,67 +660,220 @@ export function MessageEmbeds({
         if (!controller.signal.aborted) setStatus("error");
       });
     return () => controller.abort();
-  }, [visible, eligible, instance, message.id, message.edited_at, attempt]);
-  if (!eligible) return null;
-  if (hidden)
-    return (
-      <button
-        type="button"
-        className="embed-show text-button"
-        onClick={() => setHidden(false)}
-      >
-        Show link previews
-      </button>
-    );
-  return (
-    <div className="message-embeds" ref={ref}>
-      {status === "loading" && (
-        <div className="embed-loading" role="status">
-          <i />
-          <span>Loading link preview…</span>
-        </div>
-      )}
-      {status === "error" && (
-        <div className="embed-error" role="status">
-          <span>Link preview unavailable.</span>
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => setAttempt((value) => value + 1)}
-          >
-            <RefreshCw size={12} /> Retry
-          </button>
-        </div>
-      )}
-      {embeds.map((embed) =>
-        embed.status === "unavailable" ? (
-          <div className="embed-error" key={embed.url}>
-            <ExternalLink href={embed.url}>Preview unavailable</ExternalLink>
-            <button
-              className="text-button"
-              onClick={() => setAttempt((value) => value + 1)}
-            >
-              Retry
-            </button>
-          </div>
-        ) : (
-          <PreviewCard
-            key={embed.url}
+  }, [visible, eligible, instance, message.id, message.body, attempt]);
+  const linked = hidden ? [] : embeds;
+  // A direct image has its own gallery slot. Ordinary preview cards retain their independent cap.
+  const cards = linked.filter((embed) => embed.kind !== "image").slice(0, 3);
+  const pictures: GalleryItem[] = [];
+  for (const embed of linked) {
+    if (
+      embed.status === "unavailable" ||
+      providerPlayer(embed, location.hostname)
+    )
+      continue;
+    const assets = embed.media?.length
+      ? embed.media.flatMap((item, i) => (item.kind === "image" ? [i] : []))
+      : embed.image
+        ? [undefined]
+        : [];
+    for (const asset of assets) {
+      const media = asset === undefined ? undefined : embed.media?.[asset];
+      pictures.push({
+        key: embed.url + "#" + (asset ?? "image"),
+        alt: media?.alt || embed.image_alt || embed.title || "Link image",
+        load: async (signal) =>
+          directPostImage(embed, asset) ??
+          (await previewImage(instance, message, embed.index, signal, {
+            asset,
+            embed,
+            cacheKey: media?.cache_key ?? embed.image_key,
+          })),
+        render: (
+          <PostMedia
             instance={instance}
             message={message}
             embed={embed}
+            asset={asset}
           />
         ),
+      });
+    }
+  }
+  const attachments = ids.map((id) => ({ id, meta: metadata?.get(id) }));
+  for (const { id, meta } of attachments) {
+    if (meta?.content_type.startsWith("image/"))
+      pictures.push({
+        key: id,
+        alt: meta.filename,
+        filename: meta.filename,
+        load: (signal) => attachmentMedia(instance, id, signal),
+        render: (
+          <Attachment
+            instance={instance}
+            id={id}
+            known={meta}
+            aiChannel={aiChannel}
+          />
+        ),
+      });
+  }
+  const grouped = pictures.length > 1;
+  const separate =
+    grouped ||
+    (pictures.length === 1 &&
+      !cards.some((embed) => pictures[0].key.startsWith(embed.url + "#")));
+  if (!eligible && !ids.length) return null;
+  return (
+    <div ref={ref}>
+      {eligible && !hidden && (
+        <div className="message-embeds">
+          {status === "loading" && (
+            <div className="embed-loading" role="status">
+              <i />
+              <span>Loading link preview…</span>
+            </div>
+          )}
+          {status === "error" && (
+            <div className="embed-error" role="status">
+              <span>Link preview unavailable.</span>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setAttempt((value) => value + 1)}
+              >
+                <RefreshCw size={12} /> Retry
+              </button>
+            </div>
+          )}
+          {cards.map((embed) =>
+            embed.status === "unavailable" ? (
+              <div className="embed-error" key={embed.url}>
+                <ExternalLink href={embed.url}>
+                  Preview unavailable
+                </ExternalLink>
+                <button
+                  className="text-button"
+                  onClick={() => setAttempt((value) => value + 1)}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <PreviewCard
+                key={embed.url}
+                separateImages={grouped}
+                instance={instance}
+                message={message}
+                embed={embed}
+              />
+            ),
+          )}
+          {status === "ready" && embeds.length > 0 && (
+            <button
+              type="button"
+              className="embed-hide text-button"
+              onClick={() => setHidden(true)}
+            >
+              <EyeOff size={12} /> Hide previews
+            </button>
+          )}
+        </div>
       )}
-      {status === "ready" && embeds.length > 0 && (
+      {hidden && eligible && (
         <button
-          type="button"
-          className="embed-hide text-button"
-          onClick={() => setHidden(true)}
+          className="embed-show text-button"
+          onClick={() => setHidden(false)}
         >
-          <EyeOff size={12} /> Hide previews
+          Show link previews
         </button>
       )}
+      {separate && <MessageGallery pictures={pictures} />}
+      {attachments.map(({ id, meta }) =>
+        separate && meta?.content_type.startsWith("image/")
+          ? null
+          : (!classify || !!metadata) && (
+              <Attachment
+                key={id}
+                instance={instance}
+                id={id}
+                known={meta}
+                aiChannel={aiChannel}
+              />
+            ),
+      )}
+    </div>
+  );
+}
+
+type GalleryItem = GalleryPicture & { render: ReactNode };
+function MessageGallery({ pictures }: { pictures: GalleryItem[] }) {
+  const track = useRef<HTMLDivElement>(null);
+  const [selected, setSelected] = useState(0);
+  const index = Math.min(selected, pictures.length - 1);
+  const select = (i: number) => {
+    setSelected(i);
+    const el = track.current;
+    if (el) el.scrollTo({ left: el.clientWidth * i, behavior: "instant" });
+  };
+  if (pictures.length === 1)
+    return <div className="embed-gallery">{pictures[0].render}</div>;
+  return (
+    <div
+      className="message-image-gallery"
+      role="region"
+      aria-label="Image gallery"
+    >
+      <div
+        className="message-gallery-track embed-gallery"
+        ref={track}
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          if (el.clientWidth)
+            setSelected(
+              Math.min(
+                pictures.length - 1,
+                Math.max(0, Math.round(el.scrollLeft / el.clientWidth)),
+              ),
+            );
+        }}
+      >
+        {pictures.map((picture, i) => (
+          <div
+            key={picture.key}
+            className="message-gallery-slide"
+            aria-label={`Image ${i + 1} of ${pictures.length}`}
+          >
+            {Math.abs(index - i) <= 1 && (
+              <GalleryContext.Provider value={{ pictures, index: i }}>
+                {picture.render}
+              </GalleryContext.Provider>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="message-gallery-nav">
+        <button
+          type="button"
+          className="text-button"
+          disabled={index === 0}
+          aria-label="Previous gallery image"
+          onClick={() => select(index - 1)}
+        >
+          ←
+        </button>
+        <span aria-live="polite">
+          {index + 1} / {pictures.length}
+        </span>
+        <button
+          type="button"
+          className="text-button"
+          disabled={index === pictures.length - 1}
+          aria-label="Next gallery image"
+          onClick={() => select(index + 1)}
+        >
+          →
+        </button>
+      </div>
     </div>
   );
 }
@@ -679,9 +884,13 @@ const sizeLabel = (bytes: number) =>
 export function Attachment({
   instance,
   id,
+  known,
+  aiChannel = false,
 }: {
   instance: InstanceClient;
   id: string;
+  known?: Schemas["AttachmentsAttachment"];
+  aiChannel?: boolean;
 }) {
   const { ref, visible } = useVisible(),
     [meta, setMeta] = useState<Schemas["AttachmentsAttachment"]>(),
@@ -718,11 +927,18 @@ export function Attachment({
     const abort = new AbortController();
     controller.current = abort;
     if (instance.account.instance.capabilities?.includes("messages.embeds"))
-      void attachmentMetadata(instance, id, abort.signal)
+      void (
+        known
+          ? Promise.resolve(known)
+          : attachmentMetadata(instance, id, abort.signal)
+      )
         .then((value) => {
           if (abort.signal.aborted) return;
           setMeta(value);
-          if (value.content_type.startsWith("image/") && value.bytes <= 2 << 20)
+          if (
+            value.content_type.startsWith("image/") &&
+            (aiChannel || value.bytes <= 2 << 20)
+          )
             load(abort.signal);
         })
         .catch(() => {
@@ -732,7 +948,7 @@ export function Attachment({
       abort.abort();
       if (url.current) URL.revokeObjectURL(url.current);
     };
-  }, [visible, instance, id]);
+  }, [visible, instance, id, known, aiChannel]);
   return (
     <div className="attachment-card" ref={ref}>
       {error ? (

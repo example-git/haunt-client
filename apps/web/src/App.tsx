@@ -108,7 +108,8 @@ import { Smile } from "lucide-react";
 import { copyText } from "./clipboard";
 import { useContextMenu, MenuAction } from "./ContextMenu";
 import { useComposerMenu } from "./ComposerMenu";
-import { Attachment, MessageEmbeds } from "./RichContent";
+import { ConsultationCards } from "./ConsultationCards";
+import { MessageEmbeds } from "./RichContent";
 import { unreadSummary } from "@haunt/core";
 import { installBadges } from "@haunt/browser/badges";
 import {
@@ -2200,6 +2201,7 @@ export function ConversationView({
                 }
                 grouped={
                   index > 0 &&
+                  !message.consultations?.length &&
                   !message.hidden_from_ai &&
                   !items[index - 1].hidden_from_ai &&
                   messageDay(items[index - 1].created_at) ===
@@ -2678,18 +2680,24 @@ function MessageRow({
           </form>
         ) : (
           <>
+            {message.consultations?.length ? (
+              <ConsultationCards
+                instance={instance}
+                message={message}
+                onProfile={onAIProfile}
+              />
+            ) : null}
             <Suspense fallback={<p className="message-body">{message.body}</p>}>
               <MessageText text={message.body} instance={instance} />
             </Suspense>
             {message.edited_at && <span className="edited">edited</span>}
-            <MessageEmbeds
-              key={`${message.id}:${message.edited_at ?? ""}`}
-              instance={instance}
-              message={message}
-            />
-            {(message.attachment_ids ?? []).map((id) => (
-              <Attachment key={id} instance={instance} id={id} />
-            ))}
+            {!message.ai_streaming && (
+              <MessageEmbeds
+                key={message.id + ":" + (message.edited_at ?? "")}
+                instance={instance}
+                message={message}
+              />
+            )}
           </>
         )}
         <ErrorNotice error={error} />

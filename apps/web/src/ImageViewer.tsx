@@ -1,10 +1,78 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
-import { CopyImage } from "./MediaControls";
+import { MenuAction, useContextMenu } from "./ContextMenu";
+import { CopyImage, copyImage } from "./MediaControls";
 import { saveMedia } from "@haunt/browser/downloads";
 import { ArrowLeft, ArrowRight, Download, Minus, Plus, X } from "lucide-react";
 
-type Picture = { src: string; alt: string };
+type Picture = { src: string; alt: string; filename?: string };
+export type GalleryPicture = {
+  key: string;
+  alt: string;
+  filename?: string;
+  load: (signal: AbortSignal) => Promise<Blob | string>;
+};
+export const GalleryContext = createContext<
+  | {
+      pictures: GalleryPicture[];
+      index: number;
+    }
+  | undefined
+>(undefined);
+type ViewerPicture = Picture | GalleryPicture;
+
+function useImageActions() {
+  const menu = useContextMenu();
+  const [actionError, setError] = useState("");
+  function actions(
+    event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>,
+    picture: Picture,
+  ) {
+    const run = (job: Promise<void>) => {
+      setError("");
+      void job.catch((e) => setError(e.message || "Image action failed."));
+    };
+    const handlers = menu(
+      "Image",
+      <>
+        <MenuAction onClick={() => run(copyImage(picture.src))}>
+          Copy image
+        </MenuAction>
+        <MenuAction onClick={() => run(downloadImage(picture))}>
+          Download image
+        </MenuAction>
+      </>,
+    );
+    if ("clientX" in event) handlers.onContextMenu(event);
+    else handlers.onKeyDown(event);
+  }
+  return { actions, actionError };
+}
+async function downloadImage(picture: Picture) {
+  const suggested = picture.filename || picture.alt || "image";
+  if (/\.(png|jpe?g|gif|webp|avif)$/i.test(suggested))
+    return saveMedia(picture.src, suggested);
+  const blob = await (
+    await fetch(picture.src, {
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+    })
+  ).blob();
+  const suffix = blob.type.split("/")[1]?.split(";")[0] || "png";
+  const url = URL.createObjectURL(blob);
+  try {
+    await saveMedia(url, suggested + "." + suffix);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 type Point = { x: number; y: number };
 type View = Point & { scale: number };
 
@@ -19,16 +87,37 @@ export function ImagePreview({
   children: ReactNode;
 }) {
   const [gallery, setGallery] = useState<{
-    pictures: Picture[];
+    pictures: ViewerPicture[];
     index: number;
   }>();
+  const group = useContext(GalleryContext);
+  const { actions, actionError } = useImageActions();
+  function imageActions(
+    event:
+      | React.MouseEvent<HTMLButtonElement>
+      | React.KeyboardEvent<HTMLButtonElement>,
+  ) {
+    const img = event.currentTarget.querySelector("img");
+    if (img)
+      actions(event, {
+        src: img.src,
+        alt: img.alt,
+        filename: group?.pictures[group.index]?.filename,
+      });
+  }
   return (
     <>
       <button
         type="button"
         className={`${className} image-preview-trigger`}
         aria-label={label}
+        onContextMenu={imageActions}
+        onKeyDown={imageActions}
         onClick={(event) => {
+          if (group) {
+            setGallery({ pictures: group.pictures, index: group.index });
+            return;
+          }
           const button = event.currentTarget;
           const scope = button.closest(".conversation-view");
           const buttons = scope
@@ -49,6 +138,7 @@ export function ImagePreview({
       >
         {children}
       </button>
+      {actionError && <span role="alert">{actionError}</span>}
       {gallery && (
         <ImageViewer {...gallery} close={() => setGallery(undefined)} />
       )}
@@ -61,7 +151,7 @@ function ImageViewer({
   index: initialIndex,
   close,
 }: {
-  pictures: Picture[];
+  pictures: ViewerPicture[];
   index: number;
   close: () => void;
 }) {
@@ -77,7 +167,43 @@ function ImageViewer({
     dialog.current?.close();
     close();
   };
-  const picture = pictures[index];
+  const selected = pictures[index];
+  const [loaded, setLoaded] = useState<{
+    item: ViewerPicture;
+    picture?: Picture;
+    error?: boolean;
+  }>();
+  const { actions, actionError } = useImageActions();
+  useEffect(() => {
+    if ("src" in selected) return;
+    const controller = new AbortController();
+    let owned: string | undefined;
+    void selected
+      .load(controller.signal)
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        const src =
+          typeof data === "string" ? data : (owned = URL.createObjectURL(data));
+        setLoaded({
+          item: selected,
+          picture: { src, alt: selected.alt, filename: selected.filename },
+        });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setLoaded({ item: selected, error: true });
+      });
+    return () => {
+      controller.abort();
+      if (owned) URL.revokeObjectURL(owned);
+    };
+  }, [selected]);
+  const picture =
+    "src" in selected
+      ? selected
+      : loaded?.item === selected
+        ? loaded.picture
+        : undefined;
   const previous = index > 0 ? () => setIndex(index - 1) : undefined;
   const next =
     index < pictures.length - 1 ? () => setIndex(index + 1) : undefined;
@@ -96,23 +222,28 @@ function ImageViewer({
     >
       <div className="viewer-actions">
         {saveError && <span role="alert">{saveError}</span>}
-        <CopyImage key={picture.src} source={picture.src} />
-        <a
-          className="viewer-control"
-          href={picture.src}
-          download={picture.alt || "image"}
-          aria-label="Download image"
-          title="Download image"
-          onClick={(event) => {
-            event.preventDefault();
-            setSaveError("");
-            void saveMedia(picture.src, picture.alt || "image.png").catch(
-              (error) => setSaveError(error.message),
-            );
-          }}
-        >
-          <Download size={19} />
-        </a>
+        {actionError && <span role="alert">{actionError}</span>}
+        {picture && (
+          <>
+            <CopyImage key={picture.src} source={picture.src} />
+            <a
+              className="viewer-control"
+              href={picture.src}
+              download={picture.alt || "image"}
+              aria-label="Download image"
+              title="Download image"
+              onClick={(event) => {
+                event.preventDefault();
+                setSaveError("");
+                void downloadImage(picture).catch((error) =>
+                  setSaveError(error.message),
+                );
+              }}
+            >
+              <Download size={19} />
+            </a>
+          </>
+        )}
         <button
           autoFocus
           className="viewer-control"
@@ -123,14 +254,23 @@ function ImageViewer({
           <X size={20} />
         </button>
       </div>
-      <ImageStage
-        key={picture.src}
-        picture={picture}
-        dialog={dialog}
-        previous={previous}
-        next={next}
-        close={dismiss}
-      />
+      {picture ? (
+        <ImageStage
+          key={picture.src}
+          picture={picture}
+          dialog={dialog}
+          previous={previous}
+          next={next}
+          close={dismiss}
+          onImageMenu={(event) => actions(event, picture)}
+        />
+      ) : (
+        <span role="status">
+          {loaded?.item === selected && loaded.error
+            ? "Image unavailable."
+            : "Loading image…"}
+        </span>
+      )}
       {previous && (
         <button
           className="viewer-control viewer-previous"
@@ -152,7 +292,7 @@ function ImageViewer({
         </button>
       )}
       <span className="sr-only" aria-live="polite">
-        Image {index + 1} of {pictures.length}: {picture.alt}
+        Image {index + 1} of {pictures.length}: {selected.alt}
       </span>
     </dialog>,
     document.body,
@@ -165,7 +305,9 @@ function ImageStage({
   previous,
   next,
   close,
+  onImageMenu,
 }: {
+  onImageMenu: (event: React.MouseEvent<HTMLImageElement>) => void;
   picture: Picture;
   dialog: React.RefObject<HTMLDialogElement | null>;
   previous?: () => void;
@@ -377,6 +519,7 @@ function ImageStage({
         ) : (
           <img
             className="viewer-image"
+            onContextMenu={onImageMenu}
             src={picture.src}
             alt={picture.alt}
             draggable={false}

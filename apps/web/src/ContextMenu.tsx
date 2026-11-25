@@ -190,7 +190,7 @@ export function ContextMenus({ children }: { children: ReactNode }) {
             <div className="context-menu-title">{menu.title}</div>
             {menu.content}
           </div>,
-          menu.origin.ownerDocument.body,
+          menu.origin.closest("dialog[open]") ?? menu.origin.ownerDocument.body,
         )}
     </Context.Provider>
   );

@@ -92,6 +92,42 @@ export function MediaControls({
   );
 }
 
+export async function copyImage(source: string) {
+  const blob = await (
+    await fetch(source, {
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      redirect: "error",
+    })
+  ).blob();
+  {
+    const image = await createImageBitmap(blob);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      canvas.getContext("2d")!.drawImage(image, 0, 0);
+      const png = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob(
+          (value) =>
+            value ? resolve(value) : reject(Error("Image conversion failed.")),
+          "image/png",
+        ),
+      );
+      if (window.hauntDesktop?.copyImage)
+        await window.hauntDesktop.copyImage(
+          new Uint8Array(await png.arrayBuffer()),
+        );
+      else
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": png }),
+        ]);
+    } finally {
+      image.close();
+    }
+  }
+}
+
 export function CopyImage({ source }: { source: string }) {
   const [notice, setNotice] = useState(""),
     [error, setError] = useState("");
@@ -106,41 +142,7 @@ export function CopyImage({ source }: { source: string }) {
           setError("");
           setNotice("");
           void (async () => {
-            const blob = await (
-              await fetch(source, {
-                credentials: "omit",
-                referrerPolicy: "no-referrer",
-                redirect: "error",
-              })
-            ).blob();
-            {
-              const image = await createImageBitmap(blob);
-              try {
-                const canvas = document.createElement("canvas");
-                canvas.width = image.width;
-                canvas.height = image.height;
-                canvas.getContext("2d")!.drawImage(image, 0, 0);
-                const png = await new Promise<Blob>((resolve, reject) =>
-                  canvas.toBlob(
-                    (value) =>
-                      value
-                        ? resolve(value)
-                        : reject(Error("Image conversion failed.")),
-                    "image/png",
-                  ),
-                );
-                if (window.hauntDesktop?.copyImage)
-                  await window.hauntDesktop.copyImage(
-                    new Uint8Array(await png.arrayBuffer()),
-                  );
-                else
-                  await navigator.clipboard.write([
-                    new ClipboardItem({ "image/png": png }),
-                  ]);
-              } finally {
-                image.close();
-              }
-            }
+            await copyImage(source);
             setNotice("Image copied.");
           })().catch((error) => setError(friendlyError(error)));
         }}

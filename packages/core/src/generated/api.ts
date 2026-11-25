@@ -1876,6 +1876,7 @@ export interface APIContract {
       BlobstoreProvider: BlobstoreProvider;
       BlobstoreRegisterRequest: BlobstoreRegisterRequest;
       ChatAIAuthor: ChatAIAuthor;
+      ChatConsultation: ChatConsultation;
       ChatConversation: ChatConversation;
       ChatDMCryptoBundle: ChatDMCryptoBundle;
       ChatDMCryptoCommit: ChatDMCryptoCommit;
@@ -4396,11 +4397,13 @@ export interface AiSettings {
   account_id: string;
   active_preset_id?: string;
   allow_agent_switch: boolean;
+  allow_consultations?: null | boolean;
   avatar_url?: string;
   channel_id: string;
   connection_status: string;
   instructions: string;
   max_bytes: number;
+  max_consultations?: null | number;
   model: string;
   model_name?: string;
   name: string;
@@ -4445,9 +4448,11 @@ export interface OperationAiSaveSettings {
 export interface AiSettingsInput {
   account_id: string;
   allow_agent_switch: boolean;
+  allow_consultations?: null | boolean;
   avatar_url?: string;
   instructions: string;
   max_bytes: number;
+  max_consultations?: null | number;
   model: string;
   name: string;
   provider: string;
@@ -5496,9 +5501,11 @@ export interface ChatHistory {
 }
 export interface ChatMessage {
   ai_author?: ChatAIAuthor;
+  ai_streaming?: boolean;
   attachment_ids: string[] | null;
   author_id: string;
   body: string;
+  consultations?: ChatConsultation[];
   conversation_id: string;
   created_at: string;
   deleted: boolean;
@@ -5514,6 +5521,13 @@ export interface ChatAIAuthor {
   avatar_url?: string;
   id: string;
   name: string;
+}
+export interface ChatConsultation {
+  answer?: string;
+  call_id: string;
+  preset_id?: string;
+  question: string;
+  status: string;
 }
 export interface OperationCreateMessage {
   parameters: {
@@ -5667,6 +5681,7 @@ export interface OperationDeleteMessage {
 export interface OperationGetMessageEmbeds {
   parameters: {
     query?: {
+      offset?: null | number;
       client_posts?: boolean;
     };
     header?: never;
@@ -5698,6 +5713,7 @@ export interface OperationGetMessageEmbeds {
 }
 export interface HttpapiEmbedsResponse {
   embeds: EmbedsPreview[] | null;
+  next_offset?: null | number;
 }
 export interface EmbedsPreview {
   author_handle?: string;
@@ -5734,6 +5750,7 @@ export interface EmbedsMedia {
 export interface OperationGetEmbedImage {
   parameters: {
     query: {
+      gallery?: boolean;
       index: number;
       asset?: null | number;
       avatar?: boolean;

@@ -212,7 +212,7 @@ export async function resolveClientPost(
     hls = false,
   ) => {
     const url = providerAsset(post.provider, raw, kind === "video");
-    if (!url || card.media!.length >= 4) return;
+    if (!url) return;
     const thumbnail = providerAsset(post.provider, poster);
     const ratio = object(aspect);
     card.media!.push({

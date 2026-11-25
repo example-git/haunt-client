@@ -95,6 +95,8 @@ export function AIChannelSettings({
                   instructions: draft.instructions,
                   max_bytes: draft.max_bytes,
                   allow_agent_switch: !!draft.allow_agent_switch,
+                  allow_consultations: !!draft.allow_consultations,
+                  max_consultations: draft.max_consultations ?? 5,
                   switch_during_reply: !!draft.switch_during_reply,
                 },
               );
@@ -179,6 +181,41 @@ export function AIChannelSettings({
                 />
                 Allow the agent to switch personalities
               </label>
+              {state.presets.length > 1 && (
+                <>
+                  <label className="checkbox">
+                    <input
+                      type="checkbox"
+                      checked={!!draft.allow_consultations}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          allow_consultations: e.target.checked,
+                        })
+                      }
+                    />
+                    Allow personality consultations
+                  </label>
+                  {draft.allow_consultations && (
+                    <label>
+                      Maximum consultations per reply
+                      <input
+                        required
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={draft.max_consultations ?? 5}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            max_consultations: e.target.valueAsNumber,
+                          })
+                        }
+                      />
+                    </label>
+                  )}
+                </>
+              )}
               {draft.allow_agent_switch && (
                 <label>
                   When to switch personalities

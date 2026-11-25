@@ -204,7 +204,9 @@ it("keeps mixed article previews on the server while excluding client posts", as
   expect(client.http.GET).toHaveBeenCalledWith(
     expect.anything(),
     expect.objectContaining({
-      params: expect.objectContaining({ query: { client_posts: true } }),
+      params: expect.objectContaining({
+        query: { client_posts: true, offset: 0 },
+      }),
     }),
   );
 });

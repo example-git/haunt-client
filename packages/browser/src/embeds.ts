@@ -21,7 +21,7 @@ const resolvedCards = new Map<string, { at: number; cards: Embed[] }>();
 function messageEmbedKey(instance: InstanceClient, message: Message) {
   return mediaKey(
     instance,
-    "resolved-embeds-v1",
+    "resolved-embeds-v2",
     message.conversation_id,
     message.id,
     message.edited_at ?? message.created_at,
@@ -57,7 +57,7 @@ export async function messageEmbeds(
         .filter((link) => link.preview)
         .map((link) => link.url),
     ),
-  ].slice(0, 3);
+  ];
   const local = links.map((url, index) => ({ post: clientPost(url), index }));
   const serverPromise = (
     !links.length || local.some((item) => !item.post)
@@ -112,9 +112,7 @@ export async function messageEmbeds(
       .filter((card) => !clientPost(card.url))
       .map((card) => ({ ...card, local: undefined })),
     ...posts,
-  ]
-    .sort((a, b) => a.index - b.index)
-    .slice(0, 3);
+  ].sort((a, b) => a.index - b.index);
   signal.throwIfAborted();
   resolvedCards.delete(key);
   if (value.length && value.every((card) => card.status !== "unavailable"))
@@ -137,7 +135,7 @@ async function serverMessageEmbeds(
     return [];
   const key = mediaKey(
     instance,
-    "embed-metadata-v4",
+    "embed-metadata-v5",
     message.id,
     message.edited_at ?? message.created_at,
   );
@@ -148,19 +146,26 @@ async function serverMessageEmbeds(
       cachedMedia(
         key,
         async (requestSignal) => {
-          const result = await unwrap(
-            instance.http.GET(
-              "/api/v1/conversations/{id}/messages/{message}/embeds",
-              {
-                params: {
-                  path: { id: message.conversation_id, message: message.id },
-                  query: { client_posts: true },
+          const value: Embed[] = [];
+          let offset: number | undefined = 0;
+          do {
+            const result: Schemas["HttpapiEmbedsResponse"] = await unwrap(
+              instance.http.GET(
+                "/api/v1/conversations/{id}/messages/{message}/embeds",
+                {
+                  params: {
+                    path: { id: message.conversation_id, message: message.id },
+                    query: { client_posts: true, offset },
+                  },
+                  signal: requestSignal,
                 },
-                signal: requestSignal,
-              },
-            ),
-          );
-          const value = result.embeds ?? [];
+              ),
+            );
+            value.push(...(result.embeds ?? []));
+            const next: number | null | undefined = result.next_offset;
+            offset =
+              typeof next === "number" && next > offset ? next : undefined;
+          } while (offset !== undefined);
           // Empty previews can be a temporary upstream failure. Do not persist misses.
           return new Blob([JSON.stringify({ at: Date.now(), cards: value })], {
             type:
@@ -250,7 +255,12 @@ export async function previewImage(
             {
               params: {
                 path: { id: message.conversation_id, message: message.id },
-                query: { index, asset: options.asset, avatar: options.avatar },
+                query: {
+                  index,
+                  gallery: true,
+                  asset: options.asset,
+                  avatar: options.avatar,
+                },
               },
               parseAs: "blob",
               signal: requestSignal,
