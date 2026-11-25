@@ -1,19 +1,20 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 import type { InstanceClient, Message, AIAuthor } from "@haunt/core";
 import { AIAvatar } from "./AIIdentity";
+import MessageText from "./MessageText";
 
 export function StructuredEmbedCard({
   title,
   portrait,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   portrait: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="structured-embed-card" aria-label="Consultation">
-      <p className="structured-card-title">{title}</p>
+      <div className="structured-card-title">{title}</div>
       <div className="structured-card-content">
         {portrait}
         <div>{children}</div>
@@ -22,7 +23,7 @@ export function StructuredEmbedCard({
   );
 }
 
-export function ConsultationCards({
+export default function ConsultationCards({
   instance,
   message,
   onProfile,
@@ -47,12 +48,20 @@ export function ConsultationCards({
               ? "Personality"
               : "Deleted personality",
         };
-        const portrait = <AIAvatar instance={instance} author={author} />;
+        const portrait = (
+          <AIAvatar instance={instance} author={author} size="tiny" />
+        );
         const open = preset && onProfile ? () => onProfile(preset) : undefined;
         return (
           <StructuredEmbedCard
             key={card.call_id}
-            title={card.question}
+            title={
+              <MessageText
+                instance={instance}
+                text={card.question}
+                variant="embed"
+              />
+            }
             portrait={
               open ? (
                 <button
@@ -75,13 +84,19 @@ export function ConsultationCards({
             ) : (
               <strong>{author.name}</strong>
             )}
-            <p className="consultation-answer">
-              {card.status === "answered"
-                ? card.answer
-                : card.status === "waiting"
+            {card.status === "answered" && card.answer ? (
+              <MessageText
+                instance={instance}
+                text={card.answer}
+                variant="embed"
+              />
+            ) : (
+              <span className="consultation-status">
+                {card.status === "waiting"
                   ? "Waiting for an answer…"
                   : "Consultation unavailable."}
-            </p>
+              </span>
+            )}
           </StructuredEmbedCard>
         );
       })}

@@ -104,11 +104,11 @@ import { EmojiImage } from "./Emojis";
 import { Fragment, lazy, Suspense } from "react";
 const EmojiPicker = lazy(() => import("./EmojiPicker"));
 const MessageText = lazy(() => import("./MessageText"));
+const ConsultationCards = lazy(() => import("./ConsultationCards"));
 import { Smile } from "lucide-react";
 import { copyText } from "./clipboard";
 import { useContextMenu, MenuAction } from "./ContextMenu";
 import { useComposerMenu } from "./ComposerMenu";
-import { ConsultationCards } from "./ConsultationCards";
 import { MessageEmbeds } from "./RichContent";
 import { unreadSummary } from "@haunt/core";
 import { installBadges } from "@haunt/browser/badges";
@@ -2680,14 +2680,14 @@ function MessageRow({
           </form>
         ) : (
           <>
-            {message.consultations?.length ? (
-              <ConsultationCards
-                instance={instance}
-                message={message}
-                onProfile={onAIProfile}
-              />
-            ) : null}
             <Suspense fallback={<p className="message-body">{message.body}</p>}>
+              {message.consultations?.length ? (
+                <ConsultationCards
+                  instance={instance}
+                  message={message}
+                  onProfile={onAIProfile}
+                />
+              ) : null}
               <MessageText text={message.body} instance={instance} />
             </Suspense>
             {message.edited_at && <span className="edited">edited</span>}

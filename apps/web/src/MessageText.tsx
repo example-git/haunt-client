@@ -154,9 +154,11 @@ function renderNodes(
 const MessageText = memo(function MessageText({
   text,
   instance,
+  variant = "message",
 }: {
   text: string;
   instance: InstanceClient;
+  variant?: "message" | "embed";
 }) {
   const tree = useMemo(() => parseMessageMarkdown(text), [text]);
   const emojiNames = useSyncExternalStore(instance.subscribe, () =>
@@ -166,9 +168,18 @@ const MessageText = memo(function MessageText({
     () => new Set(emojiNames ? emojiNames.split("\0") : []),
     [emojiNames],
   );
-  const large = useMemo(() => emojiOnlyMessage(text, names), [text, names]);
+  const large = useMemo(
+    () => variant === "message" && emojiOnlyMessage(text, names),
+    [variant, text, names],
+  );
   return (
-    <div className={`message-body markdown ${large ? "emoji-only" : ""}`}>
+    <div
+      className={
+        variant === "embed"
+          ? "markdown"
+          : `message-body markdown ${large ? "emoji-only" : ""}`
+      }
+    >
       {renderNodes(tree, instance)}
     </div>
   );

@@ -6615,32 +6615,39 @@ dialog.ai-profile-dialog {
 
 .message-consultations {
   display: grid;
-  gap: 0.4rem;
-  margin: 0.35rem 0;
+  justify-items: start;
+  gap: 4px;
+  margin: 3px 0;
 }
 .structured-embed-card {
-  border-inline-start: 3px solid var(--accent);
-  border-radius: 0.35rem;
-  background: var(--panel);
-  padding: 0.55rem 0.75rem;
-  max-width: 60ch;
+  min-width: 0;
+  max-width: min(100%, 70ch);
+  border-inline-start: 2px solid var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--haunt-raised) 88%, var(--accent));
+  padding: 5px 8px;
+  font-size: 12px;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 .structured-card-title {
   font-weight: 600;
-  margin: 0 0 0.4rem;
+  margin-bottom: 3px;
 }
 .structured-card-content {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.55rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
 }
-.structured-card-content .avatar {
-  flex-shrink: 0;
+.structured-embed-card .markdown :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1.08em;
 }
-.consultation-answer {
-  white-space: pre-wrap;
-  margin: 0.2rem 0 0;
+.structured-embed-card .markdown > :first-child { margin-top: 0; }
+.structured-embed-card .markdown > :last-child { margin-bottom: 0; }
+.consultation-status {
+  display: block;
+  color: var(--muted);
 }
 .message-image-gallery {
   width: min(100%, 36rem);
