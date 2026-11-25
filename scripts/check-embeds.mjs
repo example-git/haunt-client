@@ -474,6 +474,30 @@ export async function checkEmbeds(browser, fixtures, providedPage, desktop) {
         await expect
           .poll(() => picture.evaluate((image) => image.naturalWidth))
           .toBeGreaterThan(0);
+      const gallery = post.getByRole("region", { name: "Image gallery" });
+      await gallery.getByRole("button", { name: "Next gallery image" }).click();
+      await expect(gallery.locator(".message-gallery-nav")).toContainText(
+        "2 / 2",
+      );
+      await gallery
+        .locator(".message-gallery-slide")
+        .nth(1)
+        .getByRole("button", { name: "Enlarge preview image" })
+        .click();
+      const viewer = page.getByRole("dialog", { name: "Image preview" });
+      await expect(viewer.locator(".viewer-image")).toBeVisible();
+      await expect(
+        viewer.getByRole("button", { name: "Next image", exact: true }),
+      ).toHaveCount(0);
+      await viewer.locator(".viewer-image").click({ button: "right" });
+      await expect(
+        page.getByRole("menuitem", { name: "Copy image" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("menuitem", { name: "Download image" }),
+      ).toBeVisible();
+      await page.keyboard.press("Escape");
+      await viewer.getByRole("button", { name: "Close image preview" }).click();
       await expect(post.locator(".embed-open")).toHaveAttribute("href", link);
       if (link.includes("x.com")) {
         await expect(post.locator("video")).toHaveCount(0);

@@ -813,7 +813,13 @@ function MessageGallery({ pictures }: { pictures: GalleryItem[] }) {
   const select = (i: number) => {
     setSelected(i);
     const el = track.current;
-    if (el) el.scrollTo({ left: el.clientWidth * i, behavior: "instant" });
+    if (!el) return;
+    const slide = el.children[i] as HTMLElement;
+    const first = el.firstElementChild as HTMLElement;
+    el.scrollTo({
+      left: slide.offsetLeft - first.offsetLeft,
+      behavior: "instant",
+    });
   };
   if (pictures.length === 1)
     return <div className="embed-gallery">{pictures[0].render}</div>;
@@ -828,11 +834,14 @@ function MessageGallery({ pictures }: { pictures: GalleryItem[] }) {
         ref={track}
         onScroll={(event) => {
           const el = event.currentTarget;
-          if (el.clientWidth)
+          const first = el.children[0]?.getBoundingClientRect();
+          const second = el.children[1]?.getBoundingClientRect();
+          const stride = first && second ? second.left - first.left : 0;
+          if (stride > 0)
             setSelected(
               Math.min(
                 pictures.length - 1,
-                Math.max(0, Math.round(el.scrollLeft / el.clientWidth)),
+                Math.max(0, Math.round(el.scrollLeft / stride)),
               ),
             );
         }}
