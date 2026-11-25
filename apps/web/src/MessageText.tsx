@@ -1,5 +1,8 @@
 import {
   createElement,
+  lazy,
+  Suspense,
+  useEffect,
   memo,
   useMemo,
   useState,
@@ -15,6 +18,59 @@ import {
 import { MentionText } from "./Mentions";
 import { ExternalLink } from "./RichContent";
 import { StandardEmojiText } from "./StandardEmoji";
+
+import { Check, Copy, CircleAlert } from "lucide-react";
+import { copyText } from "./clipboard";
+
+const HighlightedCode = lazy(() => import("./HighlightedCode"));
+
+function CodeBlock({ text, language }: { text: string; language?: string }) {
+  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
+  useEffect(() => {
+    if (status === "idle") return;
+    const timer = window.setTimeout(() => setStatus("idle"), 2000);
+    return () => window.clearTimeout(timer);
+  }, [status]);
+  const label =
+    status === "copied"
+      ? "Copied"
+      : status === "failed"
+        ? "Copy failed"
+        : "Copy code";
+  const Icon =
+    status === "copied" ? Check : status === "failed" ? CircleAlert : Copy;
+  return (
+    <div className="message-code-block">
+      <pre data-language={language || undefined}>
+        <code>
+          <Suspense fallback={text}>
+            <HighlightedCode text={text} language={language} />
+          </Suspense>
+        </code>
+      </pre>
+      <button
+        className="message-code-copy"
+        type="button"
+        title={label}
+        aria-label={label}
+        onClick={async (event) => {
+          event.stopPropagation();
+          try {
+            await copyText(text);
+            setStatus("copied");
+          } catch {
+            setStatus("failed");
+          }
+        }}
+      >
+        <Icon size={15} aria-hidden="true" />
+        <span className="sr-only" role="status">
+          {status === "idle" ? "" : label}
+        </span>
+      </button>
+    </div>
+  );
+}
 
 function Spoiler({ children }: { children: ReactNode }) {
   const [revealed, setRevealed] = useState(false);
@@ -68,11 +124,7 @@ function renderNodes(
       );
     if (node.type === "code_inline") return <code key={key}>{node.text}</code>;
     if (node.type === "fence" || node.type === "code_block")
-      return (
-        <pre key={key} data-language={node.language || undefined}>
-          <code>{node.text}</code>
-        </pre>
-      );
+      return <CodeBlock key={key} text={node.text} language={node.language} />;
     if (node.type === "softbreak" || node.type === "hardbreak")
       return <br key={key} />;
     if (node.type === "hr") return <hr key={key} />;

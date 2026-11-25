@@ -404,13 +404,24 @@ export async function checkEmojis(browser, fixtures) {
     await rich.getByRole("button", { name: "Reveal spoiler" }).click();
     await expect(rich.locator(".message-spoiler > span")).toBeVisible();
     const code = await sendRich(
-      "```js\n@owner :test_wave: 😀 <script>window.markdownUnsafe=1</script>\n```",
+      "```js\nconst value = 42;\n@owner :test_wave: 😀 <script>window.markdownUnsafe=1</script>\n```",
       "window.markdownUnsafe",
     );
     await expect(code.locator("pre code")).toContainText(":test_wave:");
     await expect(
       code.locator(".mention, .custom-emoji, .standard-emoji, script"),
     ).toHaveCount(0);
+    await expect(code.locator("pre .hljs-keyword").first()).toHaveText("const");
+    const copy = code.getByRole("button", { name: "Copy code" });
+    await member
+      .context()
+      .grantPermissions(["clipboard-read", "clipboard-write"]);
+    await copy.click();
+    await expect(code.getByRole("button", { name: "Copied" })).toBeVisible();
+    assert.equal(
+      await member.evaluate(() => navigator.clipboard.readText()),
+      await code.locator("pre code").textContent(),
+    );
     const unsafe = await sendRich(
       "[blocked](javascript:alert(1)) <img src=x onerror=alert(1)> [safe](https://example.com/path)",
       "blocked",

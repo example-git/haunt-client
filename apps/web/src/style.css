@@ -2966,10 +2966,38 @@ dialog.image-viewer {
   background: var(--haunt-black);
   white-space: pre-wrap;
 }
+.message-code-block {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0.5em 0;
+}
+.message-code-block > pre,
+.message-code-copy {
+  grid-area: 1 / 1;
+}
+.message-code-copy {
+  position: sticky;
+  top: 6px;
+  align-self: start;
+  justify-self: end;
+  margin: 6px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--layer-button);
+  color: var(--text);
+  cursor: pointer;
+}
 .markdown pre {
+  min-width: 0;
+  margin: 0;
   max-width: 100%;
   overflow-x: auto;
-  padding: 12px;
+  padding: 12px 44px 12px 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--haunt-black);
@@ -2979,6 +3007,25 @@ dialog.image-viewer {
   padding: 0;
   white-space: pre;
   overflow-wrap: normal;
+}
+.markdown .hljs-comment,
+.markdown .hljs-quote {
+  color: var(--muted);
+  font-style: italic;
+}
+.markdown :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-meta) {
+  color: color-mix(in srgb, #c28bff 68%, var(--text));
+}
+.markdown :is(.hljs-string, .hljs-regexp, .hljs-addition, .hljs-attribute) {
+  color: color-mix(in srgb, #80c892 68%, var(--text));
+}
+.markdown
+  :is(.hljs-title, .hljs-name, .hljs-built_in, .hljs-section, .hljs-type) {
+  color: color-mix(in srgb, #70b8ff 68%, var(--text));
+}
+.markdown
+  :is(.hljs-number, .hljs-variable, .hljs-symbol, .hljs-attr, .hljs-deletion) {
+  color: color-mix(in srgb, #e7a15f 68%, var(--text));
 }
 .markdown hr {
   border: 0;
