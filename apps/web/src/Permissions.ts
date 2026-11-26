@@ -1,23 +1,5 @@
-import type { InstanceClient } from "@haunt/core";
-
-export const Permission = {
-  ManageChannels: 16,
-  UseAI: 1 << 18,
-  SwitchAIPreset: 1 << 19,
-  ManageServer: 32,
-  ManageRoles: 64,
-  KickMembers: 128,
-  BanMembers: 256,
-  DeleteMembers: 512,
-  ViewAuditLog: 1024,
-  ViewMemberIPs: 2048,
-  ManageMessages: 4096,
-  ResetPasswords: 8192,
-  ManageConfiguration: 16384,
-  Administrator: 32768,
-  MuteMembers: 65536,
-  DeafenMembers: 131072,
-} as const;
+import { Permission, type InstanceClient } from "@haunt/core";
+export { Permission };
 export function can(instance: InstanceClient, bits: number) {
   return (
     instance.account.login.user.is_owner ||
@@ -30,12 +12,11 @@ export function canInChannel(
   channel: string,
   bit: number,
 ) {
+  const entry = instance.snapshot.channels.find((c) => c.id === channel);
   return (
-    can(instance, Permission.Administrator) ||
-    !!(
-      (instance.snapshot.channels.find((c) => c.id === channel)?.permissions ??
-        0) & bit
-    )
+    !!entry &&
+    (can(instance, Permission.Administrator) ||
+      ((entry.permissions ?? 0) & bit) === bit)
   );
 }
 export function canManageServer(instance: InstanceClient) {
@@ -43,7 +24,17 @@ export function canManageServer(instance: InstanceClient) {
     instance.account.login.user.is_owner ||
     !!(
       instance.snapshot.permissions &
-      (4080 | 8192 | 16384 | Permission.Administrator)
+      (Permission.ManageChannels |
+        Permission.ManageServer |
+        Permission.ManageRoles |
+        Permission.KickMembers |
+        Permission.BanMembers |
+        Permission.DeleteMembers |
+        Permission.ViewAuditLog |
+        Permission.ViewMemberIPs |
+        Permission.ResetPasswords |
+        Permission.ManageConfiguration |
+        Permission.Administrator)
     )
   );
 }
@@ -52,7 +43,13 @@ export function canManageMembers(instance: InstanceClient) {
     instance.account.login.user.is_owner ||
     !!(
       instance.snapshot.permissions &
-      (64 | 128 | 256 | 512 | 2048 | 8192 | Permission.Administrator)
+      (Permission.ManageRoles |
+        Permission.KickMembers |
+        Permission.BanMembers |
+        Permission.DeleteMembers |
+        Permission.ViewMemberIPs |
+        Permission.ResetPasswords |
+        Permission.Administrator)
     )
   );
 }

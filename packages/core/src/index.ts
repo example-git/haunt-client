@@ -28,3 +28,9 @@ export * from "./history.js";
 export * from "./search.js";
 
 export * from "./ai.js";
+
+export {
+  Permission,
+  rolePermissions,
+  legacyChannelMask,
+} from "./generated/permissions.js";

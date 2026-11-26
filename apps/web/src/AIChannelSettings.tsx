@@ -29,7 +29,9 @@ export function AIChannelSettings({
   const [modelError, setModelError] = useState("");
   const reload = async () => {
     const [a, p] = await Promise.all([
-      instance.ai.request<{ accounts: AIAccount[] }>("/api/v1/ai/accounts"),
+      instance.ai.request<{ accounts: AIAccount[] }>(
+        `/api/v1/ai/accounts?channel_id=${encodeURIComponent(channel)}`,
+      ),
       instance.ai.request<{ providers: AIProviderInfo[] }>(
         "/api/v1/ai/providers",
       ),
@@ -39,7 +41,7 @@ export function AIChannelSettings({
   };
   useEffect(() => {
     void action.run(reload, "");
-  }, [instance]);
+  }, [instance, channel]);
   useEffect(() => {
     if (state.settings) setDraft(state.settings);
   }, [state.settings?.revision, channel]);
@@ -50,7 +52,7 @@ export function AIChannelSettings({
     let active = true;
     void instance.ai
       .request<{ models: AIModel[] }>(
-        `/api/v1/ai/accounts/${draft.account_id}/models`,
+        `/api/v1/ai/accounts/${draft.account_id}/models?channel_id=${encodeURIComponent(channel)}`,
       )
       .then((result) => {
         if (active) setModels(result.models);
@@ -64,7 +66,7 @@ export function AIChannelSettings({
     return () => {
       active = false;
     };
-  }, [instance, draft?.account_id]);
+  }, [instance, channel, draft?.account_id]);
   const refresh = () => instance.ai.refresh(channel, true, true);
   const multiple = state.presets.length > 0;
   if (!canInChannel(instance, channel, Permission.ManageChannels))

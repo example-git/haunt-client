@@ -1,3 +1,4 @@
+import { Permission } from "./Permissions";
 import { UserName } from "./UserName";
 import { DMStorageMeter } from "./DMStorage";
 import { NoiseControls, useAudioPlugins } from "./NoiseControls";
@@ -47,7 +48,7 @@ export function AccountSettings({
       ? "devices"
       : selectedTab;
   const canInvite =
-    !!(instance.snapshot.permissions & 8) ||
+    !!(instance.snapshot.permissions & Permission.CreateInvites) ||
     instance.account.login.user.is_owner;
   const run = async (task: () => Promise<unknown>) => {
     if (busy) return;

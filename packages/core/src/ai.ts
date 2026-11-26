@@ -1,3 +1,4 @@
+import { Permission } from "./generated/permissions.js";
 import type { InstanceClient } from "./client.js";
 import type { Message, User, Schemas } from "./types.js";
 export type AIProvider = "claude" | "codex" | "antigravity";
@@ -20,8 +21,8 @@ export interface AIChannelState {
   loading?: boolean;
   error?: string;
 }
-export const AIUsePermission = 1 << 18;
-export const AISwitchPermission = 1 << 19;
+export const AIUsePermission = Permission.UseAI;
+export const AISwitchPermission = Permission.SwitchAIPreset;
 export const aiMention = (id: string) => `<@ai:${id}>`;
 export function aiMentions(text: string) {
   return [

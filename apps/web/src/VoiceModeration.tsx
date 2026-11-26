@@ -7,17 +7,20 @@ import {
   type Schemas,
 } from "@haunt/core";
 import { Shield } from "lucide-react";
-import { Permission, can } from "./Permissions";
+import { Permission, canInChannel } from "./Permissions";
 import { MenuAction } from "./ContextMenu";
 import { Modal, ErrorNotice } from "./App";
 import { UserName } from "./UserName";
 
 type Restriction = Schemas["IdentityVoiceRestriction"];
 type RestrictionMember = Schemas["IdentityVoiceRestrictionMember"];
-export const canModerateVoice = (instance: InstanceClient) =>
+export const canModerateVoice = (instance: InstanceClient, channel: string) =>
   !!instance.account.instance.capabilities?.includes("media.moderation.v1") &&
-  (can(instance, Permission.MuteMembers) ||
-    can(instance, Permission.DeafenMembers));
+  instance.snapshot.channels.some(
+    (c) => c.id === channel && c.kind === "voice",
+  ) &&
+  (canInChannel(instance, channel, Permission.MuteMembers) ||
+    canInChannel(instance, channel, Permission.DeafenMembers));
 async function update(
   instance: InstanceClient,
   channel: string,
@@ -45,7 +48,7 @@ export function VoiceModerationMenu({
 }) {
   if (
     !participant ||
-    !canModerateVoice(instance) ||
+    !canModerateVoice(instance, channel) ||
     participant.user_id === instance.account.login.user.id ||
     instance.snapshot.users.find((u) => u.id === participant.user_id)?.is_owner
   )
@@ -56,7 +59,7 @@ export function VoiceModerationMenu({
     );
   return (
     <>
-      {can(instance, Permission.MuteMembers) && (
+      {canInChannel(instance, channel, Permission.MuteMembers) && (
         <MenuAction
           onClick={() => run({ muted: !participant.restriction?.muted })}
         >
@@ -65,7 +68,7 @@ export function VoiceModerationMenu({
             : "Mute member"}
         </MenuAction>
       )}
-      {can(instance, Permission.DeafenMembers) && (
+      {canInChannel(instance, channel, Permission.DeafenMembers) && (
         <MenuAction
           onClick={() => run({ deafened: !participant.restriction?.deafened })}
         >
@@ -104,8 +107,9 @@ export function VoiceRestrictions({
     setItems((previous) => (after ? [...(previous ?? []), ...page] : page));
     setMore(page.length === 100);
   };
+  const canModerate = canModerateVoice(instance, channel);
   useEffect(() => {
-    if (!open) return;
+    if (!open || !canModerate) return;
     let active = true;
     setItems(undefined);
     setMore(false);
@@ -119,8 +123,8 @@ export function VoiceRestrictions({
       generation.current++;
       off();
     };
-  }, [open, instance, channel]);
-  if (!canModerateVoice(instance)) return null;
+  }, [open, instance, channel, canModerate]);
+  if (!canModerate) return null;
   const clear = async (item: Restriction, field: "muted" | "deafened") => {
     setBusy(true);
     setError("");
@@ -171,7 +175,10 @@ export function VoiceRestrictions({
                 />
                 {item.muted && (
                   <button
-                    disabled={busy || !can(instance, Permission.MuteMembers)}
+                    disabled={
+                      busy ||
+                      !canInChannel(instance, channel, Permission.MuteMembers)
+                    }
                     onClick={() => void clear(item, "muted")}
                   >
                     Remove mute
@@ -179,7 +186,10 @@ export function VoiceRestrictions({
                 )}
                 {item.deafened && (
                   <button
-                    disabled={busy || !can(instance, Permission.DeafenMembers)}
+                    disabled={
+                      busy ||
+                      !canInChannel(instance, channel, Permission.DeafenMembers)
+                    }
                     onClick={() => void clear(item, "deafened")}
                   >
                     Remove deafen

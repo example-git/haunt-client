@@ -3,7 +3,7 @@ import {
   EditMentionText,
   type MessageInputHandle,
 } from "./MessageInput";
-import { Permission } from "./Permissions";
+import { canInChannel, Permission } from "./Permissions";
 import {
   AIChannelHeader,
   AIConversationStatus,
@@ -136,6 +136,7 @@ import {
 import { createPortal } from "react-dom";
 import {
   Reply,
+  Trash2,
   ArrowLeft,
   ArrowUp,
   Check,
@@ -1245,8 +1246,7 @@ function Workspace({
   }, [state.channels, state.conversations, conversation]);
   const channel = state.channels.find((c) => c.id === conversation);
   const title = channel?.name || "Channels";
-  const canManage =
-    !!(state.permissions & 16) || instance.account.login.user.is_owner;
+  const canManage = can(instance, Permission.ManageChannels);
   const canSettings = canManageServer(instance);
   const available = !!channel;
   const textChannel = (c: Schemas["IdentityChannel"]) => (
@@ -1272,7 +1272,8 @@ function Workspace({
             choose(c.id);
             if (
               c.kind === "voice" &&
-              ((c.permissions ?? 0) & 4 || instance.account.login.user.is_owner)
+              ((c.permissions ?? 0) & Permission.ConnectVoice ||
+                instance.account.login.user.is_owner)
             )
               void joinCall(c.id);
           }}
@@ -1286,7 +1287,7 @@ function Workspace({
                 ? callState?.status === "connected"
                   ? "Connected"
                   : "Connecting…"
-                : (c.permissions ?? 0) & 4 ||
+                : (c.permissions ?? 0) & Permission.ConnectVoice ||
                     instance.account.login.user.is_owner
                   ? "Join"
                   : "Chat"}
@@ -1351,7 +1352,7 @@ function Workspace({
               }}
               fallback={
                 <>
-                  {canManage && (
+                  {canInChannel(instance, c.id, Permission.ManageChannels) && (
                     <>
                       <button
                         role="menuitem"
@@ -1410,7 +1411,7 @@ function Workspace({
             <button role="menuitem" onClick={() => setChannelMenu(undefined)}>
               Close menu
             </button>
-            {c.kind === "voice" && canModerateVoice(instance) && (
+            {c.kind === "voice" && canModerateVoice(instance, c.id) && (
               <button
                 role="menuitem"
                 onClick={() => {
@@ -1765,7 +1766,7 @@ function Workspace({
                 <button
                   className="primary"
                   disabled={
-                    !((channel.permissions ?? 0) & 4) &&
+                    !((channel.permissions ?? 0) & Permission.ConnectVoice) &&
                     !instance.account.login.user.is_owner
                   }
                   onClick={() => void joinCall(channel.id)}
@@ -1783,7 +1784,7 @@ function Workspace({
             conversation={conversation}
             title={title}
             writable={
-              !!(channel?.permissions! & 2) ||
+              !!(channel?.permissions! & Permission.SendMessages) ||
               instance.account.login.user.is_owner
             }
           />
@@ -1939,7 +1940,7 @@ export function VoiceChannelChat({
           title={channel.name}
           visible={!voiceChatHidden}
           writable={
-            !!((channel.permissions ?? 0) & 2) ||
+            !!((channel.permissions ?? 0) & Permission.SendMessages) ||
             instance.account.login.user.is_owner
           }
         />
@@ -2413,8 +2414,7 @@ function MessageRow({
   useEffect(() => cancelPress, []);
   const canRemove =
     own ||
-    (can(instance, 4096) &&
-      instance.snapshot.channels.some((c) => c.id === message.conversation_id));
+    canInChannel(instance, message.conversation_id, Permission.ManageMessages);
   const [edit, setEdit] = useState(false),
     [remove, setRemove] = useState(false),
     [error, setError] = useState("");
@@ -2712,6 +2712,17 @@ function MessageRow({
               onClick={() => onReply(message)}
             >
               <Reply size={18} />
+            </button>
+          )}
+          {canRemove && (
+            <button
+              type="button"
+              className="message-delete-action"
+              aria-label="Delete message…"
+              title="Delete message"
+              onClick={() => setRemove(true)}
+            >
+              <Trash2 size={17} />
             </button>
           )}
           <button

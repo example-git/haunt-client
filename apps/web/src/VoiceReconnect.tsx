@@ -1,3 +1,4 @@
+import { Permission } from "./Permissions";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { APIError, unwrap, type InstanceClient } from "@haunt/core";
 import {
@@ -60,7 +61,11 @@ export function VoiceReconnectBanner({
         );
         if (!live || attempt !== generation || record !== getVoiceReconnect())
           return;
-        if (channel.kind !== "voice" || ((channel.permissions ?? 0) & 5) !== 5)
+        const joinVoice = Permission.ViewChannel | Permission.ConnectVoice;
+        if (
+          channel.kind !== "voice" ||
+          ((channel.permissions ?? 0) & joinVoice) !== joinVoice
+        )
           clearVoiceReconnect(instance, record.channel);
         else {
           checked = true;

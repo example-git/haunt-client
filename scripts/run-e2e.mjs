@@ -765,12 +765,10 @@ try {
       .filter({ hasText: "Edited from the browser" });
     await deleted.hover();
     await deleted
-      .getByRole("button", { name: "Message options", exact: true })
+      .getByRole("button", { name: "Delete message…", exact: true })
       .click();
     await alice
-      .getByRole("menuitem", { name: "Delete message…", exact: true })
-      .click();
-    await alice
+      .getByRole("dialog")
       .getByRole("button", { name: "Delete message", exact: true })
       .click();
     await expect(

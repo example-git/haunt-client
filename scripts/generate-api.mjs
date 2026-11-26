@@ -16,7 +16,26 @@ const protocol = JSON.parse(
     "utf8",
   ),
 );
-const schema = await generateApi(source);
+const document = JSON.parse(await fs.readFile(source, "utf8"));
+const schema = await generateApi(document);
+const definitions = document["x-haunt-role-permissions"];
+const permissions =
+  "// Generated from the server role permission catalog. Do not edit.\n" +
+  `export const legacyChannelMask = ${document["x-haunt-legacy-override-mask"]};\n` +
+  "export const Permission = " +
+  JSON.stringify(
+    Object.fromEntries(definitions.map((p) => [p.key, p.bit])),
+    null,
+    2,
+  ) +
+  " as const;\n" +
+  "export const rolePermissions: ReadonlyArray<{ bit: number; label: string; kinds: readonly string[] }> = " +
+  JSON.stringify(
+    definitions.map(({ bit, label, kinds = [] }) => ({ bit, label, kinds })),
+    null,
+    2,
+  ) +
+  ";\n";
 const wire =
   "// Generated from static/api/websocket.json. Do not edit.\nexport const protocol = " +
   JSON.stringify(
@@ -27,6 +46,10 @@ const wire =
   " as const;\n";
 for (const [url, content] of [
   [target, schema],
+  [
+    new URL("../packages/core/src/generated/permissions.ts", import.meta.url),
+    permissions,
+  ],
   [protocolTarget, wire],
 ]) {
   if (process.argv.includes("--check")) {

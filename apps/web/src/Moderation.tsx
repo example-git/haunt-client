@@ -111,22 +111,26 @@ export function MemberActions({
       </p>
       {!protectedMember && (
         <div className="button-row">
-          {can(instance, 128) && !member.kicked && (
+          {can(instance, Permission.KickMembers) && !member.kicked && (
             <button className="secondary" onClick={() => setChoice("kick")}>
               Kick member
             </button>
           )}
-          {can(instance, 256) && !member.banned && (
+          {can(instance, Permission.BanMembers) && !member.banned && (
             <button className="danger" onClick={() => setChoice("ban")}>
               Ban account
             </button>
           )}
-          {can(instance, 256) && (member.kicked || member.disabled) && (
-            <button className="secondary" onClick={() => setChoice("restore")}>
-              Restore access
-            </button>
-          )}
-          {can(instance, 8192) && (
+          {can(instance, Permission.BanMembers) &&
+            (member.kicked || member.disabled) && (
+              <button
+                className="secondary"
+                onClick={() => setChoice("restore")}
+              >
+                Restore access
+              </button>
+            )}
+          {can(instance, Permission.ResetPasswords) && (
             <button
               className="secondary"
               onClick={() => {
@@ -137,7 +141,7 @@ export function MemberActions({
               Reset password
             </button>
           )}
-          {can(instance, 512) && (
+          {can(instance, Permission.DeleteMembers) && (
             <button className="danger" onClick={() => setChoice("delete")}>
               Delete account
             </button>
@@ -266,7 +270,7 @@ export function MemberActions({
           </button>
         </div>
       )}
-      {can(instance, 2048) && !member.deleted && (
+      {can(instance, Permission.ViewMemberIPs) && !member.deleted && (
         <>
           <button
             className="text-button"
@@ -358,7 +362,7 @@ export function BanManager({ instance }: { instance: InstanceClient }) {
   return (
     <section>
       <h3>Bans & appeals</h3>
-      {can(instance, 2048) && (
+      {can(instance, Permission.ViewMemberIPs) && (
         <form
           className="form"
           onSubmit={(e) => {
@@ -427,7 +431,7 @@ export function BanManager({ instance }: { instance: InstanceClient }) {
             </strong>
             <p>{b.reason}</p>
             <small>{new Date(b.created_at).toLocaleString()}</small>
-            {(b.user_id || can(instance, 2048)) && (
+            {(b.user_id || can(instance, Permission.ViewMemberIPs)) && (
               <button
                 className="text-button"
                 onClick={() => {

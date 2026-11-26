@@ -1,6 +1,6 @@
 import { AIChannelSettings } from "./AIChannelSettings";
 import { AIConnections } from "./AIConnections";
-import { Permission } from "./Permissions";
+import { canInChannel, Permission } from "./Permissions";
 import { UserName } from "./UserName";
 import { AudioPluginsAdmin } from "./AudioPluginsAdmin";
 import { ServerExtensionsAdmin } from "./ServerExtensionsAdmin";
@@ -23,6 +23,8 @@ import { EmojiSettings } from "./Emojis";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Plus, Settings, Upload } from "lucide-react";
 import {
+  legacyChannelMask,
+  rolePermissions,
   friendlyError,
   unwrap,
   type InstanceClient,
@@ -33,28 +35,6 @@ import { Modal, ErrorNotice } from "./App";
 import { Avatar, displayName, useArt } from "./People";
 
 type Role = Schemas["IdentityRole"];
-const permissions = [
-  [Permission.Administrator, "Administrator"],
-  [1, "View channels"],
-  [2, "Send messages"],
-  [4, "Join voice channels"],
-  [Permission.UseAI, "Request AI responses"],
-  [Permission.SwitchAIPreset, "Switch AI presets"],
-  [8, "Create invitations"],
-  [16, "Manage channels"],
-  [32, "Manage server appearance & emojis"],
-  [64, "Manage lower-ranked roles"],
-  [128, "Kick members"],
-  [256, "Ban members & review appeals"],
-  [Permission.MuteMembers, "Mute members"],
-  [Permission.DeafenMembers, "Deafen members"],
-  [512, "Delete accounts"],
-  [1024, "View audit log"],
-  [2048, "View member IPs & manage IP bans"],
-  [4096, "Delete channel messages"],
-  [8192, "Reset member passwords"],
-  [16384, "Manage configuration, storage & extensions"],
-] as const;
 export function useAction() {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -454,7 +434,10 @@ export function ChannelSettings({
                 const body = {
                   name: String(data.get("name")),
                   kind: String(data.get("kind")) as "text" | "voice" | "ai",
-                  category_id: String(data.get("category")) || null,
+                  category_id:
+                    channel && !can(instance, Permission.ManageChannels)
+                      ? channel.category_id
+                      : String(data.get("category")) || null,
                   topic: String(data.get("topic")),
                   ...(supportsIcons ? { icon } : {}),
                 };
@@ -526,6 +509,9 @@ export function ChannelSettings({
                 Category
                 <select
                   name="category"
+                  disabled={
+                    !!channel && !can(instance, Permission.ManageChannels)
+                  }
                   defaultValue={channel?.category_id ?? initialCategory ?? ""}
                 >
                   <option value="">No category</option>
@@ -650,15 +636,21 @@ function ChannelPermissions({
           ))}
         </select>
       </label>
-      {permissions
-        .filter(([bit]) =>
-          [1, 2, 4, Permission.UseAI, Permission.SwitchAIPreset].includes(bit),
+      {rolePermissions
+        .filter(
+          ({ bit, kinds }) =>
+            kinds.includes(channel.kind) &&
+            (instance.account.instance.capabilities?.includes(
+              "community.channel_moderation.v1",
+            ) ||
+              (legacyChannelMask & bit) !== 0),
         )
-        .map(([bit, label]) => (
+        .map(({ bit, label }) => (
           <label className="permission-row" key={bit}>
             <span>{label}</span>
             <select
               aria-label={label}
+              disabled={!canInChannel(instance, channel.id, bit)}
               value={deny & bit ? "deny" : allow & bit ? "allow" : "inherit"}
               onChange={(e) => {
                 setAllow((v) =>
@@ -721,24 +713,30 @@ export function ServerSettings({
     instance.account.instance.capabilities?.includes("server.extensions.v1")
       ? [["server-extensions", "Server extensions"]]
       : []),
-    ...(can(instance, 16384) &&
+    ...(can(instance, Permission.ManageConfiguration) &&
     instance.account.instance.capabilities?.includes("instance.configuration")
       ? [
           ["configuration", "Limits & access"],
           ["storage", "Storage providers"],
         ]
       : []),
-    ...(can(instance, 32)
+    ...(can(instance, Permission.ManageServer)
       ? [
           ["overview", "Overview & appearance"],
           ["emojis", "Emojis"],
         ]
       : []),
-    ...(can(instance, 16) ? [["channels", "Channels & categories"]] : []),
-    ...(can(instance, 64) ? [["roles", "Roles & permissions"]] : []),
+    ...(can(instance, Permission.ManageChannels)
+      ? [["channels", "Channels & categories"]]
+      : []),
+    ...(can(instance, Permission.ManageRoles)
+      ? [["roles", "Roles & permissions"]]
+      : []),
     ...(canManageMembers(instance) ? [["members", "Members"]] : []),
-    ...(can(instance, 256) ? [["bans", "Bans & appeals"]] : []),
-    ...(can(instance, 1024) ? [["audit", "Audit log"]] : []),
+    ...(can(instance, Permission.BanMembers)
+      ? [["bans", "Bans & appeals"]]
+      : []),
+    ...(can(instance, Permission.ViewAuditLog) ? [["audit", "Audit log"]] : []),
   ];
   const serverMenu = useServerMenu(instance);
   const tabs = serverMenu.supported
@@ -862,24 +860,28 @@ export function ServerSettings({
                 </button>
               </div>
               <div className="settings-list">
-                {instance.snapshot.channels.map((c) => (
-                  <button
-                    key={c.id}
-                    className="settings-list-row"
-                    onClick={() => setEditing(c)}
-                  >
-                    <span>
-                      <strong>{c.name}</strong>
-                      <small>
-                        {c.kind}
-                        {c.category_id
-                          ? ` · ${instance.snapshot.categories.find((v) => v.id === c.category_id)?.name ?? "Category"}`
-                          : ""}
-                      </small>
-                    </span>
-                    <Settings size={17} />
-                  </button>
-                ))}
+                {instance.snapshot.channels
+                  .filter((c) =>
+                    canInChannel(instance, c.id, Permission.ManageChannels),
+                  )
+                  .map((c) => (
+                    <button
+                      key={c.id}
+                      className="settings-list-row"
+                      onClick={() => setEditing(c)}
+                    >
+                      <span>
+                        <strong>{c.name}</strong>
+                        <small>
+                          {c.kind}
+                          {c.category_id
+                            ? ` · ${instance.snapshot.categories.find((v) => v.id === c.category_id)?.name ?? "Category"}`
+                            : ""}
+                        </small>
+                      </span>
+                      <Settings size={17} />
+                    </button>
+                  ))}
               </div>
               <CategoryManager instance={instance} />
             </>
@@ -1140,15 +1142,15 @@ function RoleManager({ instance }: { instance: InstanceClient }) {
         )}
         <fieldset className="permission-checks">
           <legend>Server permissions</legend>
-          {permissions
+          {rolePermissions
             .filter(
-              ([bit]) =>
+              ({ bit }) =>
                 bit !== Permission.Administrator ||
                 instance.account.instance.capabilities?.includes(
                   "community.administrator",
                 ),
             )
-            .map(([bit, label]) => (
+            .map(({ bit, label }) => (
               <label key={bit}>
                 <input
                   type="checkbox"
@@ -1330,7 +1332,7 @@ function MemberManager({
           </h3>
           {selected.is_owner ? (
             <p className="muted">The server owner has all permissions.</p>
-          ) : can(instance, 64) &&
+          ) : can(instance, Permission.ManageRoles) &&
             !selected.deleted &&
             selected.id !== instance.account.login.user.id &&
             (instance.account.login.user.is_owner ||

@@ -3301,7 +3301,12 @@ export interface OperationRotateStorageCredentials {
 }
 export interface OperationAiAccounts {
   parameters: {
-    query?: never;
+    query?: {
+      /**
+       * AI channel whose effective ManageChannels permission authorizes this settings lookup.
+       */
+      channel_id?: string;
+    };
     header?: never;
     path?: never;
     cookie?: never;
@@ -3366,7 +3371,12 @@ export interface OperationAiDisconnect {
 }
 export interface OperationAiModels {
   parameters: {
-    query?: never;
+    query?: {
+      /**
+       * AI channel whose effective ManageChannels permission authorizes this settings lookup.
+       */
+      channel_id?: string;
+    };
     header?: never;
     path: {
       account: string;

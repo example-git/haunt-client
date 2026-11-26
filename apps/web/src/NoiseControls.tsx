@@ -1,3 +1,4 @@
+import { Permission } from "./Permissions";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { friendlyError, type InstanceClient } from "@haunt/core";
 import {
@@ -158,7 +159,8 @@ export function NoiseControls({ instance }: { instance: InstanceClient }) {
         Reset noise defaults
       </button>
       {(instance.account.login.user.is_owner ||
-        (instance.snapshot.permissions & 16384) !== 0) && (
+        (instance.snapshot.permissions & Permission.ManageConfiguration) !==
+          0) && (
         <fieldset className="plugin-default-settings">
           <legend>Default</legend>
           <p className="muted small">

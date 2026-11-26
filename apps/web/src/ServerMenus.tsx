@@ -13,9 +13,10 @@ import { Status, useAction } from "./Customization";
 import { MenuAction } from "./ContextMenu";
 
 export function useServerMenu(instance: InstanceClient, channel?: string) {
-  const { permissions } = useSyncExternalStore(
-    instance.subscribe,
-    instance.getSnapshot,
+  const permissions = useSyncExternalStore(instance.subscribe, () =>
+    channel
+      ? instance.snapshot.channels.find((c) => c.id === channel)?.permissions
+      : instance.snapshot.permissions,
   );
   const supported =
     instance.account.instance.capabilities?.includes("menus.declarative.v1") ??
