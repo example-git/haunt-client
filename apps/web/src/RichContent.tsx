@@ -1,3 +1,5 @@
+import { ImageEditInstructions } from "./ImageEditInstructions";
+import { MenuAction } from "./ContextMenu";
 import {
   useContext,
   useEffect,
@@ -723,6 +725,13 @@ export function MessageEmbeds({
             id={id}
             known={meta}
             aiChannel={aiChannel}
+            allowImageSpec={
+              aiChannel &&
+              !message.hidden_from_ai &&
+              instance.account.instance.capabilities?.includes(
+                "messages.ai_media.v1",
+              )
+            }
           />
         ),
       });
@@ -809,6 +818,13 @@ export function MessageEmbeds({
                 id={id}
                 known={meta}
                 aiChannel={aiChannel}
+                allowImageSpec={
+                  aiChannel &&
+                  !message.hidden_from_ai &&
+                  instance.account.instance.capabilities?.includes(
+                    "messages.ai_media.v1",
+                  )
+                }
               />
             ),
       )}
@@ -904,12 +920,15 @@ export function Attachment({
   id,
   known,
   aiChannel = false,
+  allowImageSpec = false,
 }: {
   instance: InstanceClient;
   id: string;
   known?: Schemas["AttachmentsAttachment"];
   aiChannel?: boolean;
+  allowImageSpec?: boolean;
 }) {
+  const [editingInstructions, setEditingInstructions] = useState(false);
   const { ref, visible } = useVisible(),
     [meta, setMeta] = useState<Schemas["AttachmentsAttachment"]>(),
     [downloadError, setDownloadError] = useState(""),
@@ -969,6 +988,14 @@ export function Attachment({
   }, [visible, instance, id, known, aiChannel]);
   return (
     <div className="attachment-card" ref={ref}>
+      {editingInstructions && meta && (
+        <ImageEditInstructions
+          instance={instance}
+          channel={meta.conversation_id}
+          attachment={id}
+          close={() => setEditingInstructions(false)}
+        />
+      )}
       {error ? (
         <div className="attachment-expired">
           <p>Attachment unavailable or expired.</p>
@@ -987,6 +1014,14 @@ export function Attachment({
             data.type.startsWith("image/") ? (
               <ImagePreview
                 className="attachment-picture"
+                extraAction={
+                  allowImageSpec &&
+                  meta && (
+                    <MenuAction onClick={() => setEditingInstructions(true)}>
+                      Image edit instructions
+                    </MenuAction>
+                  )
+                }
                 label={`Enlarge ${meta?.filename || "attachment"}`}
               >
                 <img

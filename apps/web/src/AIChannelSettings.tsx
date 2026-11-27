@@ -20,6 +20,9 @@ export function AIChannelSettings({
   instance: InstanceClient;
   channel: string;
 }) {
+  const runtimeSettings = instance.account.instance.capabilities?.includes(
+    "messages.ai_media.v1",
+  );
   const state = useAIChannel(instance, channel);
   const action = useAction();
   const [accounts, setAccounts] = useState<AIAccount[]>([]);
@@ -96,6 +99,9 @@ export function AIChannelSettings({
                   name: draft.name,
                   instructions: draft.instructions,
                   max_bytes: draft.max_bytes,
+                  ...(runtimeSettings && {
+                    timezone: draft.timezone?.trim() ?? "",
+                  }),
                   allow_agent_switch: !!draft.allow_agent_switch,
                   allow_consultations: !!draft.allow_consultations,
                   max_consultations: draft.max_consultations ?? 5,
@@ -259,6 +265,19 @@ export function AIChannelSettings({
                 />
               </label>
             </>
+          )}
+          {runtimeSettings && (
+            <label>
+              Channel timezone (IANA)
+              <input
+                maxLength={128}
+                placeholder="e.g. America/Toronto"
+                value={draft.timezone ?? ""}
+                onChange={(e) =>
+                  setDraft({ ...draft, timezone: e.target.value })
+                }
+              />
+            </label>
           )}
           <label>
             Conversation storage (MiB)

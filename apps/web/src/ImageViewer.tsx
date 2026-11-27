@@ -34,6 +34,7 @@ function useImageActions() {
   function actions(
     event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>,
     picture: Picture,
+    extra?: ReactNode,
   ) {
     const run = (job: Promise<void>) => {
       setError("");
@@ -48,6 +49,7 @@ function useImageActions() {
         <MenuAction onClick={() => run(downloadImage(picture))}>
           Download image
         </MenuAction>
+        {extra}
       </>,
     );
     if ("clientX" in event) handlers.onContextMenu(event);
@@ -81,7 +83,9 @@ export function ImagePreview({
   className,
   label,
   children,
+  extraAction,
 }: {
+  extraAction?: ReactNode;
   className: string;
   label: string;
   children: ReactNode;
@@ -99,11 +103,15 @@ export function ImagePreview({
   ) {
     const img = event.currentTarget.querySelector("img");
     if (img)
-      actions(event, {
-        src: img.src,
-        alt: img.alt,
-        filename: group?.pictures[group.index]?.filename,
-      });
+      actions(
+        event,
+        {
+          src: img.src,
+          alt: img.alt,
+          filename: group?.pictures[group.index]?.filename,
+        },
+        extraAction,
+      );
   }
   return (
     <>

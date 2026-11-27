@@ -756,6 +756,22 @@ export interface APIContract {
       patch?: never;
       trace?: never;
     };
+    "/api/v1/channels/{id}/ai/media/{attachment}/instructions": {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      get: OperationAiImageInstructions;
+      put: OperationAiSaveImageInstructions;
+      post?: never;
+      delete?: never;
+      options?: never;
+      head?: never;
+      patch?: never;
+      trace?: never;
+    };
     "/api/v1/channels/{id}/ai/presets": {
       parameters: {
         query?: never;
@@ -1848,6 +1864,8 @@ export interface APIContract {
   components: {
     schemas: {
       AiAccount: AiAccount;
+      AiEditSpec: AiEditSpec;
+      AiEditSpecInput: AiEditSpecInput;
       AiOAuthCompleteInput: AiOAuthCompleteInput;
       AiOAuthPrepareInput: AiOAuthPrepareInput;
       AiOAuthSession: AiOAuthSession;
@@ -2076,6 +2094,8 @@ export interface APIContract {
     aiAvatarGet: OperationAiAvatarGet;
     aiAvatarSave: OperationAiAvatarSave;
     aiAvatarDelete: OperationAiAvatarDelete;
+    aiImageInstructions: OperationAiImageInstructions;
+    aiSaveImageInstructions: OperationAiSaveImageInstructions;
     aiPresets: OperationAiPresets;
     aiCreatePreset: OperationAiCreatePreset;
     aiSavePreset: OperationAiSavePreset;
@@ -4421,6 +4441,7 @@ export interface AiSettings {
   provider_name?: string;
   revision: number;
   switch_during_reply?: null | boolean;
+  timezone?: null | string;
 }
 export interface OperationAiSaveSettings {
   parameters: {
@@ -4467,6 +4488,7 @@ export interface AiSettingsInput {
   name: string;
   provider: string;
   switch_during_reply?: null | boolean;
+  timezone?: null | string;
 }
 export interface OperationAiAvatarGet {
   parameters: {
@@ -4575,6 +4597,79 @@ export interface OperationAiAvatarDelete {
       };
     };
   };
+}
+export interface OperationAiImageInstructions {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+      attachment: string;
+    };
+    cookie?: never;
+  };
+  requestBody?: never;
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiEditSpec;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface AiEditSpec {
+  can_edit: boolean;
+  editor_id?: string;
+  instructions: string;
+  updated_at?: null | string;
+}
+export interface OperationAiSaveImageInstructions {
+  parameters: {
+    query?: never;
+    header?: never;
+    path: {
+      id: string;
+      attachment: string;
+    };
+    cookie?: never;
+  };
+  requestBody: {
+    content: {
+      "application/json": AiEditSpecInput;
+    };
+  };
+  responses: {
+    "200": {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": AiEditSpec;
+      };
+    };
+    default: {
+      headers: {
+        [k: string]: unknown;
+      };
+      content: {
+        "application/json": HttpapiErrorResponse;
+      };
+    };
+  };
+}
+export interface AiEditSpecInput {
+  instructions: string;
 }
 export interface OperationAiPresets {
   parameters: {
